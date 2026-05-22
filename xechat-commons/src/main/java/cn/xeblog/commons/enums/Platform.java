@@ -15,6 +15,10 @@ public enum Platform {
     /**
      * Web平台
      */
-    WEB
+    WEB,
+    /**
+     * 桌面端(Electron)
+     */
+    DESKTOP
 
 }

@@ -59,5 +59,50 @@ public enum Action {
     /**
      * react
      */
-    REACT;
+    REACT,
+
+    /**
+     * 注册账号
+     */
+    REGISTER,
+
+    /**
+     * 使用 token 登录(自动登录)
+     */
+    LOGIN_WITH_TOKEN,
+
+    /**
+     * 退出登录(吊销当前 token)
+     */
+    LOGOUT,
+
+    /**
+     * 修改个人资料(昵称/头像/密码,任一)
+     */
+    UPDATE_PROFILE,
+
+    /**
+     * 注销自己的账号
+     */
+    DELETE_ACCOUNT,
+
+    /**
+     * 管理员:生成邀请码
+     */
+    ADMIN_CREATE_INVITE,
+
+    /**
+     * 管理员:邀请码列表
+     */
+    ADMIN_LIST_INVITES,
+
+    /**
+     * 管理员:吊销邀请码
+     */
+    ADMIN_REVOKE_INVITE,
+
+    /**
+     * 管理员:注销指定账号
+     */
+    ADMIN_DELETE_USER;
 }

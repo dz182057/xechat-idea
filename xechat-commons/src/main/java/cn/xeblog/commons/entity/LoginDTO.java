@@ -18,9 +18,22 @@ import java.io.Serializable;
 public class LoginDTO implements Serializable {
 
     /**
-     * 昵称
+     * 昵称(过渡兼容,新版用 account+password 登录)
+     *
+     * @deprecated 使用 {@link #account} 登录;此字段仅供旧客户端发送,服务端忽略
      */
+    @Deprecated
     private String username;
+
+    /**
+     * 登录账号([a-zA-Z0-9_]{4,20})
+     */
+    private String account;
+
+    /**
+     * 明文密码(仅 LOGIN 时携带)
+     */
+    private String password;
 
     /**
      * 状态
@@ -38,12 +51,12 @@ public class LoginDTO implements Serializable {
     private String pluginVersion;
 
     /**
-     * 令牌
+     * 令牌(LOGIN_WITH_TOKEN 时携带)
      */
     private String token;
 
     /**
-     * 全局唯一ID
+     * 全局唯一ID(客户端 uuid)
      */
     private String uuid;
 

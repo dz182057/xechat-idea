@@ -54,5 +54,21 @@ public enum MessageType {
     /**
      * react
      */
-    REACT;
+    REACT,
+    /**
+     * 个人资料变更广播(昵称/头像版本)
+     */
+    PROFILE_UPDATED,
+    /**
+     * 登录/注册结果(下行 LoginResultDTO)
+     */
+    LOGIN_RESULT,
+    /**
+     * 管理员邀请码列表响应
+     */
+    INVITE_LIST,
+    /**
+     * 管理员邀请码创建响应
+     */
+    INVITE_CREATED;
 }

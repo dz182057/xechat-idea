@@ -29,15 +29,46 @@ public class User implements Serializable {
     private String uuid;
 
     /**
-     * 用户ID
+     * 连接级 ID(channel 维度,断线即换),与持久化账号无关
      */
     @Getter
     @Setter
     private String id;
 
     /**
-     * 用户昵称
+     * 持久化账号 ID(雪花,永久不变,跨连接稳定)
      */
+    @Getter
+    @Setter
+    private long accountId;
+
+    /**
+     * 登录账号(只读,注册后不可改,正则 [a-zA-Z0-9_]{4,20})
+     */
+    @Getter
+    @Setter
+    private String account;
+
+    /**
+     * 用户昵称(显示名,唯一,可改)。setter 见下方 {@link #setNickname(String)}。
+     */
+    @Getter
+    private String nickname;
+
+    /**
+     * 头像版本,换头像 +1,客户端用 ?v= 破缓存
+     */
+    @Getter
+    @Setter
+    private int avatarVersion;
+
+    /**
+     * 用户昵称(过渡兼容字段)
+     * <p>历史代码读 username;新代码应改用 nickname。下一版本删除。</p>
+     *
+     * @deprecated 使用 {@link #nickname} 代替
+     */
+    @Deprecated
     @Getter
     @Setter
     private String username;
@@ -108,12 +139,41 @@ public class User implements Serializable {
     public User(String id, String username, UserStatus status, String ip, IpRegion region, Channel channel) {
         this.id = id;
         this.username = username;
+        this.nickname = username;
         this.status = status;
         this.ip = ip;
         this.region = region;
         this.channel = channel;
         this.platform = Platform.IDEA;
         this.shortRegion = MapUtil.getStr(IpConstants.SHORT_PROVINCE, region.getProvince(), region.getCountry());
+    }
+
+    /**
+     * 账号体系登录用构造器
+     */
+    public User(String id, long accountId, String account, String nickname, int avatarVersion,
+                UserStatus status, String ip, IpRegion region, Channel channel) {
+        this.id = id;
+        this.accountId = accountId;
+        this.account = account;
+        this.nickname = nickname;
+        this.username = nickname;
+        this.avatarVersion = avatarVersion;
+        this.status = status;
+        this.ip = ip;
+        this.region = region;
+        this.channel = channel;
+        this.platform = Platform.IDEA;
+        this.shortRegion = region == null ? null
+                : MapUtil.getStr(IpConstants.SHORT_PROVINCE, region.getProvince(), region.getCountry());
+    }
+
+    /**
+     * 同步 nickname → username(过渡期保持下行兼容)
+     */
+    public void setNickname(String nickname) {
+        this.nickname = nickname;
+        this.username = nickname;
     }
 
     public void send(Response response) {
