@@ -525,13 +525,19 @@ public class Gobang extends AbstractGame<GobangDTO> {
             chessData[point.x][point.y] = 0;
         }
         currentChessTotal -= count;
+
+        int nextTurnType;
         if (chessStack.isEmpty()) {
             lastPoint = null;
+            nextTurnType = 1; // 撤回开局：黑棋先手
         } else {
             lastPoint = chessStack.lastElement();
+            nextTurnType = 3 - lastPoint.type; // 下一手是最后一手的对手色
         }
-        // 悔棋后，由我方继续走（撤销了一来一回 2 步，回到我方落子前的状态）
-        put = false;
+
+        // 联机模式下，put 应根据"下一手该谁下"判断，
+        // 否则双方都会以为轮到自己导致顺序错乱
+        put = (gameMode == GameMode.ONLINE) ? (nextTurnType != this.type) : false;
         isGameOver = false;
         chessHighlight = null;
         chessPanel.repaint();
