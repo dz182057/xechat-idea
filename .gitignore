@@ -31,3 +31,6 @@ build
 *.iws
 *.iml
 *.ipr
+/xechat-plugin/.intellijPlatform/
+/.claude/
+/.tmp/

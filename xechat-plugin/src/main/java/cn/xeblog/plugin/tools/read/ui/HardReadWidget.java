@@ -1,11 +1,9 @@
 package cn.xeblog.plugin.tools.read.ui;
 
 import cn.xeblog.plugin.cache.DataCache;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.wm.StatusBar;
 import com.intellij.openapi.wm.StatusBarWidget;
 import com.intellij.openapi.wm.WindowManager;
-import com.intellij.openapi.wm.impl.status.IdeStatusBarImpl;
 import com.intellij.util.Consumer;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -39,14 +37,17 @@ public class HardReadWidget implements StatusBarWidget.TextPresentation, StatusB
 
     public void register() {
         line = "";
-        IdeStatusBarImpl statusBar = (IdeStatusBarImpl) WindowManager.getInstance().getStatusBar(DataCache.project);
-        statusBar.addWidgetToLeft(this, DataCache.project);
+        StatusBar statusBar = WindowManager.getInstance().getStatusBar(DataCache.project);
+        if (statusBar != null) {
+            // 2026.1 起 IdeStatusBarImpl.addWidgetToLeft 已被移除，改用 StatusBar.addWidget(anchor, disposable)
+            statusBar.addWidget(this, "before Position", DataCache.project);
+        }
     }
 
     @Override
     public void install(@NotNull StatusBar statusBar) {
         myStatusBar = statusBar;
-        Disposer.register(myStatusBar, this);
+        // 2026.1 起 StatusBar 不再实现 Disposable，widget 的释放由 IDE 通过 dispose() 触发
     }
 
     @Override
