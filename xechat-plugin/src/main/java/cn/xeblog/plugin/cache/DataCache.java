@@ -26,9 +26,19 @@ public class DataCache {
     public static String uuid;
 
     /**
-     * 当前登录的用户名
+     * 当前登录的用户名(账号体系改造后等于服务端返回的 nickname)
      */
     public static String username;
+
+    /**
+     * 账号体系:登录账号([a-zA-Z0-9_]{4,20}),由 /login 设置,登录成功后写入持久化
+     */
+    public static String account;
+
+    /**
+     * 账号体系:明文密码(仅 channelActive 用一次,发送后置 null,不持久化)
+     */
+    public static String password;
 
     /**
      * 是否在线
