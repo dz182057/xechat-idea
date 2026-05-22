@@ -11,6 +11,7 @@ import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.entity.game.landlords.LandlordsGameDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Game;
+import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.Protocol;
 import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.action.handler.ActionHandler;
@@ -34,7 +35,14 @@ public class RequestHandler {
     }
 
     public void exec() {
-        if (request.getAction() == null || request.getAction() == Action.HEARTBEAT) {
+        if (request.getAction() == null) {
+            return;
+        }
+        // 心跳：回声一条 HEARTBEAT 给发送方，作为链路存活的下行证据
+        // （桌面端 WebSocket 客户端用"60s 内是否收到下行"做看门狗判断，
+        // 不回声会导致空闲房间每分钟触发一次重连）
+        if (request.getAction() == Action.HEARTBEAT) {
+            ctx.writeAndFlush(ResponseBuilder.build(null, null, MessageType.HEARTBEAT));
             return;
         }
 
