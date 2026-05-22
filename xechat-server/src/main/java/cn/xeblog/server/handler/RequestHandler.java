@@ -5,7 +5,12 @@ import cn.hutool.core.util.ClassUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.Request;
+import cn.xeblog.commons.entity.game.GameDTO;
+import cn.xeblog.commons.entity.game.chess.ChessDTO;
+import cn.xeblog.commons.entity.game.gobang.GobangDTO;
+import cn.xeblog.commons.entity.game.landlords.LandlordsGameDTO;
 import cn.xeblog.commons.enums.Action;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.Protocol;
 import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.action.handler.ActionHandler;
@@ -33,7 +38,8 @@ public class RequestHandler {
             return;
         }
 
-        if (ObjectUtil.isEmpty(request.getBody())) {
+        // LIST_USERS 是无参拉取，允许 body 为空
+        if (request.getAction() != Action.LIST_USERS && ObjectUtil.isEmpty(request.getBody())) {
             ctx.writeAndFlush(ResponseBuilder.system("Body is null!"));
             return;
         }
@@ -42,11 +48,25 @@ public class RequestHandler {
             ActionHandler produce = ActionHandlerFactory.INSTANCE.produce(request.getAction());
             Object body = request.getBody();
 
+            // LIST_USERS 是无参 action，body 可能为空，直接走 handler 不做反序列化
+            if (request.getAction() == Action.LIST_USERS) {
+                produce.handle(ctx, body);
+                return;
+            }
+
             // 非默认协议需要转换body的数据类型
             if (request.getProtocol() != Protocol.DEFAULT) {
                 try {
                     if (request.getAction() == Action.SET_STATUS) {
                         body = UserStatus.valueOf(body.toString());
+                    } else if (request.getAction() == Action.GAME || request.getAction() == Action.GAME_OVER) {
+                        // GameDTO 是多态基类，handler 泛型只声明到基类，
+                        // 用基类反序列化会丢掉子类字段（如 GobangDTO.x/y/type）。
+                        // 这里先按 game 字段识别具体子类，再二次反序列化保留所有字段。
+                        String json = body.toString();
+                        GameDTO base = JSONUtil.toBean(json, GameDTO.class);
+                        Class<? extends GameDTO> subClass = resolveGameSubClass(base == null ? null : base.getGame());
+                        body = subClass == GameDTO.class ? base : JSONUtil.toBean(json, subClass);
                     } else {
                         body = JSONUtil.toBean(body.toString(), ClassUtil.getTypeArgument(produce.getClass()));
                     }
@@ -58,6 +78,22 @@ public class RequestHandler {
 
             produce.handle(ctx, body);
         });
+    }
+
+    private static Class<? extends GameDTO> resolveGameSubClass(Game game) {
+        if (game == null) {
+            return GameDTO.class;
+        }
+        switch (game) {
+            case GOBANG:
+                return GobangDTO.class;
+            case CHINESE_CHESS:
+                return ChessDTO.class;
+            case LANDLORDS:
+                return LandlordsGameDTO.class;
+            default:
+                return GameDTO.class;
+        }
     }
 
 }

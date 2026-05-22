@@ -1,6 +1,7 @@
 package cn.xeblog.server.action.handler;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameDTO;
 import cn.xeblog.commons.entity.game.GameInviteResultDTO;
@@ -32,8 +33,12 @@ public abstract class AbstractGameActionHandler<T extends GameDTO> extends Abstr
             if (body instanceof GameRoomMsgDTO) {
                 GameRoomMsgDTO gameRoomMsgDTO = (GameRoomMsgDTO) body;
                 if (gameRoomMsgDTO.getMsgType() == GameRoomMsgDTO.MsgType.PLAYER_INVITE_RESULT) {
-                    GameInviteResultDTO gameInviteResultDTO = (GameInviteResultDTO) gameRoomMsgDTO.getContent();
-                    if (gameInviteResultDTO.getStatus() == InviteStatus.TIMEOUT) {
+                    // 兼容 WebSocket+JSON 客户端：content 可能是 JSONObject，需做 toBean 转换
+                    Object rawContent = gameRoomMsgDTO.getContent();
+                    GameInviteResultDTO gameInviteResultDTO = rawContent instanceof GameInviteResultDTO
+                            ? (GameInviteResultDTO) rawContent
+                            : JSONUtil.toBean(JSONUtil.toJsonStr(rawContent), GameInviteResultDTO.class);
+                    if (gameInviteResultDTO != null && gameInviteResultDTO.getStatus() == InviteStatus.TIMEOUT) {
                         // 玩家邀请超时，原房间已经关闭，放弃处理
                         return;
                     }

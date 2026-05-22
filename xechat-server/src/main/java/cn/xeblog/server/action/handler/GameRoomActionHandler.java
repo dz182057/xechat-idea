@@ -1,5 +1,6 @@
 package cn.xeblog.server.action.handler;
 
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.*;
 import cn.xeblog.commons.entity.game.GameInviteDTO;
 import cn.xeblog.commons.entity.game.GameInviteResultDTO;
@@ -74,7 +75,11 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
     }
 
     private void playerInviteResult(User user, GameRoom gameRoom, GameRoomMsgDTO body) {
-        GameInviteResultDTO dto = (GameInviteResultDTO) body.getContent();
+        // 兼容 WebSocket+JSON 客户端：hutool 反序列化时 content 会变成 JSONObject，
+        // 这里再做一次 toBean 转换，TCP+Protostuff 客户端走 instanceof 分支不受影响
+        GameInviteResultDTO dto = castContent(body, GameInviteResultDTO.class);
+        // 转换后的 dto 与 body.content 解耦，后续 setGameRoom 等需要回写
+        body.setContent(dto);
         User player = user;
         if (dto.getPlayerId() != null) {
             player = UserCache.get(dto.getPlayerId());
@@ -109,7 +114,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
     }
 
     private void playerInvite(User user, GameRoom gameRoom, GameRoomMsgDTO body) {
-        GameInviteDTO dto = (GameInviteDTO) body.getContent();
+        GameInviteDTO dto = castContent(body, GameInviteDTO.class);
         User player = UserCache.get(dto.getPlayerId());
         if (player == null) {
             user.send(ResponseBuilder.system("该邀请用户不存在！"));
@@ -147,6 +152,23 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                 roomClose(user, gameRoom);
             }
         }
+    }
+
+    /**
+     * 取 GameRoomMsgDTO.content 并按目标类型转换。
+     * - TCP+Protostuff 通道：content 本身就是目标类型，直接强转
+     * - WebSocket+JSON 通道：content 是 hutool 反序列化的 JSONObject/Map，需要二次 toBean
+     */
+    @SuppressWarnings("unchecked")
+    private <T> T castContent(GameRoomMsgDTO body, Class<T> clazz) {
+        Object raw = body.getContent();
+        if (raw == null) {
+            return null;
+        }
+        if (clazz.isInstance(raw)) {
+            return (T) raw;
+        }
+        return JSONUtil.toBean(JSONUtil.toJsonStr(raw), clazz);
     }
 
     private void sendMsg(GameRoom gameRoom, Response response) {
