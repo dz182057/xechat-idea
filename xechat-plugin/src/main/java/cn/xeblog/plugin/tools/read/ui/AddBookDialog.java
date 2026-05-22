@@ -97,7 +97,7 @@ public class AddBookDialog extends JDialog {
 
         TextFieldWithBrowseButton filePath = new TextFieldWithBrowseButton();
         filePath.setPreferredSize(new Dimension(200, 30));
-        filePath.addBrowseFolderListener("选择书籍", null, null, new FileChooserDescriptor(true, false, false, false, false, false));
+        filePath.addBrowseFolderListener(null, new FileChooserDescriptor(true, false, false, false, false, false).withTitle("选择书籍"));
         filePath.setEditable(false);
         localBookAddCard.add(filePath);
 

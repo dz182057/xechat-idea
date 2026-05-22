@@ -20,6 +20,7 @@ public class ProjectEventListener implements ProjectManagerListener {
     private static final String WINDOW_ID = "XEChat";
 
     @Override
+    @SuppressWarnings("removal") // ProjectManagerListener.projectOpened 被标记待删除，新平台推荐 ProjectActivity；此处逻辑简单，暂保留
     public void projectOpened(@NotNull Project project) {
         MainWindow.getInstance();
     }

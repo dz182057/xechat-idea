@@ -37,7 +37,7 @@ public class MainWindowFactory implements ToolWindowFactory {
             }
         });
 
-        ContentFactory contentFactory = ContentFactory.SERVICE.getInstance();
+        ContentFactory contentFactory = ContentFactory.getInstance();
         Content content = contentFactory.createContent(mainPanel, "", false);
         toolWindow.getContentManager().addContent(content);
     }
