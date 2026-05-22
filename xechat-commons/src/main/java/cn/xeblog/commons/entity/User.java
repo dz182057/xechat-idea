@@ -134,6 +134,13 @@ public class User implements Serializable {
     @Getter
     private transient Channel channel;
 
+    /**
+     * 当前会话 token(仅服务端持有,客户端不可见。LOGOUT/改密时用来定位本会话)
+     */
+    @Getter
+    @Setter
+    private transient String token;
+
     public enum Role {
         /**
          * 管理员

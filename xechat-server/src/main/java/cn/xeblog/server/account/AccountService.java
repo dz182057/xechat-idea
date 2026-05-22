@@ -147,6 +147,15 @@ public final class AccountService {
         }
     }
 
+    /**
+     * 提升账号角色(仅用于首注册者升 ADMIN)
+     */
+    public static void updateRole(long accountId, String role) {
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            session.getMapper(AccountMapper.class).updateRole(accountId, role);
+        }
+    }
+
     public static long countAll() {
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
             return session.getMapper(AccountMapper.class).countAll();

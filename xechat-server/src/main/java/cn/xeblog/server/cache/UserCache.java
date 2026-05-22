@@ -160,23 +160,6 @@ public final class UserCache {
         return false;
     }
 
-    // ============ 过渡兼容(任务 #10 改造完 LoginActionHandler 后删除) ============
-
-    /**
-     * @deprecated 旧的 username 唯一性判定。账号体系改造后由 DB 唯一索引保证,
-     * 此方法仅供 {@link cn.xeblog.server.action.handler.LoginActionHandler} 过渡期使用,
-     * task #10 后删除。
-     */
-    @Deprecated
-    public static boolean existUsername(String username) {
-        for (User u : ID_TO_USER.values()) {
-            if (u.getUsername() != null && u.getUsername().equals(username)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static User shallowCopy(User src) {
         User dst = new User();
         dst.setUuid(src.getUuid());

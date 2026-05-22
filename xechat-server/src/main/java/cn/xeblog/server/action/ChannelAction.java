@@ -61,7 +61,10 @@ public class ChannelAction {
     }
 
     public static void sendOnlineUsers(User user) {
-        Response response = ResponseBuilder.build(null, new UserListMsgDTO(UserCache.listUser()), MessageType.ONLINE_USERS);
+        // 账号体系: 在线列表按 accountId 去重,每条带 platforms 集合
+        Response response = ResponseBuilder.build(null,
+                new UserListMsgDTO(UserCache.listOnlineByAccount()),
+                MessageType.ONLINE_USERS);
         if (user == null) {
             send(response);
         } else {

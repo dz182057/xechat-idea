@@ -42,6 +42,10 @@
         UPDATE accounts SET password_hash = #{passwordHash} WHERE account_id = #{accountId}
     </update>
 
+    <update id="updateRole">
+        UPDATE accounts SET role = #{role} WHERE account_id = #{accountId}
+    </update>
+
     <update id="incrementAvatarVersion">
         UPDATE accounts SET avatar_version = avatar_version + 1 WHERE account_id = #{accountId}
     </update>

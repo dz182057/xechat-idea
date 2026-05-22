@@ -28,6 +28,9 @@ public interface AccountMapper {
     int updatePassword(@Param("accountId") long accountId,
                        @Param("passwordHash") String passwordHash);
 
+    int updateRole(@Param("accountId") long accountId,
+                   @Param("role") String role);
+
     int incrementAvatarVersion(@Param("accountId") long accountId);
 
     int softDelete(@Param("accountId") long accountId,
