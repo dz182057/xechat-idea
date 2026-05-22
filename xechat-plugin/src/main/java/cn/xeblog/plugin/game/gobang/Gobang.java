@@ -98,6 +98,8 @@ public class Gobang extends AbstractGame<GobangDTO> {
     private Point lastPoint;
     // AI配置
     private AIService.AIConfig aiConfig;
+    // 联机模式房主的棋色偏好：0=随机，1=黑棋（先手），2=白棋（后手）
+    private int preferredOnlineType = 0;
 
     // AI级别
     private static final Map<String, Integer> AI_LEVEL = new LinkedHashMap<>();
@@ -904,13 +906,18 @@ public class Gobang extends AbstractGame<GobangDTO> {
         blackChessRadio.setActionCommand("1");
         JRadioButton whiteChessRadio = new JRadioButton("白棋", false);
         whiteChessRadio.setActionCommand("2");
+        // 联机模式可选"随机"；离线模式选了随机则在开始时抽签
+        JRadioButton randomChessRadio = new JRadioButton("随机", false);
+        randomChessRadio.setActionCommand("0");
 
         ButtonGroup chessRadioGroup = new ButtonGroup();
         chessRadioGroup.add(blackChessRadio);
         chessRadioGroup.add(whiteChessRadio);
+        chessRadioGroup.add(randomChessRadio);
 
         startPanel.add(blackChessRadio);
         startPanel.add(whiteChessRadio);
+        startPanel.add(randomChessRadio);
 
         JLabel label3 = new JLabel("棋盘尺寸：");
         label3.setFont(new Font("", 1, 13));
@@ -927,7 +934,9 @@ public class Gobang extends AbstractGame<GobangDTO> {
         startGameButton.addActionListener(e -> {
             mainPanel.remove(startPanel);
             gameMode = GameMode.getMode(modeRadioGroup.getSelection().getActionCommand());
-            type = Integer.parseInt(chessRadioGroup.getSelection().getActionCommand());
+            int chosen = Integer.parseInt(chessRadioGroup.getSelection().getActionCommand());
+            // 离线模式选了"随机"则现场抽签
+            type = chosen == 0 ? (new Random().nextInt(2) + 1) : chosen;
             String chessSize = chessSizeBox.getSelectedItem().toString();
             switch (chessSize) {
                 case "小":
@@ -953,7 +962,14 @@ public class Gobang extends AbstractGame<GobangDTO> {
         if (DataCache.isOnline) {
             List<Integer> numsList = new ArrayList();
             numsList.add(2);
-            startPanel.add(getCreateRoomButton(numsList));
+            // 自定义"创建房间"按钮：保存当前选中的棋色作为联机偏好后再打开通用对话框
+            JButton createRoomButton = new JButton("创建房间");
+            createRoomButton.addActionListener(e -> {
+                ButtonModel sel = chessRadioGroup.getSelection();
+                preferredOnlineType = sel == null ? 0 : Integer.parseInt(sel.getActionCommand());
+                showCreateGameRoomPanel(numsList, null);
+            });
+            startPanel.add(createRoomButton);
         }
         startPanel.add(getExitButton());
         mainPanel.updateUI();
@@ -979,11 +995,15 @@ public class Gobang extends AbstractGame<GobangDTO> {
         if (isHomeowner()) {
             // 自旋等待一段时间，再发送游戏数据
             invoke(() -> {
-                int randomType = new Random().nextInt(2) + 1;
+                // 房主可在创建房间前选定执黑/执白；选"随机"或未选时抽签
+                int myType = (preferredOnlineType == 1 || preferredOnlineType == 2)
+                        ? preferredOnlineType
+                        : (new Random().nextInt(2) + 1);
+                int opponentType = 3 - myType;
                 GobangDTO msg = new GobangDTO();
-                msg.setType(3 - randomType);
+                msg.setType(opponentType);
                 sendMsg(msg);
-                handle(new GobangDTO(0, 0, randomType));
+                handle(new GobangDTO(0, 0, myType));
             }, 500);
         }
     }
