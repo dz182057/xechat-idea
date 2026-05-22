@@ -3,6 +3,7 @@ package cn.xeblog.server;
 import cn.hutool.core.lang.Singleton;
 import cn.hutool.core.util.StrUtil;
 import cn.xeblog.server.account.DbInitializer;
+import cn.xeblog.server.account.InviteCodeService;
 import cn.xeblog.server.account.SessionService;
 import cn.xeblog.server.config.IpRegionProperties;
 import cn.xeblog.server.config.ServerConfig;
@@ -123,6 +124,8 @@ public class XEChatServer {
 
         // 账号体系: 初始化 SQLite + MyBatis,首次启动建表
         DbInitializer.initIfNeeded();
+        // 首次启动(accounts 表为空)生成初始管理员引导 setup-token
+        InviteCodeService.generateInitialSetupTokenIfNeeded();
         // 启动 session 表清理定时任务
         SessionService.startCleanupJob();
 
