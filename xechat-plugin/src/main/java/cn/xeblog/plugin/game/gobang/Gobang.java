@@ -462,6 +462,8 @@ public class Gobang extends AbstractGame<GobangDTO> {
             }
             requestRegret();
             btn.setEnabled(false);
+            // 等待响应期间禁用落子，避免一边申请一边继续下棋
+            put = true;
             showTips("已发送悔棋请求，等待对方响应...");
         });
         return btn;
@@ -501,8 +503,9 @@ public class Gobang extends AbstractGame<GobangDTO> {
                 showTips("对方同意悔棋，请重新落子");
             } else {
                 showTips(responder.getUsername() + " 拒绝了悔棋请求");
+                // 被拒绝：恢复落子权限并允许重新发起
+                put = false;
                 if (regretButton != null && currentChessTotal > 1 && !isGameOver) {
-                    // 允许再次发起
                     regretButton.setEnabled(true);
                 }
             }
