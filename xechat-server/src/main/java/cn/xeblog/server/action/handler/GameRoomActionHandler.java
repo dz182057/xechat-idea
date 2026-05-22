@@ -57,6 +57,19 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             case PLAYER_GAME_STARTED:
                 gameRoom.getHomeowner().send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 break;
+            case REGRET_REQUEST:
+            case REGRET_RESPONSE:
+                // 悔棋协商：服务端不参与决策，只把消息原样转发给房间内其他玩家
+                gameRoom.getUsers().forEach((k, v) -> {
+                    if (v.getId().equals(user.getId())) {
+                        return;
+                    }
+                    User player = UserCache.get(v.getId());
+                    if (player != null) {
+                        player.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                    }
+                });
+                break;
         }
     }
 

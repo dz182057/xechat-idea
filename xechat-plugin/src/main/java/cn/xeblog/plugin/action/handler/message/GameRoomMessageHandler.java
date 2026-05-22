@@ -52,6 +52,18 @@ public class GameRoomMessageHandler extends AbstractGameMessageHandler<GameRoomM
             case ROOM_CLOSE:
                 roomClosed(response);
                 break;
+            case REGRET_REQUEST:
+                if (GameAction.playing()) {
+                    GameAction.getAction().onRegretRequest(response.getUser());
+                }
+                break;
+            case REGRET_RESPONSE:
+                if (GameAction.playing()) {
+                    Object content = response.getBody().getContent();
+                    boolean agreed = Boolean.TRUE.equals(content);
+                    GameAction.getAction().onRegretResponse(response.getUser(), agreed);
+                }
+                break;
         }
     }
 

@@ -125,6 +125,16 @@ public abstract class AbstractGame<T extends GameDTO> extends AbstractPanelCompo
         MessageAction.send(body, Action.GAME);
     }
 
+    /** 发起悔棋请求（需对方同意） */
+    protected final void requestRegret() {
+        gameRoomHandler.requestRegret();
+    }
+
+    /** 响应对方的悔棋请求 */
+    protected final void respondRegret(boolean agreed) {
+        gameRoomHandler.respondRegret(agreed);
+    }
+
     protected JButton getExitButton() {
         JButton exitButton = super.getExitButton();
         exitButton.setText("退出游戏");

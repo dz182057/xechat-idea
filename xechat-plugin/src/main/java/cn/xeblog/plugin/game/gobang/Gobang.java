@@ -300,6 +300,9 @@ public class Gobang extends AbstractGame<GobangDTO> {
         bottomPanel.add(gameButtonPanel, BorderLayout.SOUTH);
         if (gameMode == GameMode.ONLINE) {
             showTips("请等待...");
+            // 联机模式悔棋按钮：走协议询问对方
+            regretButton = getOnlineRegretButton();
+            chessButtonPanel.add(regretButton);
         } else {
             regretButton = getRegretButton();
             chessButtonPanel.add(regretButton);
@@ -445,6 +448,93 @@ public class Gobang extends AbstractGame<GobangDTO> {
         });
 
         return regretButton;
+    }
+
+    /**
+     * 联机模式悔棋按钮：点击发送悔棋请求，等对方响应
+     */
+    private JButton getOnlineRegretButton() {
+        JButton btn = new JButton("悔棋");
+        btn.setEnabled(false);
+        btn.addActionListener(e -> {
+            if (isGameOver || chessStack.size() < 2) {
+                return;
+            }
+            requestRegret();
+            btn.setEnabled(false);
+            showTips("已发送悔棋请求，等待对方响应...");
+        });
+        return btn;
+    }
+
+    /**
+     * 联机模式：收到对方的悔棋请求，弹对话框由本人决定同意/拒绝
+     */
+    @Override
+    public void onRegretRequest(User requester) {
+        SwingUtilities.invokeLater(() -> {
+            int choice = JOptionPane.showConfirmDialog(
+                    mainPanel,
+                    requester.getUsername() + " 请求悔棋，是否同意？",
+                    "悔棋请求",
+                    JOptionPane.YES_NO_OPTION);
+            boolean agreed = (choice == JOptionPane.YES_OPTION);
+            respondRegret(agreed);
+            if (agreed) {
+                // 本端也撤销 2 步
+                applyRegret();
+                showTips("已同意悔棋");
+            } else {
+                showTips("已拒绝 " + requester.getUsername() + " 的悔棋请求");
+            }
+        });
+    }
+
+    /**
+     * 联机模式：收到对方对本人悔棋请求的响应
+     */
+    @Override
+    public void onRegretResponse(User responder, boolean agreed) {
+        SwingUtilities.invokeLater(() -> {
+            if (agreed) {
+                applyRegret();
+                showTips("对方同意悔棋，请重新落子");
+            } else {
+                showTips(responder.getUsername() + " 拒绝了悔棋请求");
+                if (regretButton != null && currentChessTotal > 1 && !isGameOver) {
+                    // 允许再次发起
+                    regretButton.setEnabled(true);
+                }
+            }
+        });
+    }
+
+    /**
+     * 执行悔棋：撤销最近 2 步
+     */
+    private void applyRegret() {
+        int count = 2;
+        if (chessStack.size() < count) {
+            return;
+        }
+        for (int i = 0; i < count; i++) {
+            Point point = chessStack.pop();
+            chessData[point.x][point.y] = 0;
+        }
+        currentChessTotal -= count;
+        if (chessStack.isEmpty()) {
+            lastPoint = null;
+        } else {
+            lastPoint = chessStack.lastElement();
+        }
+        // 悔棋后，由我方继续走（撤销了一来一回 2 步，回到我方落子前的状态）
+        put = false;
+        isGameOver = false;
+        chessHighlight = null;
+        chessPanel.repaint();
+        if (regretButton != null) {
+            regretButton.setEnabled(false);
+        }
     }
 
     /**
@@ -929,6 +1019,8 @@ public class Gobang extends AbstractGame<GobangDTO> {
         chessStack.push(point);
 
         if (regretButton != null) {
+            // 联机/人机：仅在"对方刚下完、轮到我"时启用（point.type != 我方 type）
+            // 调试/左右互搏：随时可悔
             regretButton.setEnabled(currentChessTotal > 1
                     && (gameMode == GameMode.DEBUG || gameMode == GameMode.HUMAN_VS_HUMAN || point.type != this.type));
             regretButton.requestFocus();

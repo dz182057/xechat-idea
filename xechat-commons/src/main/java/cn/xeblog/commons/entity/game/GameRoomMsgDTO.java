@@ -63,7 +63,15 @@ public class GameRoomMsgDTO extends GameDTO {
         /**
          * 房间关闭
          */
-        ROOM_CLOSE;
+        ROOM_CLOSE,
+        /**
+         * 悔棋请求：玩家请求悔棋，需对方同意。content 可携带 steps（撤销几步），不填默认 1
+         */
+        REGRET_REQUEST,
+        /**
+         * 悔棋响应：对方的同意/拒绝。content 是布尔值 true=同意 / false=拒绝
+         */
+        REGRET_RESPONSE;
     }
 
     public void setMsgType(MsgType msgType) {

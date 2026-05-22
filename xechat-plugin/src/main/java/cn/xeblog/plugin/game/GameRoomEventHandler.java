@@ -75,4 +75,21 @@ public interface GameRoomEventHandler {
      */
     void gameEnded();
 
+    /**
+     * 收到对方悔棋请求
+     *
+     * @param requester 发起方
+     */
+    default void onRegretRequest(User requester) {
+    }
+
+    /**
+     * 收到对方对悔棋请求的响应
+     *
+     * @param responder 响应者
+     * @param agreed    是否同意
+     */
+    default void onRegretResponse(User responder, boolean agreed) {
+    }
+
 }

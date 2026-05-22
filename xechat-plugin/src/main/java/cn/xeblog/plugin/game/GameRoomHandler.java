@@ -152,6 +152,35 @@ public abstract class GameRoomHandler implements GameRoomEventHandler {
         MessageAction.send(msg, Action.GAME_ROOM);
     }
 
+    /**
+     * 发起悔棋请求
+     */
+    public void requestRegret() {
+        if (gameRoom == null) {
+            return;
+        }
+        GameRoomMsgDTO msg = new GameRoomMsgDTO();
+        msg.setRoomId(gameRoom.getId());
+        msg.setMsgType(GameRoomMsgDTO.MsgType.REGRET_REQUEST);
+        MessageAction.send(msg, Action.GAME_ROOM);
+    }
+
+    /**
+     * 响应对方的悔棋请求
+     *
+     * @param agreed 是否同意
+     */
+    public void respondRegret(boolean agreed) {
+        if (gameRoom == null) {
+            return;
+        }
+        GameRoomMsgDTO msg = new GameRoomMsgDTO();
+        msg.setRoomId(gameRoom.getId());
+        msg.setMsgType(GameRoomMsgDTO.MsgType.REGRET_RESPONSE);
+        msg.setContent(agreed);
+        MessageAction.send(msg, Action.GAME_ROOM);
+    }
+
     @Override
     public void roomCreated(GameRoom gameRoom) {
         this.timeoutTask = new HashMap<>();
