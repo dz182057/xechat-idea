@@ -10,6 +10,7 @@ import lombok.*;
 
 import java.io.Serializable;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * @author anlingyi
@@ -118,6 +119,14 @@ public class User implements Serializable {
     @Getter
     @Setter
     private Platform platform;
+
+    /**
+     * 同账号当前所有在线端的 platform 集合(仅在线列表响应中由服务端填充)。
+     * <p>普通消息中为 null,只在 ONLINE_USERS 响应里有值。</p>
+     */
+    @Getter
+    @Setter
+    private Set<Platform> platforms;
 
     /**
      * 通道
