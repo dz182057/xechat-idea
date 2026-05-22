@@ -19,6 +19,21 @@ public class GlobalConfig {
     public static final String UPLOAD_FILE_PATH = System.getProperty("user.home") + "/xechat/upload";
 
     /**
+     * 账号体系数据目录(SQLite db + 头像)
+     */
+    public static final String DATA_DIR = System.getProperty("user.home") + "/xechat/data";
+
+    /**
+     * SQLite 数据库文件路径
+     */
+    public static final String DB_PATH = DATA_DIR + "/xechat.db";
+
+    /**
+     * 头像目录
+     */
+    public static final String AVATAR_DIR = DATA_DIR + "/avatars";
+
+    /**
      * 上传的文件大小最大值，单位：KB
      */
     public static int UPLOAD_FILE_MAX_SIZE = 2 << 10;

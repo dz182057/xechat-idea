@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE configuration
+        PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+
+    <settings>
+        <!-- created_at → createdAt 自动驼峰映射 -->
+        <setting name="mapUnderscoreToCamelCase" value="true"/>
+        <setting name="defaultExecutorType" value="SIMPLE"/>
+        <setting name="jdbcTypeForNull" value="NULL"/>
+    </settings>
+
+    <environments default="default">
+        <environment id="default">
+            <transactionManager type="JDBC"/>
+            <!-- 单实例服务端,连接由 mybatis 池管理即可 -->
+            <dataSource type="POOLED">
+                <property name="driver" value="org.sqlite.JDBC"/>
+                <property name="url" value="${jdbc.url}"/>
+            </dataSource>
+        </environment>
+    </environments>
+
+    <!-- Mapper 注册在 task #3 中补齐 -->
+    <mappers>
+    </mappers>
+
+</configuration>

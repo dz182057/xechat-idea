@@ -2,6 +2,7 @@ package cn.xeblog.server;
 
 import cn.hutool.core.lang.Singleton;
 import cn.hutool.core.util.StrUtil;
+import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.config.IpRegionProperties;
 import cn.xeblog.server.config.ServerConfig;
 import cn.xeblog.server.handler.DefaultChannelInitializer;
@@ -118,6 +119,9 @@ public class XEChatServer {
     public static void main(String[] args) {
         ServerConfig serverConfig = ConfigUtil.readConfig(args);
         ServerConfig.setServerConfig(serverConfig);
+
+        // 账号体系: 初始化 SQLite + MyBatis,首次启动建表
+        DbInitializer.initIfNeeded();
 
         final String sensitiveWordFilePath = serverConfig.getSensitiveWordPath();
         if (StrUtil.isNotBlank(sensitiveWordFilePath)) {
