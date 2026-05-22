@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.account.mapper.AccountMapper">
+
+    <sql id="cols">
+        account_id, account, nickname, password_hash, avatar_version,
+        role, permit, status, deleted_at, created_at, created_ip,
+        last_login_at, last_login_ip
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.account.entity.Account">
+        INSERT INTO accounts (
+            account_id, account, nickname, password_hash, avatar_version,
+            role, permit, status, deleted_at, created_at, created_ip,
+            last_login_at, last_login_ip
+        ) VALUES (
+            #{accountId}, #{account}, #{nickname}, #{passwordHash}, #{avatarVersion},
+            #{role}, #{permit}, #{status}, #{deletedAt}, #{createdAt}, #{createdIp},
+            #{lastLoginAt}, #{lastLoginIp}
+        )
+    </insert>
+
+    <select id="findByAccount" resultType="cn.xeblog.server.account.entity.Account">
+        SELECT <include refid="cols"/> FROM accounts WHERE account = #{account}
+    </select>
+
+    <select id="findByNickname" resultType="cn.xeblog.server.account.entity.Account">
+        SELECT <include refid="cols"/> FROM accounts WHERE nickname = #{nickname}
+    </select>
+
+    <select id="findById" resultType="cn.xeblog.server.account.entity.Account">
+        SELECT <include refid="cols"/> FROM accounts WHERE account_id = #{accountId}
+    </select>
+
+    <update id="updateNickname">
+        UPDATE accounts SET nickname = #{nickname} WHERE account_id = #{accountId}
+    </update>
+
+    <update id="updatePassword">
+        UPDATE accounts SET password_hash = #{passwordHash} WHERE account_id = #{accountId}
+    </update>
+
+    <update id="incrementAvatarVersion">
+        UPDATE accounts SET avatar_version = avatar_version + 1 WHERE account_id = #{accountId}
+    </update>
+
+    <update id="softDelete">
+        UPDATE accounts SET status = 'DELETED', deleted_at = #{deletedAt} WHERE account_id = #{accountId}
+    </update>
+
+    <update id="updateLastLogin">
+        UPDATE accounts
+        SET last_login_at = #{lastLoginAt}, last_login_ip = #{lastLoginIp}
+        WHERE account_id = #{accountId}
+    </update>
+
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*) FROM accounts
+    </select>
+
+    <select id="findByIdIn" resultType="cn.xeblog.server.account.entity.Account">
+        SELECT <include refid="cols"/> FROM accounts
+        WHERE account_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+</mapper>

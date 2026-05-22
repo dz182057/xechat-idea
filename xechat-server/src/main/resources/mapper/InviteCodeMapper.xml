@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.account.mapper.InviteCodeMapper">
+
+    <sql id="cols">
+        code, created_by, created_at, expires_at, max_uses,
+        used_count, used_by, used_at, revoked, note
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.account.entity.InviteCode">
+        INSERT INTO invite_codes (
+            code, created_by, created_at, expires_at, max_uses,
+            used_count, used_by, used_at, revoked, note
+        ) VALUES (
+            #{code}, #{createdBy}, #{createdAt}, #{expiresAt}, #{maxUses},
+            #{usedCount}, #{usedBy}, #{usedAt}, #{revoked}, #{note}
+        )
+    </insert>
+
+    <select id="findByCode" resultType="cn.xeblog.server.account.entity.InviteCode">
+        SELECT <include refid="cols"/> FROM invite_codes WHERE code = #{code}
+    </select>
+
+    <update id="incrementUsed">
+        UPDATE invite_codes
+        SET used_count = used_count + 1,
+            used_by = #{usedBy},
+            used_at = #{usedAt}
+        WHERE code = #{code}
+    </update>
+
+    <select id="listAll" resultType="cn.xeblog.server.account.entity.InviteCode">
+        SELECT <include refid="cols"/> FROM invite_codes
+        <if test="!includeUsed">
+            WHERE revoked = 0
+              AND (max_uses = 0 OR used_count &lt; max_uses)
+              AND (expires_at IS NULL OR expires_at &gt; strftime('%s','now')*1000)
+        </if>
+        ORDER BY created_at DESC
+    </select>
+
+    <update id="revoke">
+        UPDATE invite_codes SET revoked = 1 WHERE code = #{code}
+    </update>
+
+</mapper>

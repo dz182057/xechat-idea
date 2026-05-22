@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.account.mapper.SessionMapper">
+
+    <sql id="cols">
+        token, account_id, platform, client_uuid,
+        created_at, last_used_at, expires_at, revoked, ip
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.account.entity.SessionEntity">
+        INSERT INTO sessions (
+            token, account_id, platform, client_uuid,
+            created_at, last_used_at, expires_at, revoked, ip
+        ) VALUES (
+            #{token}, #{accountId}, #{platform}, #{clientUuid},
+            #{createdAt}, #{lastUsedAt}, #{expiresAt}, #{revoked}, #{ip}
+        )
+    </insert>
+
+    <select id="findByToken" resultType="cn.xeblog.server.account.entity.SessionEntity">
+        SELECT <include refid="cols"/> FROM sessions WHERE token = #{token}
+    </select>
+
+    <update id="touchLastUsed">
+        UPDATE sessions
+        SET last_used_at = #{lastUsedAt}, expires_at = #{expiresAt}
+        WHERE token = #{token}
+    </update>
+
+    <update id="revoke">
+        UPDATE sessions SET revoked = 1 WHERE token = #{token}
+    </update>
+
+    <update id="revokeAllByAccount">
+        UPDATE sessions SET revoked = 1 WHERE account_id = #{accountId}
+    </update>
+
+    <delete id="cleanupExpired">
+        DELETE FROM sessions WHERE expires_at &lt; #{threshold} AND revoked = 1
+    </delete>
+
+</mapper>
