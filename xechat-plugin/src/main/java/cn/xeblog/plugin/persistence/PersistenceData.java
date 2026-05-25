@@ -36,9 +36,14 @@ public class PersistenceData {
     private ReadConfig readConfig;
 
     /**
-     * token
+     * token(账号体系会话凭据)
      */
     private String token;
+
+    /**
+     * 上次登录的账号(与 token 配对,启动时若 DataCache.account 与本字段一致才使用 token)
+     */
+    private String account;
 
     /**
      * 浏览器配置

@@ -26,9 +26,24 @@ public class DataCache {
     public static String uuid;
 
     /**
-     * 当前登录的用户名
+     * 当前登录的用户名(账号登录时由 LoginResultMessageHandler 同步为服务端返回的 nickname)
      */
     public static String username;
+
+    /**
+     * 账号登录账号(账号体系登录;为空则走游客或 token 路径)
+     */
+    public static String account;
+
+    /**
+     * 明文密码(仅一次性,channelActive 发送后立刻清空,不在内存长期持有)
+     */
+    public static String password;
+
+    /**
+     * 是否游客模式(channelActive 据此决定发 LOGIN 时只填 username)
+     */
+    public static boolean guestMode;
 
     /**
      * 是否在线

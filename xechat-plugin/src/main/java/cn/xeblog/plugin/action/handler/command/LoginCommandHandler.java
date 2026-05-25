@@ -15,10 +15,13 @@ import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.client.ClientConnectConsumer;
 import cn.xeblog.plugin.enums.Command;
 import cn.xeblog.commons.util.ParamsUtils;
+import cn.xeblog.plugin.persistence.PersistenceService;
 import io.netty.channel.Channel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
+
+import java.util.regex.Pattern;
 
 import java.net.NetworkInterface;
 import java.util.Enumeration;
@@ -32,6 +35,11 @@ import java.util.List;
 public class LoginCommandHandler extends AbstractCommandHandler {
 
     private static boolean CONNECTING;
+
+    /**
+     * 账号格式([a-zA-Z0-9_]{4,20}),用于区分"一个参数"时是账号还是游客昵称
+     */
+    private static final Pattern ACCOUNT_PATTERN = Pattern.compile("^[a-zA-Z0-9_]{4,20}$");
 
     @Getter
     @AllArgsConstructor
@@ -77,28 +85,71 @@ public class LoginCommandHandler extends AbstractCommandHandler {
             return;
         }
 
+        // 解析非 -k 选项的"位置参数"(用户名/账号/密码)
         int len = args.length;
-        String username = DataCache.username;
-        if (len > 0) {
-            String name = args[0];
-            if (Config.getConfig(name) == null) {
-                username = name;
+        String arg1 = null; // 用户名(游客) or 账号
+        String arg2 = null; // 密码(仅账号登录时有)
+        for (int i = 0; i < len; i++) {
+            String a = args[i];
+            if (Config.getConfig(a) != null) {
+                i++; // 跳过 -k 的值
+                continue;
+            }
+            if (arg1 == null) {
+                arg1 = a;
+            } else if (arg2 == null) {
+                arg2 = a;
             }
         }
 
-        if (StringUtils.isBlank(username)) {
-            ConsoleAction.showSimpleMsg("用户名不能为空！");
-            return;
-        }
+        // 三路分发:
+        // 1. 两个位置参数 → 账号+密码登录
+        // 2. 一个位置参数 + token 在本地 + 与账号匹配 → token 自动登录
+        // 3. 一个位置参数 → 游客模式
+        // 4. 零位置参数 → 复用 DataCache.username 走游客
+        String loginAccount = null;
+        String loginPassword = null;
+        String guestNickname = null;
+        boolean useToken = false;
 
-        if (!CheckUtils.checkUsername(username)) {
-            ConsoleAction.showSimpleMsg("用户名不合法，请修改后重试！");
-            return;
-        }
-
-        if (username.length() > 12) {
-            ConsoleAction.showSimpleMsg("用户名长度不能超过12个字符！");
-            return;
+        if (arg2 != null) {
+            // 账号+密码登录
+            if (!ACCOUNT_PATTERN.matcher(arg1).matches()) {
+                ConsoleAction.showSimpleMsg("账号格式不合法(4-20 位字母数字下划线)");
+                return;
+            }
+            if (arg2.length() < 8) {
+                ConsoleAction.showSimpleMsg("密码至少 8 位");
+                return;
+            }
+            loginAccount = arg1;
+            loginPassword = arg2;
+        } else {
+            // 一个或零个位置参数:游客模式或 token 复用
+            String name = arg1 != null ? arg1 : DataCache.username;
+            if (StringUtils.isBlank(name)) {
+                ConsoleAction.showSimpleMsg("用法: #login {昵称} 进入游客模式;或 #login {账号} {密码} 账号登录");
+                return;
+            }
+            if (!CheckUtils.checkUsername(name)) {
+                ConsoleAction.showSimpleMsg("名称不合法，请修改后重试！");
+                return;
+            }
+            if (name.length() > 12) {
+                ConsoleAction.showSimpleMsg("名称长度不能超过12个字符！");
+                return;
+            }
+            // 若与本地持久化 account 匹配 + 有 token → token 路径
+            String storedAccount = PersistenceService.getData().getAccount();
+            String storedToken = PersistenceService.getData().getToken();
+            if (ACCOUNT_PATTERN.matcher(name).matches()
+                    && name.equals(storedAccount)
+                    && StringUtils.isNotBlank(storedToken)) {
+                loginAccount = name;
+                useToken = true;
+            } else {
+                guestNickname = name;
+            }
         }
 
         if (ParamsUtils.hasKey(args, Config.CLEAN.getKey())) {
@@ -155,8 +206,22 @@ public class LoginCommandHandler extends AbstractCommandHandler {
         }
 
         CONNECTING = true;
-        DataCache.username = username;
-        ConsoleAction.showSimpleMsg("正在连接服务器...");
+        DataCache.account = loginAccount;
+        DataCache.password = loginPassword;
+        DataCache.guestMode = guestNickname != null;
+        // username 字段:游客时直接是 nickname;账号登录则待 LoginResultMessageHandler 用服务端 nickname 同步
+        if (guestNickname != null) {
+            DataCache.username = guestNickname;
+        } else if (useToken) {
+            DataCache.username = loginAccount; // 临时占位,token 登录返回 LoginResult 时再用 nickname 覆盖
+        } else {
+            DataCache.username = loginAccount; // 同上
+        }
+
+        String modeDesc = guestNickname != null
+                ? "游客模式 " + guestNickname
+                : (useToken ? "token 自动登录 " + loginAccount : "账号登录 " + loginAccount);
+        ConsoleAction.showSimpleMsg("正在连接服务器(" + modeDesc + ")...");
         conn.exec(new ClientConnectConsumer() {
             @Override
             public void doSucceed(Channel channel) {

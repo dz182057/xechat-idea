@@ -12,9 +12,11 @@ import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.plugin.persistence.PersistenceService;
 import cn.xeblog.plugin.util.IdeaUtils;
+import cn.xeblog.commons.entity.GuestLoginDTO;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.IdleStateEvent;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * @author anlingyi
@@ -41,17 +43,47 @@ public class XEChatClientHandler extends SimpleChannelInboundHandler<Response> {
             status = UserStatus.PLAYING;
         }
 
-        String token = PersistenceService.getData().getToken();
-        LoginDTO loginDTO = new LoginDTO();
-        loginDTO.setUsername(DataCache.username);
-        loginDTO.setStatus(status);
-        loginDTO.setReconnected(reconnected);
-        loginDTO.setPluginVersion(IdeaUtils.getPluginVersion());
-        loginDTO.setToken(token);
-        loginDTO.setUuid(DataCache.uuid);
-        loginDTO.setPlatform(Platform.IDEA);
-
-        MessageAction.send(loginDTO, Action.LOGIN);
+        // 三路分发(account+password / token / guest username):
+        // 1) account+password → LOGIN(账号登录)
+        // 2) account 与本地持久化匹配 + 有 token → LOGIN_WITH_TOKEN
+        // 3) 否则 → GUEST_LOGIN(由 LoginCommandHandler 设 guestMode=true)
+        if (StringUtils.isNotBlank(DataCache.account) && StringUtils.isNotBlank(DataCache.password)) {
+            LoginDTO dto = new LoginDTO();
+            dto.setAccount(DataCache.account);
+            dto.setPassword(DataCache.password);
+            dto.setStatus(status);
+            dto.setReconnected(reconnected);
+            dto.setPluginVersion(IdeaUtils.getPluginVersion());
+            dto.setUuid(DataCache.uuid);
+            dto.setPlatform(Platform.IDEA);
+            MessageAction.send(dto, Action.LOGIN);
+            DataCache.password = null; // 用完即清,不长期持有
+        } else if (StringUtils.isNotBlank(DataCache.account)) {
+            String token = PersistenceService.getData().getToken();
+            String savedAccount = PersistenceService.getData().getAccount();
+            if (StringUtils.isNotBlank(token) && DataCache.account.equals(savedAccount)) {
+                LoginDTO dto = new LoginDTO();
+                dto.setToken(token);
+                dto.setStatus(status);
+                dto.setReconnected(reconnected);
+                dto.setPluginVersion(IdeaUtils.getPluginVersion());
+                dto.setUuid(DataCache.uuid);
+                dto.setPlatform(Platform.IDEA);
+                MessageAction.send(dto, Action.LOGIN_WITH_TOKEN);
+            } else {
+                ConsoleAction.showSimpleMsg("缺少 token,请重新执行 #login <账号> <密码>");
+                ctx.close();
+                return;
+            }
+        } else {
+            // 游客模式
+            GuestLoginDTO dto = new GuestLoginDTO();
+            dto.setNickname(DataCache.username);
+            dto.setUuid(DataCache.uuid);
+            dto.setPlatform(Platform.IDEA);
+            dto.setPluginVersion(IdeaUtils.getPluginVersion());
+            MessageAction.send(dto, Action.GUEST_LOGIN);
+        }
         DataCache.reconnected = false;
     }
 
