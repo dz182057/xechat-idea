@@ -128,6 +128,8 @@ public final class MessageHistoryService {
 
         UserMsgDTO body = new UserMsgDTO();
         body.setContent(m.getContent());
+        body.setServerId(m.getId());
+        body.setServerCreatedAt(m.getCreatedAt());
         try {
             body.setMsgType(UserMsgDTO.MsgType.valueOf(m.getMsgType()));
         } catch (Exception e) {

@@ -54,8 +54,11 @@ public class ChatActionHandler extends AbstractActionHandler<UserMsgDTO> {
         }
 
         // 公共频道(无 toUsers)消息落库,私聊不存(留 E2EE 阶段)
+        // 把落库后的 server id + createdAt 回填给 body,客户端用作 IndexedDB 主键
         if (body.getToUsers() == null || body.getToUsers().length == 0) {
-            MessageHistoryService.savePublic(user, body);
+            cn.xeblog.server.history.entity.Message saved = MessageHistoryService.savePublic(user, body);
+            body.setServerId(saved.getId());
+            body.setServerCreatedAt(saved.getCreatedAt());
         }
 
         ChannelAction.send(user, body, MessageType.USER);

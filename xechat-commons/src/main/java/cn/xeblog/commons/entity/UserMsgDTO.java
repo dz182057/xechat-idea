@@ -19,6 +19,18 @@ public class UserMsgDTO implements Serializable {
 
     private String[] toUsers;
 
+    /**
+     * 服务端落库后回填的雪花消息 ID(仅公共频道消息有,客户端用于本地缓存去重)。
+     * 上行时由客户端忽略,服务端不读。
+     */
+    private Long serverId;
+
+    /**
+     * 服务端落库时的 epoch ms(仅公共频道消息有,客户端用于按 ts 排序与 sinceMs 增量拉取)。
+     * 上行时由客户端忽略,服务端不读。
+     */
+    private Long serverCreatedAt;
+
     public UserMsgDTO(Object content) {
         this(content, MsgType.TEXT);
     }
