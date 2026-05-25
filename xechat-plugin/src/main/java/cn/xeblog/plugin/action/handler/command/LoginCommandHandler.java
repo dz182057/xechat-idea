@@ -14,7 +14,6 @@ import cn.xeblog.plugin.annotation.DoCommand;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.client.ClientConnectConsumer;
 import cn.xeblog.plugin.enums.Command;
-import cn.xeblog.plugin.persistence.PersistenceService;
 import cn.xeblog.commons.util.ParamsUtils;
 import io.netty.channel.Channel;
 import lombok.AllArgsConstructor;
@@ -26,15 +25,8 @@ import java.util.Enumeration;
 import java.util.List;
 
 /**
- * /login &lt;account&gt; &lt;password&gt; [-h host] [-p port] [-s 服务器编号] [-c 清缓存]
- *
- * <p>账号体系改造后:
- * <ul>
- *   <li>第一参数必填,作为<b>登录账号</b>(原 username 含义弃用)</li>
- *   <li>第二参数为<b>明文密码</b>;若省略且本地有 token 且账号匹配,使用 token 自动登录</li>
- * </ul></p>
- *
- * @author anlingyi(原作者),dz(账号体系最小化改造)
+ * @author anlingyi
+ * @date 2020/8/19
  */
 @DoCommand(Command.LOGIN)
 public class LoginCommandHandler extends AbstractCommandHandler {
@@ -44,22 +36,32 @@ public class LoginCommandHandler extends AbstractCommandHandler {
     @Getter
     @AllArgsConstructor
     private enum Config {
+        /**
+         * 服务器地址
+         */
         HOST("-h"),
+        /**
+         * 端口
+         */
         PORT("-p"),
+        /**
+         * 清除缓存的服务器配置信息
+         */
         CLEAN("-c"),
+        /**
+         * 指定服务器编号
+         */
         SERVER("-s");
 
         private String key;
 
         public static Config getConfig(String name) {
-            if (name == null) {
-                return null;
-            }
             for (Config value : values()) {
                 if (value.getKey().equals(name)) {
                     return value;
                 }
             }
+
             return null;
         }
     }
@@ -76,32 +78,26 @@ public class LoginCommandHandler extends AbstractCommandHandler {
         }
 
         int len = args.length;
-        // 提取前两个非 flag 位置参数
-        String account = null;
-        String password = null;
-        if (len > 0 && Config.getConfig(args[0]) == null) {
-            account = args[0];
-        }
-        if (len > 1 && Config.getConfig(args[1]) == null) {
-            password = args[1];
+        String username = DataCache.username;
+        if (len > 0) {
+            String name = args[0];
+            if (Config.getConfig(name) == null) {
+                username = name;
+            }
         }
 
-        if (StringUtils.isBlank(account)) {
-            ConsoleAction.showSimpleMsg("用法:/login <账号> <密码> [-h host] [-p port]");
-            return;
-        }
-        if (!CheckUtils.checkUsername(account) || !account.matches("^[a-zA-Z0-9_]{4,20}$")) {
-            ConsoleAction.showSimpleMsg("账号不合法(4-20 位字母数字下划线)！");
+        if (StringUtils.isBlank(username)) {
+            ConsoleAction.showSimpleMsg("用户名不能为空！");
             return;
         }
 
-        // 密码可省略:本地有 token 且 account 匹配则走 token 登录
-        String savedToken = PersistenceService.getData().getToken();
-        String savedAccount = PersistenceService.getData().getAccount();
-        boolean canUseToken = StringUtils.isNotBlank(savedToken)
-                && account.equals(savedAccount);
-        if (StringUtils.isBlank(password) && !canUseToken) {
-            ConsoleAction.showSimpleMsg("请输入密码,例:/login " + account + " <密码>");
+        if (!CheckUtils.checkUsername(username)) {
+            ConsoleAction.showSimpleMsg("用户名不合法，请修改后重试！");
+            return;
+        }
+
+        if (username.length() > 12) {
+            ConsoleAction.showSimpleMsg("用户名长度不能超过12个字符！");
             return;
         }
 
@@ -130,10 +126,12 @@ public class LoginCommandHandler extends AbstractCommandHandler {
                 onlineServerList = ServerUtils.getServerList();
                 DataCache.serverList = onlineServerList;
             }
+
             if (CollUtil.isEmpty(onlineServerList)) {
                 ConsoleAction.showSimpleMsg("服务列表为空！");
                 return;
             }
+
             int serverId = -1;
             if (NumberUtil.isNumber(serverIdStr)) {
                 serverId = Integer.parseInt(serverIdStr);
@@ -142,6 +140,7 @@ public class LoginCommandHandler extends AbstractCommandHandler {
                 ConsoleAction.showSimpleMsg("非法的服务器编号！");
                 return;
             }
+
             OnlineServer onlineServer = onlineServerList.get(serverId);
             conn.setHost(onlineServer.getIp());
             conn.setPort(onlineServer.getPort());
@@ -156,10 +155,7 @@ public class LoginCommandHandler extends AbstractCommandHandler {
         }
 
         CONNECTING = true;
-        DataCache.account = account;
-        DataCache.password = password; // 可能为 null;为 null 时 XEChatClientHandler 走 token 流程
-        // username 先用 account 占位,登录成功后 LoginResultMessageHandler 会更新为 nickname
-        DataCache.username = account;
+        DataCache.username = username;
         ConsoleAction.showSimpleMsg("正在连接服务器...");
         conn.exec(new ClientConnectConsumer() {
             @Override
@@ -199,6 +195,8 @@ public class LoginCommandHandler extends AbstractCommandHandler {
         } catch (Exception e) {
             e.printStackTrace();
         }
+
         return null;
     }
+
 }

@@ -15,7 +15,6 @@ import cn.xeblog.plugin.util.IdeaUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.IdleStateEvent;
-import org.apache.commons.lang3.StringUtils;
 
 /**
  * @author anlingyi
@@ -43,36 +42,16 @@ public class XEChatClientHandler extends SimpleChannelInboundHandler<Response> {
         }
 
         String token = PersistenceService.getData().getToken();
-        String savedAccount = PersistenceService.getData().getAccount();
-
         LoginDTO loginDTO = new LoginDTO();
+        loginDTO.setUsername(DataCache.username);
         loginDTO.setStatus(status);
         loginDTO.setReconnected(reconnected);
         loginDTO.setPluginVersion(IdeaUtils.getPluginVersion());
+        loginDTO.setToken(token);
         loginDTO.setUuid(DataCache.uuid);
         loginDTO.setPlatform(Platform.IDEA);
 
-        Action action;
-        if (StringUtils.isNotBlank(DataCache.password)) {
-            // 密码登录:第一次或显式 /login <account> <password>
-            loginDTO.setAccount(DataCache.account);
-            loginDTO.setPassword(DataCache.password);
-            action = Action.LOGIN;
-        } else if (StringUtils.isNotBlank(token)
-                && DataCache.account != null
-                && DataCache.account.equals(savedAccount)) {
-            // token 登录:有 token 且 account 一致
-            loginDTO.setToken(token);
-            action = Action.LOGIN_WITH_TOKEN;
-        } else {
-            ConsoleAction.showSimpleMsg("缺少登录凭据,请重新执行 /login <账号> <密码>");
-            ctx.close();
-            return;
-        }
-
-        MessageAction.send(loginDTO, action);
-        // 密码用完即清,不在内存中长期持有
-        DataCache.password = null;
+        MessageAction.send(loginDTO, Action.LOGIN);
         DataCache.reconnected = false;
     }
 

@@ -21,11 +21,6 @@ public class PersistenceData {
     private String username;
 
     /**
-     * 账号体系:登录账号(持久化后供 token 模式自动登录核对)
-     */
-    private String account;
-
-    /**
      * 消息通知 1.正常通知 2.隐晦通知 3.关闭通知
      */
     private int msgNotify;
