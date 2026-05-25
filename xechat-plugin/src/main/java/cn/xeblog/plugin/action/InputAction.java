@@ -329,6 +329,12 @@ public class InputAction implements MainWindowInitializedEventListener {
                         }
                     }
 
+                    // 游客模式禁止私聊:本地拦截,避免发出后才被 server 拒绝(UX 差)
+                    if (DataCache.guestMode && toUsers != null && toUsers.length > 0) {
+                        ConsoleAction.showSimpleMsg("游客模式不能私聊,请先用 #login {账号} {密码} 登录账号");
+                        return;
+                    }
+
                     if (sendCounter == -1) {
                         sendCounter = 0;
                     }
