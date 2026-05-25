@@ -63,8 +63,20 @@ public final class AccountLoginHelper {
         user.setPlatform(platform == null ? Platform.IDEA : platform);
         user.setToken(token);
 
-        UserCache.add(id, user);
-        ChannelAction.add(ctx.channel());
+        notifyOnline(user, token, expiresAt);
+    }
+
+    /**
+     * 通用"上线"流程:加缓存/ChannelGroup → 发 LoginResult → 发在线列表给自己 → 广播 ONLINE。
+     *
+     * <p>账号登录、游客登录、token 登录、注册成功均可复用。</p>
+     *
+     * @param token     无 token(游客)时传 null
+     * @param expiresAt 无 token 时传 0
+     */
+    public static void notifyOnline(User user, String token, long expiresAt) {
+        UserCache.add(user.getId(), user);
+        ChannelAction.add(user.getChannel());
 
         // 1) 把 LoginResultDTO 发给自己
         Response loginResult = ResponseBuilder.build(null,
@@ -90,6 +102,7 @@ public final class AccountLoginHelper {
         dst.setAccount(src.getAccount());
         dst.setNickname(src.getNickname());
         dst.setAvatarVersion(src.getAvatarVersion());
+        dst.setGuest(src.isGuest());
         dst.setStatus(src.getStatus());
         dst.setShortRegion(src.getShortRegion());
         dst.setRole(src.getRole());

@@ -139,6 +139,7 @@ public class User implements Serializable {
      * 通道
      */
     @Getter
+    @Setter
     private transient Channel channel;
 
     /**
