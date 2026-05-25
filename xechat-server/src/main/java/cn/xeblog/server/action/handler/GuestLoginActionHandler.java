@@ -36,6 +36,13 @@ public class GuestLoginActionHandler implements ActionHandler<GuestLoginDTO> {
 
     @Override
     public void handle(ChannelHandlerContext ctx, GuestLoginDTO body) {
+        process(ctx, body);
+    }
+
+    /**
+     * 游客上线核心流程(static 暴露给 LoginActionHandler 软兼容复用)。
+     */
+    public static void process(ChannelHandlerContext ctx, GuestLoginDTO body) {
         if (ChannelAction.getUser(ctx) != null) {
             ctx.writeAndFlush(ResponseBuilder.system("请勿重复登录"));
             return;

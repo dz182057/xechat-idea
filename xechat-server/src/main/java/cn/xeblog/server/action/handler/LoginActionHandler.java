@@ -1,6 +1,7 @@
 package cn.xeblog.server.action.handler;
 
 import cn.hutool.core.util.StrUtil;
+import cn.xeblog.commons.entity.GuestLoginDTO;
 import cn.xeblog.commons.entity.LoginDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Platform;
@@ -40,12 +41,20 @@ public class LoginActionHandler implements ActionHandler<LoginDTO> {
             ctx.writeAndFlush(ResponseBuilder.system("登录请求 body 为空"));
             return;
         }
-        if (StrUtil.isBlank(body.getAccount()) || StrUtil.isBlank(body.getPassword())) {
-            ctx.writeAndFlush(ResponseBuilder.system("账号或密码不能为空"));
-            return;
-        }
         if (StrUtil.isBlank(body.getUuid())) {
             ctx.writeAndFlush(ResponseBuilder.system("未获取到 UUID,请重新登录"));
+            return;
+        }
+        // 软兼容旧客户端(已发布的旧 desktop / 旧 plugin):只发 username 时自动当游客处理
+        if (StrUtil.isBlank(body.getAccount()) && StrUtil.isBlank(body.getPassword())
+                && StrUtil.isNotBlank(body.getUsername())) {
+            GuestLoginDTO guest = new GuestLoginDTO(
+                    body.getUsername(), body.getUuid(), body.getPlatform(), body.getPluginVersion());
+            GuestLoginActionHandler.process(ctx, guest);
+            return;
+        }
+        if (StrUtil.isBlank(body.getAccount()) || StrUtil.isBlank(body.getPassword())) {
+            ctx.writeAndFlush(ResponseBuilder.system("账号或密码不能为空"));
             return;
         }
 
