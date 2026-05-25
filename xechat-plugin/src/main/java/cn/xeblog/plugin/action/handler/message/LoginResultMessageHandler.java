@@ -1,10 +1,13 @@
 package cn.xeblog.plugin.action.handler.message;
 
 import cn.xeblog.commons.entity.LoginResultDTO;
+import cn.xeblog.commons.entity.PullHistoryDTO;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
+import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.plugin.action.ConsoleAction;
+import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.persistence.PersistenceData;
@@ -49,6 +52,13 @@ public class LoginResultMessageHandler extends AbstractMessageHandler<LoginResul
         } else if (user != null && user.isGuest()) {
             ConsoleAction.showSimpleMsg("游客模式已就绪: " + user.getNickname() + " (仅大厅聊天,不能私聊)");
         }
+
+        // 登录成功后拉公共频道近 3 天历史(plugin 不持久化文件缓存,IDE 关闭即丢,
+        // 重新登录时再拉一次即可,符合 IDEA 插件的会话式特性)
+        PullHistoryDTO pull = new PullHistoryDTO();
+        pull.setSinceMs(System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000);
+        pull.setLimit(50);
+        MessageAction.send(pull, Action.PULL_HISTORY);
     }
 
 }
