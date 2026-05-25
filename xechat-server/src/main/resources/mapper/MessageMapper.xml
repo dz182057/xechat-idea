@@ -5,30 +5,31 @@
 <mapper namespace="cn.xeblog.server.history.mapper.MessageMapper">
 
     <sql id="cols">
-        id, created_at, channel, sender_account_id, sender_guest_uuid,
+        id, created_at, sender_account_id, sender_guest_uuid,
         sender_nickname, msg_type, content
     </sql>
 
     <insert id="insert" parameterType="cn.xeblog.server.history.entity.Message">
-        INSERT INTO messages (
-            id, created_at, channel, sender_account_id, sender_guest_uuid,
+        INSERT INTO messages_public (
+            id, created_at, sender_account_id, sender_guest_uuid,
             sender_nickname, msg_type, content
         ) VALUES (
-            #{id}, #{createdAt}, #{channel}, #{senderAccountId}, #{senderGuestUuid},
+            #{id}, #{createdAt}, #{senderAccountId}, #{senderGuestUuid},
             #{senderNickname}, #{msgType}, #{content}
         )
     </insert>
 
     <select id="query" resultType="cn.xeblog.server.history.entity.Message">
         SELECT <include refid="cols"/>
-        FROM messages
-        WHERE channel = #{channel}
-        <if test="sinceMs != null">
-            AND created_at &gt; #{sinceMs}
-        </if>
-        <if test="beforeId != null">
-            AND id &lt; #{beforeId}
-        </if>
+        FROM messages_public
+        <where>
+            <if test="sinceMs != null">
+                AND created_at &gt; #{sinceMs}
+            </if>
+            <if test="beforeId != null">
+                AND id &lt; #{beforeId}
+            </if>
+        </where>
         ORDER BY id DESC
         LIMIT #{limit}
     </select>

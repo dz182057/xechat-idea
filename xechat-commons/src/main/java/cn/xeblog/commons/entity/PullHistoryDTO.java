@@ -25,11 +25,6 @@ import java.io.Serializable;
 public class PullHistoryDTO implements Serializable {
 
     /**
-     * 频道(当前只有 PUBLIC,预留扩展)
-     */
-    private String channel;
-
-    /**
      * 只返回 created_at > sinceMs 的消息(增量拉取)
      */
     private Long sinceMs;

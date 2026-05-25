@@ -60,7 +60,6 @@ public final class MessageHistoryService {
         Message msg = Message.builder()
                 .id(IdUtil.getSnowflakeNextId())
                 .createdAt(now)
-                .channel(Message.CHANNEL_PUBLIC)
                 .senderAccountId(sender.isGuest() ? null : sender.getAccountId())
                 .senderGuestUuid(sender.isGuest() ? sender.getUuid() : null)
                 .senderNickname(sender.getNickname())
@@ -92,7 +91,7 @@ public final class MessageHistoryService {
         List<Message> rows;
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
             rows = session.getMapper(MessageMapper.class)
-                    .query(Message.CHANNEL_PUBLIC, sinceMs, beforeId, effective + 1);
+                    .query(sinceMs, beforeId, effective + 1);
         }
 
         boolean hasMore = rows.size() > effective;
