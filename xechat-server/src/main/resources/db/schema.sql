@@ -67,3 +67,17 @@ CREATE TABLE IF NOT EXISTS system_state (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- 聊天消息表(当前只存公共频道,私聊留待 E2EE 阶段)
+CREATE TABLE IF NOT EXISTS messages (
+    id                  INTEGER PRIMARY KEY,          -- 雪花 ID,全局有序
+    created_at          INTEGER NOT NULL,             -- epoch ms
+    channel             TEXT    NOT NULL,             -- 当前只有 'PUBLIC'
+    sender_account_id   INTEGER,                      -- 注册用户填,游客为 null
+    sender_guest_uuid   TEXT,                         -- 游客 client uuid,注册用户为 null
+    sender_nickname     TEXT    NOT NULL,             -- 冗余存当时昵称
+    msg_type            TEXT    NOT NULL,             -- 'TEXT' / 'IMAGE'
+    content             TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_messages_channel_created ON messages(channel, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_channel_id      ON messages(channel, id);
