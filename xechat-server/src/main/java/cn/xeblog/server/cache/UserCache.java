@@ -36,7 +36,39 @@ public final class UserCache {
     private static final Map<String, User> ID_TO_USER = new ConcurrentHashMap<>(32);
     private static final Map<Long, Set<String>> ACCOUNT_TO_IDS = new ConcurrentHashMap<>(32);
 
+    /**
+     * 游客在线池: nickname → uuid。
+     *
+     * <p>用于"同时在线不重名"约束。游客 nickname 不进 accounts 表(双池),
+     * 故仅锁在线游客集合,下线即释放(由 {@link #remove(String)} 自动触发)。
+     * 注册用户的 nickname 唯一性走 accounts 表索引,不进本池。</p>
+     */
+    private static final Map<String, String> GUEST_NICKNAME_TO_UUID = new ConcurrentHashMap<>(32);
+
     private UserCache() {
+    }
+
+    /**
+     * 尝试占用一个游客昵称。同一个 uuid 重复请求同一个 nickname 也算成功(便于重连)。
+     *
+     * @return true 已占用成功;false 该昵称已被其他游客占用
+     */
+    public static boolean tryAcquireGuestNickname(String nickname, String uuid) {
+        if (nickname == null || uuid == null) {
+            return false;
+        }
+        String existing = GUEST_NICKNAME_TO_UUID.putIfAbsent(nickname, uuid);
+        return existing == null || existing.equals(uuid);
+    }
+
+    /**
+     * 释放游客昵称(仅释放属于自己 uuid 的,防误删)
+     */
+    public static void releaseGuestNickname(String nickname, String uuid) {
+        if (nickname == null || uuid == null) {
+            return;
+        }
+        GUEST_NICKNAME_TO_UUID.remove(nickname, uuid);
     }
 
     public static void add(String channelId, User user) {
@@ -56,6 +88,11 @@ public final class UserCache {
     public static void remove(String channelId) {
         User user = ID_TO_USER.remove(channelId);
         if (user == null) {
+            return;
+        }
+        if (user.isGuest()) {
+            // 游客离线即释放昵称占用
+            releaseGuestNickname(user.getNickname(), user.getUuid());
             return;
         }
         long accountId = user.getAccountId();
@@ -119,13 +156,17 @@ public final class UserCache {
         Map<Long, User> rep = new LinkedHashMap<>();
         Map<Long, Set<Platform>> platforms = new HashMap<>();
 
-        // 没接入账号体系的旧连接(accountId=0)按 channelId 各算一条
+        // 游客及未接入账号体系的旧连接(accountId=0)按 channelId 各算一条,不按账号去重
         List<User> anonymous = new ArrayList<>();
 
         for (User u : ID_TO_USER.values()) {
             long aid = u.getAccountId();
             if (aid == 0L) {
-                anonymous.add(u);
+                User copy = shallowCopy(u);
+                if (u.getPlatform() != null) {
+                    copy.setPlatforms(EnumSet.of(u.getPlatform()));
+                }
+                anonymous.add(copy);
                 continue;
             }
             rep.putIfAbsent(aid, u);
@@ -168,6 +209,7 @@ public final class UserCache {
         dst.setAccount(src.getAccount());
         dst.setNickname(src.getNickname());
         dst.setAvatarVersion(src.getAvatarVersion());
+        dst.setGuest(src.isGuest());
         dst.setStatus(src.getStatus());
         dst.setShortRegion(src.getShortRegion());
         dst.setRole(src.getRole());
