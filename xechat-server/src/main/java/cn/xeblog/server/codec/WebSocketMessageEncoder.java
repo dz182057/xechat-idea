@@ -7,6 +7,7 @@ import io.netty.handler.codec.MessageToMessageEncoder;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * WebSocket消息编码
@@ -16,9 +17,18 @@ import java.util.List;
  */
 public class WebSocketMessageEncoder extends MessageToMessageEncoder<Response> {
 
+    /**
+     * 把 long 雪花 ID 字段(accountId / createdBy)序列化为 JSON string,避免 JS Number 精度丢失。
+     * 服务端内部仍用 long;入口 hutool 反序列化 string → long 兼容。
+     */
+    private static final Pattern LONG_ID_FIELD = Pattern.compile(
+            "\"(accountId|createdBy)\"\\s*:\\s*(-?\\d+)");
+
     @Override
     protected void encode(ChannelHandlerContext channelHandlerContext, Response response, List<Object> list) throws Exception {
-        TextWebSocketFrame frame = new TextWebSocketFrame(JSONUtil.toJsonStr(response));
+        String json = JSONUtil.toJsonStr(response);
+        json = LONG_ID_FIELD.matcher(json).replaceAll("\"$1\":\"$2\"");
+        TextWebSocketFrame frame = new TextWebSocketFrame(json);
         list.add(frame);
     }
 
