@@ -104,5 +104,15 @@ public enum Action {
     /**
      * 管理员:注销指定账号
      */
-    ADMIN_DELETE_USER;
+    ADMIN_DELETE_USER,
+
+    /**
+     * 游客登录(无账号体系,仅大厅聊天,禁止私聊)
+     */
+    GUEST_LOGIN,
+
+    /**
+     * 拉取历史聊天记录(公共频道)
+     */
+    PULL_HISTORY;
 }

@@ -64,6 +64,13 @@ public class User implements Serializable {
     private int avatarVersion;
 
     /**
+     * 是否是游客(未登录,仅大厅聊天,禁止私聊)
+     */
+    @Getter
+    @Setter
+    private boolean isGuest;
+
+    /**
      * 用户昵称(过渡兼容字段)
      * <p>历史代码读 username;新代码应改用 nickname。下一版本删除。</p>
      *
