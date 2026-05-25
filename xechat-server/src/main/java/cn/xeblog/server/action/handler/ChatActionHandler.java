@@ -33,6 +33,11 @@ public class ChatActionHandler extends AbstractActionHandler<UserMsgDTO> {
             user.send(ResponseBuilder.system("鱼塘已开启全员禁言！"));
             return;
         }
+        // 游客禁止私聊(无论对端是游客或注册用户)
+        if (user.isGuest() && body.getToUsers() != null && body.getToUsers().length > 0) {
+            user.send(ResponseBuilder.system("私聊功能已升级，请下载新版客户端并登录账号后使用"));
+            return;
+        }
 
         if (body.getMsgType() == UserMsgDTO.MsgType.TEXT) {
             String msg = Convert.toStr(body.getContent());
