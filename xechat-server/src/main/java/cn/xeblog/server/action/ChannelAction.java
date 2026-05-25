@@ -86,6 +86,11 @@ public class ChannelAction {
 
         log.debug("清理用户, username -> {}", user.getUsername());
 
+        // 游客上下线在运维日志里单独标识,便于观察访客活跃度
+        if (user.isGuest()) {
+            log.info("游客 {} 下线 platform={}", user.getNickname(), user.getPlatform());
+        }
+
         GameRoom gameRoom = GameRoomCache.getGameRoomByUserId(user.getId());
         if (gameRoom != null) {
             gameRoom.getUsers().forEach((k, v) -> {
