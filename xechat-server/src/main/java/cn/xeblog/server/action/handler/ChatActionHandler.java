@@ -12,6 +12,7 @@ import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.annotation.DoAction;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.config.GlobalConfig;
+import cn.xeblog.server.history.MessageHistoryService;
 import cn.xeblog.server.util.BaiDuFyUtil;
 import cn.xeblog.server.util.SensitiveWordUtils;
 
@@ -45,6 +46,11 @@ public class ChatActionHandler extends AbstractActionHandler<UserMsgDTO> {
         } else {
             // 暂时不支持这种形式的消息，全部转为文本消息
             body.setMsgType(UserMsgDTO.MsgType.TEXT);
+        }
+
+        // 公共频道(无 toUsers)消息落库,私聊不存(留 E2EE 阶段)
+        if (body.getToUsers() == null || body.getToUsers().length == 0) {
+            MessageHistoryService.savePublic(user, body);
         }
 
         ChannelAction.send(user, body, MessageType.USER);
