@@ -114,5 +114,20 @@ public enum Action {
     /**
      * 拉取历史聊天记录(公共频道)
      */
-    PULL_HISTORY;
+    PULL_HISTORY,
+
+    /**
+     * 查询对端账号的身份公钥(E2EE 私聊建立会话密钥前的公钥发现)
+     */
+    GET_PEER_KEY,
+
+    /**
+     * 私聊加密消息(E2EE 信封,服务端只看密文)
+     */
+    PRIVATE_CHAT,
+
+    /**
+     * 拉取与某 peer 的私聊密文历史
+     */
+    PULL_PRIVATE_HISTORY;
 }

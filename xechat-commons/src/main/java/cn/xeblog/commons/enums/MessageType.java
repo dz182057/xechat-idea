@@ -70,5 +70,17 @@ public enum MessageType {
     /**
      * 管理员邀请码创建响应
      */
-    INVITE_CREATED;
+    INVITE_CREATED,
+    /**
+     * 对端身份公钥(GET_PEER_KEY 响应)
+     */
+    PEER_KEY,
+    /**
+     * 收到私聊密文消息(E2EE,客户端本地解密展示)
+     */
+    PRIVATE_USER,
+    /**
+     * 对端身份公钥变化提醒(可能换了设备,提示用户核对安全码)
+     */
+    PEER_KEY_CHANGED;
 }
