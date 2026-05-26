@@ -91,6 +91,13 @@ public class InputAction implements MainWindowInitializedEventListener {
         contentArea = mainWindow.getContentArea();
         leftTopPanel = mainWindow.getLeftTopPanel();
 
+        // emoji 字体回退:同 ConsoleAction,用逻辑字体 Dialog 让 JBR 在 Win 11 上自动 fallback 到
+        // Segoe UI Emoji。否则用户在输入框打的 emoji 会显示为方块
+        Font baseFont = contentArea.getFont();
+        if (baseFont != null) {
+            contentArea.setFont(new Font(Font.DIALOG, baseFont.getStyle(), baseFont.getSize()));
+        }
+
         initLeftTopChildren();
         installEmojiButton();
         bindKeyListener();

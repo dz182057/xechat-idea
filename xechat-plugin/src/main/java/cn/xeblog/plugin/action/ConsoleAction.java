@@ -48,6 +48,13 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
         StyleConstants.setLineSpacing(simpleAttributeSet, 0.2f);
         console.setParagraphAttributes(simpleAttributeSet, false);
 
+        // emoji 字体回退:用 Swing 逻辑字体 Dialog,JBR 在 Win 11 上会自动 fallback
+        // 到 Segoe UI Emoji / CJK 字体,避免 emoji 显示为方块
+        Font baseFont = console.getFont();
+        if (baseFont != null) {
+            console.setFont(new Font(Font.DIALOG, baseFont.getStyle(), baseFont.getSize()));
+        }
+
         bindPopupMenu();
     }
 
