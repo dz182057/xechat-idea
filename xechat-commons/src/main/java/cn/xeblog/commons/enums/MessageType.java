@@ -82,5 +82,9 @@ public enum MessageType {
     /**
      * 对端身份公钥变化提醒(可能换了设备,提示用户核对安全码)
      */
-    PEER_KEY_CHANGED;
+    PEER_KEY_CHANGED,
+    /**
+     * 与某 peer 的私聊密文历史(PULL_PRIVATE_HISTORY 响应)
+     */
+    PRIVATE_HISTORY;
 }
