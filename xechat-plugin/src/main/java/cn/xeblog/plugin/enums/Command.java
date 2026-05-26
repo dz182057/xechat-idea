@@ -70,6 +70,12 @@ public enum Command {
             return "拉取与某用户的私聊密文历史，" + this.getCommand() + " {对方昵称} [{条数,默认50}]";
         }
     },
+    TO("to") {
+        @Override
+        public String getDesc() {
+            return "锁定私聊对象，" + this.getCommand() + " {对方昵称} 进入粘性私聊；" + this.getCommand() + " 不带参数解除";
+        }
+    },
     FINGERPRINT("fingerprint") {
         @Override
         public String getDesc() {
