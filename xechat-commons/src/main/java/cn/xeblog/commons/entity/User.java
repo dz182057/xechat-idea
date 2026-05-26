@@ -71,12 +71,11 @@ public class User implements Serializable {
     private boolean isGuest;
 
     /**
-     * 用户昵称(过渡兼容字段)
-     * <p>历史代码读 username;新代码应改用 nickname。下一版本删除。</p>
-     *
-     * @deprecated 使用 {@link #nickname} 代替
+     * 用户昵称(过渡兼容字段,与 nickname 始终同步,见 {@link #setNickname(String)})。
+     * <p>历史代码大量使用 username;新代码请改用 nickname。
+     * 注意:不能加 {@code @Deprecated} 注解 —— protostuff 1.x 会跳过 @Deprecated 字段,
+     * 导致 plugin 端反序列化后 username=null,破坏控制台渲染和游戏逻辑。</p>
      */
-    @Deprecated
     @Getter
     @Setter
     private String username;
