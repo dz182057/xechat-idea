@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.e2ee.mapper.KeyEnvelopeMapper">
+
+    <insert id="upsert" parameterType="cn.xeblog.server.e2ee.entity.KeyEnvelope">
+        INSERT INTO key_envelopes (account_id, type, envelope, created_at, updated_at)
+        VALUES (#{accountId}, #{type}, #{envelope}, #{createdAt}, #{updatedAt})
+        ON CONFLICT(account_id, type) DO UPDATE SET
+            envelope   = excluded.envelope,
+            updated_at = excluded.updated_at
+    </insert>
+
+    <select id="find" resultType="cn.xeblog.server.e2ee.entity.KeyEnvelope">
+        SELECT account_id, type, envelope, created_at, updated_at
+        FROM key_envelopes
+        WHERE account_id = #{accountId} AND type = #{type}
+    </select>
+
+</mapper>

@@ -28,6 +28,8 @@
         <mapper resource="mapper/InviteCodeMapper.xml"/>
         <mapper resource="mapper/SystemStateMapper.xml"/>
         <mapper resource="mapper/MessageMapper.xml"/>
+        <mapper resource="mapper/KeyEnvelopeMapper.xml"/>
+        <mapper resource="mapper/PrivateMessageMapper.xml"/>
     </mappers>
 
 </configuration>

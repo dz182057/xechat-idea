@@ -3,19 +3,22 @@
 
 -- 账号表
 CREATE TABLE IF NOT EXISTS accounts (
-    account_id     INTEGER PRIMARY KEY,        -- 雪花 ID,永久不变
-    account        TEXT    NOT NULL,           -- 登录账号 [a-zA-Z0-9_]{4,20}
-    nickname       TEXT    NOT NULL,           -- 显示昵称,≤12,唯一
-    password_hash  TEXT    NOT NULL,           -- Argon2id 编码串(含 salt)
-    avatar_version INTEGER NOT NULL DEFAULT 0, -- 头像版本,换头像 +1
-    role           TEXT    NOT NULL DEFAULT 'USER',   -- ADMIN / USER
-    permit         INTEGER NOT NULL DEFAULT 0,
-    status         TEXT    NOT NULL DEFAULT 'ACTIVE', -- ACTIVE / FROZEN / DELETED
-    deleted_at     INTEGER,                    -- 软删时间
-    created_at     INTEGER NOT NULL,
-    created_ip     TEXT,
-    last_login_at  INTEGER,
-    last_login_ip  TEXT
+    account_id        INTEGER PRIMARY KEY,        -- 雪花 ID,永久不变
+    account           TEXT    NOT NULL,           -- 登录账号 [a-zA-Z0-9_]{4,20}
+    nickname          TEXT    NOT NULL,           -- 显示昵称,≤12,唯一
+    password_hash     TEXT    NOT NULL,           -- Argon2id 编码串(含 salt)
+    avatar_version    INTEGER NOT NULL DEFAULT 0, -- 头像版本,换头像 +1
+    role              TEXT    NOT NULL DEFAULT 'USER',   -- ADMIN / USER
+    permit            INTEGER NOT NULL DEFAULT 0,
+    status            TEXT    NOT NULL DEFAULT 'ACTIVE', -- ACTIVE / FROZEN / DELETED
+    deleted_at        INTEGER,                    -- 软删时间
+    created_at        INTEGER NOT NULL,
+    created_ip        TEXT,
+    last_login_at     INTEGER,
+    last_login_ip     TEXT,
+    -- E2EE 阶段新增
+    e2ee_salt         TEXT,                       -- 客户端派生 masterKey 的 salt(base64url 16B)
+    identity_pub_key  TEXT                        -- X25519 身份公钥(base64url 32B)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_account  ON accounts(account);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_nickname ON accounts(nickname);
@@ -68,7 +71,33 @@ CREATE TABLE IF NOT EXISTS system_state (
     value TEXT
 );
 
--- 公共频道聊天记录(分表方案:私聊密文将来落 messages_private,见 e2ee-and-history.md)
+-- E2EE 密钥信封(主密钥包裹后的身份私钥);type='IDENTITY' 一行/账号
+CREATE TABLE IF NOT EXISTS key_envelopes (
+    account_id  INTEGER NOT NULL,             -- 拥有此 envelope 的账号
+    type        TEXT    NOT NULL,             -- 'IDENTITY'(身份私钥);未来可加 'SESSION:<peerId>'
+    envelope    TEXT    NOT NULL,             -- master 包裹后的密文(base64url iv||ciphertext)
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    PRIMARY KEY (account_id, type),
+    FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+);
+
+-- 私聊密文(E2EE 信封,服务端只看密文);分表方案 vs messages_public
+CREATE TABLE IF NOT EXISTS messages_private (
+    id                    INTEGER PRIMARY KEY,    -- 雪花 ID
+    created_at            INTEGER NOT NULL,
+    sender_account_id     INTEGER NOT NULL,
+    recipient_account_id  INTEGER NOT NULL,
+    -- 会话对维度(min,max),便于按 (a,b) 双向查
+    conv_min              INTEGER NOT NULL,       -- min(sender, recipient)
+    conv_max              INTEGER NOT NULL,       -- max(sender, recipient)
+    iv                    TEXT    NOT NULL,       -- AES-GCM IV(base64url 12B)
+    ciphertext            TEXT    NOT NULL,       -- AES-256-GCM 密文(base64url,含 tag)
+    version               TEXT    NOT NULL DEFAULT 'v1'  -- 信封版本
+);
+CREATE INDEX IF NOT EXISTS idx_messages_private_conv ON messages_private(conv_min, conv_max, id);
+
+-- 公共频道聊天记录(分表方案:私聊密文落 messages_private,见 e2ee-and-history.md)
 CREATE TABLE IF NOT EXISTS messages_public (
     id                  INTEGER PRIMARY KEY,          -- 雪花 ID,全局有序
     created_at          INTEGER NOT NULL,             -- epoch ms

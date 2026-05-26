@@ -37,5 +37,9 @@ public class Account {
     private String createdIp;
     private Long lastLoginAt;
     private String lastLoginIp;
+    /** E2EE: 客户端派生 masterKey 用的 salt(base64url 16B) */
+    private String e2eeSalt;
+    /** E2EE: X25519 身份公钥(base64url 32B) */
+    private String identityPubKey;
 
 }

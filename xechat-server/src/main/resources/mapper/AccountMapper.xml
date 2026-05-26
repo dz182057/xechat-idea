@@ -7,18 +7,18 @@
     <sql id="cols">
         account_id, account, nickname, password_hash, avatar_version,
         role, permit, status, deleted_at, created_at, created_ip,
-        last_login_at, last_login_ip
+        last_login_at, last_login_ip, e2ee_salt, identity_pub_key
     </sql>
 
     <insert id="insert" parameterType="cn.xeblog.server.account.entity.Account">
         INSERT INTO accounts (
             account_id, account, nickname, password_hash, avatar_version,
             role, permit, status, deleted_at, created_at, created_ip,
-            last_login_at, last_login_ip
+            last_login_at, last_login_ip, e2ee_salt, identity_pub_key
         ) VALUES (
             #{accountId}, #{account}, #{nickname}, #{passwordHash}, #{avatarVersion},
             #{role}, #{permit}, #{status}, #{deletedAt}, #{createdAt}, #{createdIp},
-            #{lastLoginAt}, #{lastLoginIp}
+            #{lastLoginAt}, #{lastLoginIp}, #{e2eeSalt}, #{identityPubKey}
         )
     </insert>
 

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.e2ee.mapper.PrivateMessageMapper">
+
+    <sql id="cols">
+        id, created_at, sender_account_id, recipient_account_id,
+        conv_min, conv_max, iv, ciphertext, version
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.e2ee.entity.PrivateMessage">
+        INSERT INTO messages_private (
+            id, created_at, sender_account_id, recipient_account_id,
+            conv_min, conv_max, iv, ciphertext, version
+        ) VALUES (
+            #{id}, #{createdAt}, #{senderAccountId}, #{recipientAccountId},
+            #{convMin}, #{convMax}, #{iv}, #{ciphertext}, #{version}
+        )
+    </insert>
+
+    <select id="query" resultType="cn.xeblog.server.e2ee.entity.PrivateMessage">
+        SELECT <include refid="cols"/>
+        FROM messages_private
+        WHERE conv_min = #{convMin} AND conv_max = #{convMax}
+        <if test="sinceMs != null">
+            AND created_at &gt; #{sinceMs}
+        </if>
+        <if test="beforeId != null">
+            AND id &lt; #{beforeId}
+        </if>
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

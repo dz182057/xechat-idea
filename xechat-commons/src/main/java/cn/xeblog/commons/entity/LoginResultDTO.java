@@ -54,4 +54,14 @@ public class LoginResultDTO implements Serializable {
      */
     private String identityPubKey;
 
+    /**
+     * 便捷构造器(向后兼容):仅 token + expiresAt + user,E2EE 字段保持 null。
+     * 游客登录与不需要 E2EE 字段的旧路径用此构造器。
+     */
+    public LoginResultDTO(String token, long expiresAt, User user) {
+        this.token = token;
+        this.expiresAt = expiresAt;
+        this.user = user;
+    }
+
 }
