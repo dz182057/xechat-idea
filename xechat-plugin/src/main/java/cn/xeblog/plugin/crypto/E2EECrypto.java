@@ -1,7 +1,7 @@
 package cn.xeblog.plugin.crypto;
 
-import de.mkammerer.argon2.Argon2Advanced;
-import de.mkammerer.argon2.Argon2Factory;
+import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
+import org.bouncycastle.crypto.params.Argon2Parameters;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
@@ -82,10 +82,6 @@ public final class E2EECrypto {
     private static final Base64.Decoder B64URL_DECODER = Base64.getUrlDecoder();
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    /** argon2-jvm Advanced 实例(线程安全) */
-    private static final Argon2Advanced ARGON2 = Argon2Factory.createAdvanced(
-            Argon2Factory.Argon2Types.ARGON2id, E2EE_SALT_LEN, MASTER_KEY_LEN);
-
     private E2EECrypto() {
     }
 
@@ -116,7 +112,11 @@ public final class E2EECrypto {
     // ============ Argon2id: 密码 + salt → master key ============
 
     /**
-     * 由密码与 e2eeSalt 派生 master key(32B raw)。耗时较长(64MB 内存)。
+     * 由密码与 e2eeSalt 派生 master key(32B raw)。
+     *
+     * <p>用 BouncyCastle 的 {@link Argon2BytesGenerator}(纯 Java,无 JNA / native lib),
+     * 参数与桌面端 hash-wasm 默认值 + argon2-jvm 完全一致:argon2id v1.3 + m=64MB + t=3 +
+     * p=1 + hashLen=32,UTF-8 编码密码。三端字节级一致由 .verify/ 双向回环对拍兜底。</p>
      */
     public static byte[] deriveMasterKey(String password, String saltB64url) {
         byte[] salt = b64urlDecode(saltB64url);
@@ -124,13 +124,23 @@ public final class E2EECrypto {
             throw new IllegalArgumentException(
                     "e2eeSalt 长度必须 " + E2EE_SALT_LEN + "B,实际 " + salt.length + "B");
         }
+        Argon2Parameters params = new Argon2Parameters.Builder(Argon2Parameters.ARGON2_id)
+                .withVersion(Argon2Parameters.ARGON2_VERSION_13)
+                .withIterations(ARGON2_ITERATIONS)
+                .withMemoryAsKB(ARGON2_MEMORY_KB)
+                .withParallelism(ARGON2_PARALLELISM)
+                .withSalt(salt)
+                .build();
+        Argon2BytesGenerator generator = new Argon2BytesGenerator();
+        generator.init(params);
+        byte[] out = new byte[MASTER_KEY_LEN];
         char[] chars = password.toCharArray();
         try {
-            // rawHash: 返回 hashLen(32B) 字节,与构造 ARGON2 时声明的 hashLength 对齐
-            return ARGON2.rawHash(ARGON2_ITERATIONS, ARGON2_MEMORY_KB, ARGON2_PARALLELISM,
-                    chars, salt);
+            // generateBytes(char[]) 内部按 UTF-8 编码密码,与 hash-wasm / argon2-jvm 默认行为一致
+            generator.generateBytes(chars, out);
+            return out;
         } finally {
-            ARGON2.wipeArray(chars);
+            Arrays.fill(chars, '\0');
         }
     }
 

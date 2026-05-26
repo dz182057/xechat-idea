@@ -11,6 +11,7 @@ import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.plugin.persistence.PersistenceService;
+import cn.xeblog.plugin.ui.MainWindow;
 import cn.xeblog.plugin.util.IdeaUtils;
 import cn.xeblog.commons.entity.GuestLoginDTO;
 import io.netty.channel.ChannelHandlerContext;
@@ -118,6 +119,15 @@ public class XEChatClientHandler extends SimpleChannelInboundHandler<Response> {
 
             ConsoleAction.showSimpleMsg("正在重新连接服务器...");
             connectionAction.exec(null);
+        } else {
+            // 非重连场景的断开(显式登出、服务端踢、心跳超时无法恢复) → 兜底切回登录页
+            MainWindow mw = MainWindow.getInstance();
+            mw.switchToLogin();
+            // 登录阶段被断开(SYSTEM 错误后服务端 close): 兜底让登录页恢复输入,
+            // 防止只 close 不发 SYSTEM(或 SYSTEM 已显示但状态没清)时一直卡 loading
+            if (mw.getLoginPanel() != null && mw.getLoginPanel().isAwaitingLogin()) {
+                mw.getLoginPanel().showError("连接已断开,请检查后重试");
+            }
         }
     }
 

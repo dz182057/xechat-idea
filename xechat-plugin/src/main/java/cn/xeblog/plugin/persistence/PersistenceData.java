@@ -55,4 +55,14 @@ public class PersistenceData {
      */
     private String uuid;
 
+    /**
+     * 上次登录用的服务器 host(登录页默认填充用,首次启动为空)
+     */
+    private String host;
+
+    /**
+     * 上次登录用的服务器端口(登录页默认填充用,首次启动为 0)
+     */
+    private int port;
+
 }

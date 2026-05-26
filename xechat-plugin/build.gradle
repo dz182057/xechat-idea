@@ -30,8 +30,13 @@ ext {
 
 dependencies {
     implementation "cn.xeblog:xechat-commons:$rootProject.xechatCommonsVersion"
-    // E2EE: master key 派生(与 server PasswordHasher 同一库与参数,确保两端等价)
-    implementation 'de.mkammerer:argon2-jvm:2.11'
+    // E2EE: master key 派生 — 用 BouncyCastle 的纯 Java Argon2id 实现。
+    // 不用 argon2-jvm,因为它依赖 JNA + native libargon2,而 IntelliJ Platform 注入的
+    // jna 7.0.2 与 argon2-jvm 期望的 6.1.1 不兼容,runIde 沙箱会出现
+    // "Could not initialize class … Argon2Factory" 类初始化失败。
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    // 保留 argon2-jvm 给 e2eeCheck 任务用(那里走 JavaExec 绕过 IDE JNA 注入)
+    testImplementation 'de.mkammerer:argon2-jvm:2.11'
     compileOnly "org.projectlombok:lombok:$rootProject.lombokVersion"
     annotationProcessor "org.projectlombok:lombok:$rootProject.lombokVersion"
     testCompileOnly "org.projectlombok:lombok:$rootProject.lombokVersion"
