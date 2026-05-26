@@ -14,6 +14,7 @@ import cn.xeblog.plugin.crypto.E2EECrypto;
 import cn.xeblog.plugin.crypto.E2EESessionService;
 import cn.xeblog.plugin.enums.Command;
 import cn.xeblog.plugin.listener.MainWindowInitializedEventListener;
+import cn.xeblog.plugin.ui.EmojiPicker;
 import cn.xeblog.plugin.ui.MainWindow;
 import cn.xeblog.plugin.util.CommandHistoryUtils;
 import cn.xeblog.plugin.util.UploadUtils;
@@ -91,7 +92,48 @@ public class InputAction implements MainWindowInitializedEventListener {
         leftTopPanel = mainWindow.getLeftTopPanel();
 
         initLeftTopChildren();
+        installEmojiButton();
         bindKeyListener();
+    }
+
+    /**
+     * 在输入区 contentPanel 左侧塞一个 emoji 按钮。
+     * 不改 .form 文件,而是运行时把 contentPanel 的布局换成 BorderLayout:WEST=按钮, CENTER=原 scrollpane。
+     * 这样按钮高度跟随输入行高,行为自然;.form 的 GridLayoutManager 在加载后已确定 contentPanel 在父网格中的占位。
+     */
+    private static void installEmojiButton() {
+        // contentArea → JViewport → JScrollPane → contentPanel
+        Container scrollpane = contentArea.getParent().getParent();
+        Container contentPanel = scrollpane.getParent();
+
+        contentPanel.remove(scrollpane);
+        contentPanel.setLayout(new BorderLayout(2, 0));
+
+        JButton emojiButton = new JButton("😀");
+        emojiButton.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 16));
+        emojiButton.setMargin(new Insets(0, 6, 0, 6));
+        emojiButton.setBorderPainted(false);
+        emojiButton.setFocusable(false);
+        emojiButton.setToolTipText("表情");
+
+        // 单次 lazy 创建 popup,后续复用;每次显示前 contentArea 上侧弹出
+        final JPopupMenu[] popupRef = new JPopupMenu[1];
+        emojiButton.addActionListener(e -> {
+            if (popupRef[0] == null) {
+                popupRef[0] = EmojiPicker.create(emoji -> {
+                    contentArea.insert(emoji, contentArea.getCaretPosition());
+                    contentArea.requestFocusInWindow();
+                });
+            }
+            JPopupMenu popup = popupRef[0];
+            // 弹在按钮上方:y 取负 popup 高度,避免遮挡输入区
+            popup.show(emojiButton, 0, -popup.getPreferredSize().height);
+        });
+
+        contentPanel.add(emojiButton, BorderLayout.WEST);
+        contentPanel.add(scrollpane, BorderLayout.CENTER);
+        contentPanel.revalidate();
+        contentPanel.repaint();
     }
 
     /**
