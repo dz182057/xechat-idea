@@ -62,4 +62,12 @@ public class EncryptedEnvelopeDTO implements Serializable {
      */
     private Long serverCreatedAt;
 
+    /**
+     * 发送方账号 ID(下行回填)。
+     *
+     * <p>客户端用 senderAccountId == me.accountId 判定 isSelf,以正确组织气泡方向 / 头像。
+     * 上行(PRIVATE_CHAT)由服务端忽略;下行(PRIVATE_USER / PRIVATE_HISTORY)始终填充。</p>
+     */
+    private Long senderAccountId;
+
 }

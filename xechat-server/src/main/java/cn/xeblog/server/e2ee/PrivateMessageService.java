@@ -94,7 +94,8 @@ public final class PrivateMessageService {
     }
 
     /**
-     * 把 PrivateMessage 转成 EncryptedEnvelopeDTO,peerAccountId 总是"对方"(与 me 相对)。
+     * 把 PrivateMessage 转成 EncryptedEnvelopeDTO,peerAccountId 总是"对方"(与 me 相对),
+     * senderAccountId 始终是这条消息的实际发送方(客户端用它判 isSelf 决定气泡方向)。
      * 注:peerAccount 字段(账号字符串)在 service 层留空,由调用方根据 accounts 表回填。
      */
     private static EncryptedEnvelopeDTO toEnvelope(PrivateMessage m, long meAccountId) {
@@ -107,7 +108,8 @@ public final class PrivateMessageService {
                 m.getIv(),
                 m.getCiphertext(),
                 m.getId(),
-                m.getCreatedAt());
+                m.getCreatedAt(),
+                m.getSenderAccountId());
     }
 
     /**

@@ -18,11 +18,13 @@ import java.util.regex.Pattern;
 public class WebSocketMessageEncoder extends MessageToMessageEncoder<Response> {
 
     /**
-     * 把 long 雪花 ID 字段(accountId / createdBy / serverId)序列化为 JSON string,
-     * 避免 JS Number 精度丢失。服务端内部仍用 long;入口 hutool 反序列化 string → long 兼容。
+     * 把 long 雪花 ID 字段序列化为 JSON string,避免 JS Number 精度丢失。
+     * 匹配所有以 AccountId 结尾的字段(accountId / peerAccountId / senderAccountId /
+     * recipientAccountId 等)+ createdBy + serverId。服务端内部仍用 long;
+     * 入口 hutool 反序列化 string → long 兼容。
      */
     private static final Pattern LONG_ID_FIELD = Pattern.compile(
-            "\"(accountId|createdBy|serverId)\"\\s*:\\s*(-?\\d+)");
+            "\"(\\w*[Aa]ccountId|createdBy|serverId)\"\\s*:\\s*(-?\\d+)");
 
     @Override
     protected void encode(ChannelHandlerContext channelHandlerContext, Response response, List<Object> list) throws Exception {
