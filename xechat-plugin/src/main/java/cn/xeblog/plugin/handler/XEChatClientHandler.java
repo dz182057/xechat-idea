@@ -57,7 +57,8 @@ public class XEChatClientHandler extends SimpleChannelInboundHandler<Response> {
             dto.setUuid(DataCache.uuid);
             dto.setPlatform(Platform.IDEA);
             MessageAction.send(dto, Action.LOGIN);
-            DataCache.password = null; // 用完即清,不长期持有
+            // 不在此处清 DataCache.password:LoginResultMessageHandler 还要用它
+            // 派生 E2EE master key 并解包身份私钥,派生完后立刻清。
         } else if (StringUtils.isNotBlank(DataCache.account)) {
             String token = PersistenceService.getData().getToken();
             String savedAccount = PersistenceService.getData().getAccount();
