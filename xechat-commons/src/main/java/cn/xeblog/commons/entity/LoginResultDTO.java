@@ -36,4 +36,22 @@ public class LoginResultDTO implements Serializable {
      */
     private User user;
 
+    /**
+     * E2EE: 客户端派生 masterKey 用的 salt(base64url,16 字节)。
+     * 注册时由客户端生成上传;后续登录从 accounts 表回读。游客登录此字段为 null。
+     */
+    private String e2eeSalt;
+
+    /**
+     * E2EE: 主密钥包裹后的身份私钥(base64url 的 iv||ciphertext)。
+     * 客户端用 masterKey 解出 IdentityPrivKey,缓存到内存。游客登录此字段为 null。
+     */
+    private String identityPrivKeyEnvelope;
+
+    /**
+     * E2EE: 当前账号的身份公钥(base64url,32 字节 X25519)。
+     * 客户端启动时用作"我的公钥"展示在安全码里,核对历史 fingerprint。游客登录此字段为 null。
+     */
+    private String identityPubKey;
+
 }
