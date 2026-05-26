@@ -14,6 +14,7 @@ import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.config.GlobalConfig;
+import cn.xeblog.server.e2ee.E2EEKeyService;
 import cn.xeblog.server.util.IpUtil;
 import io.netty.channel.ChannelHandlerContext;
 
@@ -63,25 +64,43 @@ public final class AccountLoginHelper {
         user.setPlatform(platform == null ? Platform.IDEA : platform);
         user.setToken(token);
 
-        notifyOnline(user, token, expiresAt);
+        // 注册用户:回读 envelope 一并下发,客户端拿 e2eeSalt+envelope 派生 masterKey 并解出私钥
+        String identityEnvelope = E2EEKeyService.findIdentityEnvelope(account.getAccountId());
+        notifyOnline(user, token, expiresAt,
+                account.getE2eeSalt(), account.getIdentityPubKey(), identityEnvelope);
+    }
+
+    /**
+     * 游客版"上线":无 token / 无 E2EE 字段。
+     */
+    public static void notifyOnline(User user, String token, long expiresAt) {
+        notifyOnline(user, token, expiresAt, null, null, null);
     }
 
     /**
      * 通用"上线"流程:加缓存/ChannelGroup → 发 LoginResult → 发在线列表给自己 → 广播 ONLINE。
      *
-     * <p>账号登录、游客登录、token 登录、注册成功均可复用。</p>
+     * <p>账号登录、游客登录、token 登录、注册成功均可复用。E2EE 三字段:游客或老账号传 null,
+     * 注册用户从 accounts + key_envelopes 取出来。</p>
      *
-     * @param token     无 token(游客)时传 null
-     * @param expiresAt 无 token 时传 0
+     * @param token                   无 token(游客)时传 null
+     * @param expiresAt               无 token 时传 0
+     * @param e2eeSalt                注册用户的 e2eeSalt,游客/老账号 null
+     * @param identityPubKey          注册用户的 X25519 公钥,游客/老账号 null
+     * @param identityPrivKeyEnvelope 注册用户的身份私钥信封,游客/老账号 null
      */
-    public static void notifyOnline(User user, String token, long expiresAt) {
+    public static void notifyOnline(User user, String token, long expiresAt,
+                                    String e2eeSalt, String identityPubKey,
+                                    String identityPrivKeyEnvelope) {
         UserCache.add(user.getId(), user);
         ChannelAction.add(user.getChannel());
 
         // 1) 把 LoginResultDTO 发给自己
-        Response loginResult = ResponseBuilder.build(null,
-                new LoginResultDTO(token, expiresAt, copyForLoginResult(user)),
-                MessageType.LOGIN_RESULT);
+        LoginResultDTO dto = new LoginResultDTO(token, expiresAt, copyForLoginResult(user));
+        dto.setE2eeSalt(e2eeSalt);
+        dto.setIdentityPubKey(identityPubKey);
+        dto.setIdentityPrivKeyEnvelope(identityPrivKeyEnvelope);
+        Response loginResult = ResponseBuilder.build(null, dto, MessageType.LOGIN_RESULT);
         user.send(loginResult);
 
         // 2) 给自己发当前在线列表
