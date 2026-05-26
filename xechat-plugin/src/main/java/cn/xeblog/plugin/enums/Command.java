@@ -64,6 +64,18 @@ public enum Command {
     ALIVE("alive", "活着，0.关闭｜1.开启"),
     MO_YU("moyu", "摸鱼办生成"),
     ADMIN("admin", "管控"),
+    PRIVHISTORY("privhistory") {
+        @Override
+        public String getDesc() {
+            return "拉取与某用户的私聊密文历史，" + this.getCommand() + " {对方昵称} [{条数,默认50}]";
+        }
+    },
+    FINGERPRINT("fingerprint") {
+        @Override
+        public String getDesc() {
+            return "查看与某用户的端到端加密安全码，" + this.getCommand() + " {对方昵称}";
+        }
+    },
     LOGOUT("exit", "退出"),
     CLEAN("clean", "清屏"),
     HELP("help", "帮助");
