@@ -44,6 +44,19 @@ public class InputAction implements MainWindowInitializedEventListener {
 
     private static JPanel leftTopPanel;
 
+    /**
+     * leftTopPanel 内部:私聊状态 banner(NORTH),独立于 @ 补全(CENTER)。
+     * 让"粘性私聊"和"@ 补全"两种 UI 共存于同一行,通过 BorderLayout 上下叠放。
+     */
+    private static JPanel privateBannerPanel;
+    private static JLabel privateBannerLabel;
+
+    /**
+     * leftTopPanel 内部:原本的 @ 补全 JBList 放进这个容器(CENTER)。
+     * 把 @ 补全和 banner 解耦,各自管自己的 visible 状态。
+     */
+    private static JPanel completionContainer;
+
     private static JBList jbList;
 
     private static boolean isProactive;
@@ -77,7 +90,54 @@ public class InputAction implements MainWindowInitializedEventListener {
         contentArea = mainWindow.getContentArea();
         leftTopPanel = mainWindow.getLeftTopPanel();
 
+        initLeftTopChildren();
         bindKeyListener();
+    }
+
+    /**
+     * 把 leftTopPanel(BorderLayout)拆为 NORTH=私聊 banner + CENTER=@ 补全容器。
+     * 这样 banner 长期挂在那里,@ 补全只占 CENTER,二者互不干扰。
+     */
+    private static void initLeftTopChildren() {
+        leftTopPanel.setLayout(new BorderLayout(0, 0));
+        leftTopPanel.removeAll();
+
+        privateBannerPanel = new JPanel(new BorderLayout(4, 0));
+        privateBannerPanel.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 4));
+        privateBannerLabel = new JLabel(" ");
+        privateBannerPanel.add(privateBannerLabel, BorderLayout.CENTER);
+
+        JButton closeBtn = new JButton("取消 ×");
+        closeBtn.setMargin(new Insets(0, 6, 0, 6));
+        closeBtn.setFocusable(false);
+        closeBtn.addActionListener(e -> {
+            String old = DataCache.stickyPrivateTarget;
+            DataCache.stickyPrivateTarget = null;
+            hidePrivateBanner();
+            if (old != null) {
+                ConsoleAction.showSimpleMsg("已退出与 @" + old + " 的私聊模式");
+            }
+        });
+        privateBannerPanel.add(closeBtn, BorderLayout.EAST);
+        privateBannerPanel.setVisible(false);
+
+        completionContainer = new JPanel(new BorderLayout());
+
+        leftTopPanel.add(privateBannerPanel, BorderLayout.NORTH);
+        leftTopPanel.add(completionContainer, BorderLayout.CENTER);
+        leftTopPanel.setVisible(false);
+    }
+
+    /**
+     * leftTopPanel 可见性 = banner 可见 OR 补全有内容。
+     */
+    private static void refreshLeftTopVisibility() {
+        if (leftTopPanel == null) {
+            return;
+        }
+        boolean bannerOn = privateBannerPanel != null && privateBannerPanel.isVisible();
+        boolean completionOn = completionContainer != null && completionContainer.getComponentCount() > 0;
+        leftTopPanel.setVisible(bannerOn || completionOn);
     }
 
     private static void bindKeyListener() {
@@ -200,7 +260,12 @@ public class InputAction implements MainWindowInitializedEventListener {
                     });
 
                     List<String> allUserList = new ArrayList<>();
-                    onlineUserList.forEach(user -> allUserList.add(user.getUsername()));
+                    onlineUserList.forEach(user -> {
+                        // 过滤掉自己:@ 补全候选不应该出现当前登录用户,避免误选后给自己发私聊
+                        if (!user.getUsername().equals(DataCache.username)) {
+                            allUserList.add(user.getUsername());
+                        }
+                    });
 
                     String name = content.substring(atIndex + 1, caretPosition);
                     if (StrUtil.isNotBlank(name)) {
@@ -219,8 +284,9 @@ public class InputAction implements MainWindowInitializedEventListener {
             }
         }
 
-        leftTopPanel.setVisible(false);
-        leftTopPanel.removeAll();
+        // 只清 @ 补全容器,banner 不动
+        completionContainer.removeAll();
+        refreshLeftTopVisibility();
 
         if (CollectionUtil.isNotEmpty(dataList)) {
             boolean copyIsAt = isAt;
@@ -244,8 +310,8 @@ public class InputAction implements MainWindowInitializedEventListener {
                 }
 
                 requestFocus();
-                leftTopPanel.setVisible(false);
-                leftTopPanel.removeAll();
+                completionContainer.removeAll();
+                refreshLeftTopVisibility();
             };
 
             jbList = new JBList();
@@ -273,8 +339,8 @@ public class InputAction implements MainWindowInitializedEventListener {
             scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
 
             leftTopPanel.setMinimumSize(new Dimension(0, 100));
-            leftTopPanel.add(scrollPane);
-            leftTopPanel.setVisible(true);
+            completionContainer.add(scrollPane, BorderLayout.CENTER);
+            refreshLeftTopVisibility();
 
             if (e.getKeyCode() == KeyEvent.VK_TAB) {
                 String value = dataList.get(0);
@@ -319,7 +385,8 @@ public class InputAction implements MainWindowInitializedEventListener {
                     if (CollectionUtil.isNotEmpty(toUserList)) {
                         List<String> removeList = new ArrayList<>();
                         for (String toUser : toUserList) {
-                            if (DataCache.getUser(toUser) == null) {
+                            // 过滤:不存在的用户 + 自己(双保险,即便补全已过滤,手写 @ 仍可能输入自己)
+                            if (DataCache.getUser(toUser) == null || toUser.equals(DataCache.username)) {
                                 removeList.add(toUser);
                             }
                         }
@@ -330,6 +397,19 @@ public class InputAction implements MainWindowInitializedEventListener {
                             // 私聊不再带自己:E2EE 模式下 server 会把 PRIVATE_USER 推回发送方多端同步
                             toUsers = ArrayUtil.toArray(new HashSet<>(toUserList), String.class);
                         }
+                    }
+
+                    // 显式 @ 优先于 sticky:用户在 sticky 模式下又 @bob,按显式发给 bob,sticky 不变
+                    if (toUsers == null && DataCache.stickyPrivateTarget != null) {
+                        User stickyPeer = DataCache.getUser(DataCache.stickyPrivateTarget);
+                        if (stickyPeer == null) {
+                            ConsoleAction.showSimpleMsg("锁定的私聊对象 @" + DataCache.stickyPrivateTarget
+                                    + " 已不在线,自动退出私聊模式");
+                            DataCache.stickyPrivateTarget = null;
+                            hidePrivateBanner();
+                            return;
+                        }
+                        toUsers = new String[]{DataCache.stickyPrivateTarget};
                     }
 
                     // 游客模式禁止私聊:本地拦截,避免发出后才被 server 拒绝(UX 差)
@@ -417,18 +497,48 @@ public class InputAction implements MainWindowInitializedEventListener {
     }
 
     /**
-     * 显示"私聊中: @peer"的 banner(stub,Task 3 实现真正的 UI)。
-     * 现在由 ToCommandHandler / 登出流程调用,以保证 Task 1+2 阶段不报符号缺失。
+     * 显示"🔒 私聊中: @peer"banner。EDT 安全:跨线程调用走 invokeLater。
      */
     public static void showPrivateBanner(String peerUsername) {
-        // 真正实现见 Task 3:在输入区上方插入 banner,文案"🔒 私聊中: @xxx [取消 ×]"
+        Runnable r = () -> {
+            if (privateBannerPanel == null || privateBannerLabel == null) {
+                return;
+            }
+            privateBannerLabel.setText(" 🔒 私聊中: @" + peerUsername);
+            privateBannerPanel.setVisible(true);
+            refreshLeftTopVisibility();
+            if (leftTopPanel != null) {
+                leftTopPanel.revalidate();
+                leftTopPanel.repaint();
+            }
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            r.run();
+        } else {
+            SwingUtilities.invokeLater(r);
+        }
     }
 
     /**
-     * 隐藏"私聊中"banner(stub,Task 3 实现)。
+     * 隐藏私聊 banner。EDT 安全。
      */
     public static void hidePrivateBanner() {
-        // 真正实现见 Task 3
+        Runnable r = () -> {
+            if (privateBannerPanel == null) {
+                return;
+            }
+            privateBannerPanel.setVisible(false);
+            refreshLeftTopVisibility();
+            if (leftTopPanel != null) {
+                leftTopPanel.revalidate();
+                leftTopPanel.repaint();
+            }
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            r.run();
+        } else {
+            SwingUtilities.invokeLater(r);
+        }
     }
 
     public static boolean requestFocus() {
