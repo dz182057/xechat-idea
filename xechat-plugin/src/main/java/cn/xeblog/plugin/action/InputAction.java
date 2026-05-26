@@ -5,10 +5,13 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.xeblog.commons.entity.EncryptedEnvelopeDTO;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserMsgDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.plugin.cache.DataCache;
+import cn.xeblog.plugin.crypto.E2EECrypto;
+import cn.xeblog.plugin.crypto.E2EESessionService;
 import cn.xeblog.plugin.enums.Command;
 import cn.xeblog.plugin.listener.MainWindowInitializedEventListener;
 import cn.xeblog.plugin.ui.MainWindow;
@@ -324,7 +327,7 @@ public class InputAction implements MainWindowInitializedEventListener {
                             toUserList.removeAll(removeList);
                         }
                         if (!toUserList.isEmpty()) {
-                            toUserList.add(DataCache.username);
+                            // 私聊不再带自己:E2EE 模式下 server 会把 PRIVATE_USER 推回发送方多端同步
                             toUsers = ArrayUtil.toArray(new HashSet<>(toUserList), String.class);
                         }
                     }
@@ -345,7 +348,13 @@ public class InputAction implements MainWindowInitializedEventListener {
                         sendCounterStartTime = System.currentTimeMillis();
                     }
 
-                    MessageAction.send(new UserMsgDTO(content, toUsers), Action.CHAT);
+                    if (toUsers != null && toUsers.length > 0) {
+                        // E2EE 私聊:每个 peer 单独走 PRIVATE_CHAT 加密信封,不再走旧 CHAT 路径
+                        sendPrivateE2EE(content, toUsers);
+                    } else {
+                        // 显式 cast 避免与 UserMsgDTO(Object,MsgType) 重载二义性
+                        MessageAction.send(new UserMsgDTO(content, (String[]) null), Action.CHAT);
+                    }
                 } else {
                     ConsoleAction.showLoginMsg();
                 }
@@ -354,6 +363,53 @@ public class InputAction implements MainWindowInitializedEventListener {
         }
 
         ConsoleAction.gotoConsoleLow();
+    }
+
+    /**
+     * E2EE 私聊发送:每个 peer 一条 PRIVATE_CHAT。
+     *
+     * <p>步骤:解析 peer username → 反查 account → ensureSessionKey(可能触发 GET_PEER_KEY 异步等待)
+     * → encryptMessage → 发 PRIVATE_CHAT。发送方自己的回显由服务端把 PRIVATE_USER 回推后由
+     * {@link cn.xeblog.plugin.action.handler.message.PrivateUserMessageHandler} 渲染。</p>
+     *
+     * <p>identityPrivKey 缺失(token 登录路径) → 直接提示用户重登,不发送任何消息。</p>
+     */
+    private static void sendPrivateE2EE(String content, String[] toUsers) {
+        if (DataCache.identityPrivKey == null) {
+            ConsoleAction.showSimpleMsg("E2EE 私钥未解锁,token 登录无法私聊,请 #exit 后用密码重登");
+            return;
+        }
+        for (String peerUsername : toUsers) {
+            User peer = DataCache.getUser(peerUsername);
+            if (peer == null) {
+                ConsoleAction.showSimpleMsg("找不到用户: " + peerUsername);
+                continue;
+            }
+            String peerAccount = peer.getAccount();
+            if (StrUtil.isBlank(peerAccount)) {
+                ConsoleAction.showSimpleMsg(peerUsername + " 是游客,不能私聊");
+                continue;
+            }
+            DataCache.peerAccountByUsername.put(peerUsername, peerAccount);
+            E2EESessionService.ensureSessionKey(peerAccount).whenComplete((entry, err) -> {
+                if (err != null) {
+                    ConsoleAction.showSimpleMsg("E2EE 派生会话密钥失败(" + peerUsername + "): " + err.getMessage());
+                    return;
+                }
+                try {
+                    E2EECrypto.EncryptedMessage enc = E2EECrypto.encryptMessage(entry.sessionKey, content);
+                    EncryptedEnvelopeDTO env = new EncryptedEnvelopeDTO();
+                    env.setVersion("v1");
+                    env.setPeerAccount(peerAccount);
+                    env.setPeerAccountId(entry.accountId);
+                    env.setIv(enc.iv);
+                    env.setCiphertext(enc.ciphertext);
+                    MessageAction.send(env, Action.PRIVATE_CHAT);
+                } catch (Exception ex) {
+                    ConsoleAction.showSimpleMsg("E2EE 加密失败(" + peerUsername + "): " + ex.getMessage());
+                }
+            });
+        }
     }
 
     public static void clean() {
