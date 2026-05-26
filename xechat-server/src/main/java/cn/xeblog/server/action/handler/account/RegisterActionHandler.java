@@ -57,8 +57,10 @@ public class RegisterActionHandler implements ActionHandler<RegisterDTO> {
 
         try {
             // 1. 注册账号(暂定 USER 角色,首注册者升 ADMIN 由 consume 决定)
+            //    E2EE 三件套若客户端传入则同事务落库,缺失时(老客户端)走"无 E2EE"账号
             Account account = AccountService.register(body.getAccount(),
-                    body.getPassword(), body.getNickname(), Account.ROLE_USER, ip);
+                    body.getPassword(), body.getNickname(), Account.ROLE_USER, ip,
+                    body.getE2eeSalt(), body.getIdentityPubKey(), body.getIdentityPrivKeyEnvelope());
 
             // 2. 消费邀请码,若返回 isInitialAdmin → 把账号 role 提升为 ADMIN
             boolean isInitialAdmin;

@@ -5,6 +5,8 @@ import cn.hutool.core.util.StrUtil;
 import cn.xeblog.server.account.entity.Account;
 import cn.xeblog.server.account.mapper.AccountMapper;
 import cn.xeblog.server.account.mapper.SessionMapper;
+import cn.xeblog.server.e2ee.entity.KeyEnvelope;
+import cn.xeblog.server.e2ee.mapper.KeyEnvelopeMapper;
 import cn.xeblog.server.util.SensitiveWordUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
@@ -61,16 +63,26 @@ public final class AccountService {
     /**
      * 注册新账号(假设邀请码已校验消费完成)。
      *
-     * @param role {@link Account#ROLE_ADMIN} / {@link Account#ROLE_USER}
+     * <p>E2EE 三件套(e2eeSalt+identityPubKey+identityPrivKeyEnvelope)是一组,要么都传,要么都 null
+     * (老客户端兜底)。若三者齐全,accounts 写两列,同事务 upsert key_envelopes 一行(type=IDENTITY)。</p>
+     *
+     * @param role                    {@link Account#ROLE_ADMIN} / {@link Account#ROLE_USER}
+     * @param e2eeSalt                客户端派生 masterKey 的 salt(base64url 16B),老客户端为 null
+     * @param identityPubKey          X25519 身份公钥(base64url 32B),老客户端为 null
+     * @param identityPrivKeyEnvelope masterKey 包裹后的身份私钥(base64url iv||ct),老客户端为 null
      * @return 新建账号
      */
     public static Account register(String account, String rawPassword, String nickname,
-                                   String role, String ip) {
+                                   String role, String ip,
+                                   String e2eeSalt, String identityPubKey,
+                                   String identityPrivKeyEnvelope) {
         validateAccountFormat(account);
         validateNicknameFormat(nickname);
         PasswordHasher.validatePolicy(rawPassword);
+        validateE2eeBundle(e2eeSalt, identityPubKey, identityPrivKeyEnvelope);
 
-        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+        // accounts + key_envelopes 必须同事务,关掉 autoCommit
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
             AccountMapper mapper = session.getMapper(AccountMapper.class);
 
             if (mapper.findByAccount(account) != null) {
@@ -95,12 +107,41 @@ public final class AccountService {
                     .status(Account.STATUS_ACTIVE)
                     .createdAt(now)
                     .createdIp(ip)
+                    .e2eeSalt(e2eeSalt)
+                    .identityPubKey(identityPubKey)
                     .build();
             mapper.insert(newOne);
-            log.info("账号注册成功 accountId={} account={} nickname={} role={}",
-                    accountId, account, nickname, role);
+
+            if (StrUtil.isNotBlank(identityPrivKeyEnvelope)) {
+                KeyEnvelope envelope = KeyEnvelope.builder()
+                        .accountId(accountId)
+                        .type(KeyEnvelope.TYPE_IDENTITY)
+                        .envelope(identityPrivKeyEnvelope)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build();
+                session.getMapper(KeyEnvelopeMapper.class).upsert(envelope);
+            }
+
+            session.commit();
+            log.info("账号注册成功 accountId={} account={} nickname={} role={} e2ee={}",
+                    accountId, account, nickname, role,
+                    StrUtil.isNotBlank(identityPubKey));
             return newOne;
         }
+    }
+
+    /**
+     * E2EE 三件套要么全有要么全无,避免 accounts/key_envelopes 半边初始化的脏数据。
+     */
+    private static void validateE2eeBundle(String salt, String pubKey, String envelope) {
+        boolean hasSalt = StrUtil.isNotBlank(salt);
+        boolean hasPubKey = StrUtil.isNotBlank(pubKey);
+        boolean hasEnvelope = StrUtil.isNotBlank(envelope);
+        if (hasSalt == hasPubKey && hasPubKey == hasEnvelope) {
+            return;
+        }
+        throw new AccountException("E2EE 字段不完整(e2eeSalt/identityPubKey/identityPrivKeyEnvelope 要么都传要么都不传)");
     }
 
     // ============ 登录校验 ============
