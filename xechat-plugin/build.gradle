@@ -30,6 +30,8 @@ ext {
 
 dependencies {
     implementation "cn.xeblog:xechat-commons:$rootProject.xechatCommonsVersion"
+    // E2EE: master key 派生(与 server PasswordHasher 同一库与参数,确保两端等价)
+    implementation 'de.mkammerer:argon2-jvm:2.11'
     compileOnly "org.projectlombok:lombok:$rootProject.lombokVersion"
     annotationProcessor "org.projectlombok:lombok:$rootProject.lombokVersion"
     testCompileOnly "org.projectlombok:lombok:$rootProject.lombokVersion"
@@ -53,4 +55,15 @@ intellijPlatform {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+// E2EE 加密原语 self-check: 用独立 JavaExec 跑,绕开 IntelliJ Platform 给 test
+// 任务注入的 -Djna.boot.library.path=<IDE/lib/jna> 配置(那里是 jnidispatch 7.0.2,
+// 与 argon2-jvm 期待的 6.1.1 不兼容)。命令: ./gradlew :xechat-plugin:e2eeCheck
+tasks.register('e2eeCheck', JavaExec) {
+    group = 'verification'
+    description = 'C2 加密原语自回环 + RFC 7748 / RFC 5869 已知向量校验'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'cn.xeblog.plugin.crypto.E2EECryptoSelfCheck'
+    systemProperty 'jna.nosys', 'true'
 }
