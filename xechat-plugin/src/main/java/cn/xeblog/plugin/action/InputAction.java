@@ -178,7 +178,8 @@ public class InputAction implements MainWindowInitializedEventListener {
     }
 
     /**
-     * leftTopPanel 可见性 = banner 可见 OR 补全有内容。
+     * leftTopPanel 可见性 = banner 可见 OR 补全有内容;
+     * 同步重置最小高度,避免 @ 补全期间设的 100px 残留导致 banner 单独显示时上方留大片空白。
      */
     private static void refreshLeftTopVisibility() {
         if (leftTopPanel == null) {
@@ -187,6 +188,9 @@ public class InputAction implements MainWindowInitializedEventListener {
         boolean bannerOn = privateBannerPanel != null && privateBannerPanel.isVisible();
         boolean completionOn = completionContainer != null && completionContainer.getComponentCount() > 0;
         leftTopPanel.setVisible(bannerOn || completionOn);
+        if (!completionOn) {
+            leftTopPanel.setMinimumSize(new Dimension(0, 0));
+        }
     }
 
     private static void bindKeyListener() {
