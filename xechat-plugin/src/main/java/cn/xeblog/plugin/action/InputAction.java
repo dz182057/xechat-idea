@@ -416,6 +416,21 @@ public class InputAction implements MainWindowInitializedEventListener {
         contentArea.setText("");
     }
 
+    /**
+     * 显示"私聊中: @peer"的 banner(stub,Task 3 实现真正的 UI)。
+     * 现在由 ToCommandHandler / 登出流程调用,以保证 Task 1+2 阶段不报符号缺失。
+     */
+    public static void showPrivateBanner(String peerUsername) {
+        // 真正实现见 Task 3:在输入区上方插入 banner,文案"🔒 私聊中: @xxx [取消 ×]"
+    }
+
+    /**
+     * 隐藏"私聊中"banner(stub,Task 3 实现)。
+     */
+    public static void hidePrivateBanner() {
+        // 真正实现见 Task 3
+    }
+
     public static boolean requestFocus() {
         contentArea.requestFocusInWindow();
         return contentArea.isFocusOwner();

@@ -87,7 +87,12 @@ public class MainWindow {
 
     /** 切到登录卡(登出/token 自动登录失败时调) */
     public void switchToLogin() {
-        runOnEdt(() -> cardLayout.show(wrapperPanel, CARD_LOGIN));
+        // 离线必清:粘性私聊目标只在登录态有效,残留会让下次重登的 banner / 发送路径错乱
+        cn.xeblog.plugin.cache.DataCache.stickyPrivateTarget = null;
+        runOnEdt(() -> {
+            cardLayout.show(wrapperPanel, CARD_LOGIN);
+            cn.xeblog.plugin.action.InputAction.hidePrivateBanner();
+        });
     }
 
     /** 切到主界面卡(登录成功 ONLINE 时调) */

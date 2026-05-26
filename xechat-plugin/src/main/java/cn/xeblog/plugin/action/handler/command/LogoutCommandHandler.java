@@ -30,6 +30,8 @@ public class LogoutCommandHandler extends AbstractCommandHandler {
         }
 
         ConsoleAction.showSimpleMsg("正在退出中...");
+        // 退出前先清粘性私聊状态:虽然 switchToLogin 也会清,这里提前清避免登出过程中的消息走错路径
+        DataCache.stickyPrivateTarget = null;
         // 显式登出 → 清本机敏感凭据(token、E2EE 私钥),避免他人在同 OS 用户下复用本机自动登录
         long accountId = DataCache.accountId;
         if (accountId != 0L) {

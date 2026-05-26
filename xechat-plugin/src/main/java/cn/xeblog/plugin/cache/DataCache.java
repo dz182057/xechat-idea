@@ -158,6 +158,13 @@ public class DataCache {
     public static Set<String> peerKeyChanged = new CopyOnWriteArraySet<>();
 
     /**
+     * 当前锁定的私聊对象昵称(null = 公聊模式)。
+     * 由 #to 命令 / 输入区 banner "×" 维护,登出/断线时清空。
+     * 见 InputAction.sendMsg:无显式 @ 且此值非 null 时,消息走私聊路径发给该 peer。
+     */
+    public static volatile String stickyPrivateTarget;
+
+    /**
      * 获取用户信息
      *
      * @param username 用户名
