@@ -94,10 +94,11 @@ public final class DbInitializer {
             }
 
             log.info("首次启动,执行 db/schema.sql 建库...");
-            String sql = loadResource("db/schema.sql");
+            String sql = stripLineComments(loadResource("db/schema.sql"));
 
             try (Statement st = conn.createStatement()) {
                 // sqlite-jdbc 不支持单个 execute 多语句,按 ; 切开依次执行
+                // (split 前已剥掉 -- 行注释,避免注释里的中文 ";" 把 SQL 切碎)
                 for (String stmt : sql.split(";")) {
                     String trimmed = stmt.trim();
                     if (trimmed.isEmpty()) {
@@ -118,6 +119,19 @@ public final class DbInitializer {
                 return rs.next();
             }
         }
+    }
+
+    /**
+     * 行级剥掉 SQL 中的 "-- ..." 注释。schema.sql 没有以 "--" 起头的字符串字面量,
+     * 因此可以安全地按行 strip;否则注释里中文/英文出现的 ";" 会被后续 split(";") 切碎语句。
+     */
+    private static String stripLineComments(String sql) {
+        StringBuilder cleaned = new StringBuilder(sql.length());
+        for (String line : sql.split("\\R", -1)) {
+            int idx = line.indexOf("--");
+            cleaned.append(idx >= 0 ? line.substring(0, idx) : line).append('\n');
+        }
+        return cleaned.toString();
     }
 
     private static String loadResource(String path) throws IOException {

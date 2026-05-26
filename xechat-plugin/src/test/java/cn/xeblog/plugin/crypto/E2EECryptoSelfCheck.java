@@ -35,6 +35,7 @@ public final class E2EECryptoSelfCheck {
             rfc7748Vector();
             sessionKeyDeterministicAcrossEnds();
             hkdfRfc5869Vector();
+            fingerprintDeterministicAcrossEnds();
         } catch (Throwable t) {
             bad("未捕获异常: " + t);
             t.printStackTrace();
@@ -188,6 +189,26 @@ public final class E2EECryptoSelfCheck {
                 "Alice/Bob 双向派生 session 一致");
         System.out.println("     session key (hex) = " + HEX.formatHex(sessFromA));
         System.out.println("     ← 把这串放进 desktop 同样向量下校验,字节相等即跨端等价");
+    }
+
+    // ============ 9. RFC 向量下 fingerprint 字节级常量(F1 跨端对拍) ============
+    private static void fingerprintDeterministicAcrossEnds() {
+        section("9. RFC 向量下 fingerprint 字节级常量(F1 跨端对拍)");
+        // 用 RFC 7748 §6.1 标准向量产出的 Alice/Bob 公钥算 fingerprint,
+        // desktop c1-self-check.mjs 必须算出相同的串(48180 99430 54812 77458 62055 38291),
+        // 任何一端偏离 → 用户在两端看到不同安全码 → 无法面对面核对。
+        byte[] alicePriv = HEX.parseHex(
+                "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a");
+        byte[] bobPriv = HEX.parseHex(
+                "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb");
+        String alicePub = E2EECrypto.publicKeyFromPrivate(alicePriv);
+        String bobPub = E2EECrypto.publicKeyFromPrivate(bobPriv);
+
+        String fp = E2EECrypto.computeFingerprint(alicePub, bobPub);
+        String expected = "48180 99430 54812 77458 62055 38291";
+        System.out.println("     plugin  fingerprint = \"" + fp + "\"");
+        System.out.println("     desktop fingerprint = \"" + expected + "\"");
+        check(expected.equals(fp), "★★★ fingerprint 跨端字节级一致(F1)");
     }
 
     // ============ 8. HKDF-SHA256 RFC 5869 §A.1 ============
