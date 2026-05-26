@@ -71,20 +71,28 @@ public final class EmojiPicker {
         popup.setLayout(new BorderLayout());
         popup.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
-        Font emojiFont = new Font("Segoe UI Emoji", Font.PLAIN, 18);
+        Font emojiFont = new Font("Segoe UI Emoji", Font.PLAIN, 16);
+
+        // 单个 emoji 按钮固定 28x28,8 列 + 1px gap ≈ 240px,加 scrollbar + padding 留 ~290px 宽
+        final int cellSize = 28;
+        final int cols = 8;
 
         JTabbedPane tabs = new JTabbedPane();
         for (int i = 0; i < GROUPS.length; i++) {
-            JPanel grid = new JPanel(new GridLayout(0, 8, 2, 2));
-            grid.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+            JPanel grid = new JPanel(new GridLayout(0, cols, 1, 1));
+            grid.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
             for (String emoji : GROUPS[i]) {
                 JButton btn = new JButton(emoji);
                 btn.setFont(emojiFont);
-                btn.setMargin(new Insets(2, 2, 2, 2));
+                btn.setMargin(new Insets(0, 0, 0, 0));
                 btn.setBorderPainted(false);
                 btn.setContentAreaFilled(false);
                 btn.setFocusable(false);
                 btn.setToolTipText(emoji);
+                Dimension cell = new Dimension(cellSize, cellSize);
+                btn.setPreferredSize(cell);
+                btn.setMinimumSize(cell);
+                btn.setMaximumSize(cell);
                 btn.addActionListener(ev -> onPick.accept(emoji));
                 grid.add(btn);
             }
@@ -96,7 +104,9 @@ public final class EmojiPicker {
         }
 
         popup.add(tabs, BorderLayout.CENTER);
-        popup.setPreferredSize(new Dimension(380, 280));
+        // 宽度 = cols * cellSize + gap*(cols-1) + grid padding(8) + scrollbar(~16) + popup padding(4)
+        int width = cols * cellSize + (cols - 1) + 8 + 18 + 4;
+        popup.setPreferredSize(new Dimension(width, 240));
         return popup;
     }
 
