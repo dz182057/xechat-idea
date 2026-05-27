@@ -34,3 +34,4 @@ build
 /xechat-plugin/.intellijPlatform/
 /.claude/
 /.tmp/
+/.codegraph/
