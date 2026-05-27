@@ -54,9 +54,11 @@ public class InputAction implements MainWindowInitializedEventListener {
      */
     private static JPanel privateBannerPanel;
     private static JLabel privateBannerLabel;
+    private static JPanel bannerStackPanel;
     private static JPanel quoteBannerPanel;
     private static JLabel quoteBannerLabel;
     private static ChatMessageRef quoteMessageRef;
+    private static final int LEFT_TOP_COMPLETION_HEIGHT = 100;
 
     /**
      * leftTopPanel 内部:原本的 @ 补全 JBList 放进这个容器(CENTER)。
@@ -157,7 +159,8 @@ public class InputAction implements MainWindowInitializedEventListener {
         leftTopPanel.setLayout(new BorderLayout(0, 0));
         leftTopPanel.removeAll();
 
-        JPanel bannerStack = new JPanel(new GridLayout(0, 1, 0, 0));
+        bannerStackPanel = new JPanel();
+        bannerStackPanel.setLayout(new BoxLayout(bannerStackPanel, BoxLayout.Y_AXIS));
 
         quoteBannerPanel = new JPanel(new BorderLayout(4, 0));
         quoteBannerPanel.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 4));
@@ -169,7 +172,6 @@ public class InputAction implements MainWindowInitializedEventListener {
         cancelQuoteBtn.addActionListener(e -> clearQuoteMessage());
         quoteBannerPanel.add(cancelQuoteBtn, BorderLayout.EAST);
         quoteBannerPanel.setVisible(false);
-        bannerStack.add(quoteBannerPanel);
 
         privateBannerPanel = new JPanel(new BorderLayout(4, 0));
         privateBannerPanel.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 4));
@@ -189,12 +191,11 @@ public class InputAction implements MainWindowInitializedEventListener {
         });
         privateBannerPanel.add(closeBtn, BorderLayout.EAST);
         privateBannerPanel.setVisible(false);
-        bannerStack.add(privateBannerPanel);
+        bannerStackPanel.setVisible(false);
 
         completionContainer = new JPanel(new BorderLayout());
 
-        leftTopPanel.add(bannerStack, BorderLayout.NORTH);
-        leftTopPanel.add(completionContainer, BorderLayout.CENTER);
+        leftTopPanel.add(bannerStackPanel, BorderLayout.NORTH);
         leftTopPanel.setVisible(false);
     }
 
@@ -208,11 +209,39 @@ public class InputAction implements MainWindowInitializedEventListener {
         }
         boolean bannerOn = (privateBannerPanel != null && privateBannerPanel.isVisible())
                 || (quoteBannerPanel != null && quoteBannerPanel.isVisible());
-        boolean completionOn = completionContainer != null && completionContainer.getComponentCount() > 0;
-        leftTopPanel.setVisible(bannerOn || completionOn);
-        if (!completionOn) {
-            leftTopPanel.setMinimumSize(new Dimension(0, 0));
+        boolean completionOn = completionContainer != null
+                && completionContainer.getParent() == leftTopPanel
+                && completionContainer.getComponentCount() > 0;
+        if (bannerStackPanel != null) {
+            bannerStackPanel.removeAll();
+            if (quoteBannerPanel != null && quoteBannerPanel.isVisible()) {
+                bannerStackPanel.add(quoteBannerPanel);
+            }
+            if (privateBannerPanel != null && privateBannerPanel.isVisible()) {
+                bannerStackPanel.add(privateBannerPanel);
+            }
+            bannerStackPanel.setVisible(bannerOn);
         }
+        leftTopPanel.setVisible(bannerOn || completionOn);
+        if (completionOn) {
+            leftTopPanel.setMinimumSize(new Dimension(0, LEFT_TOP_COMPLETION_HEIGHT));
+            leftTopPanel.setPreferredSize(new Dimension(0, LEFT_TOP_COMPLETION_HEIGHT));
+        } else {
+            leftTopPanel.setMinimumSize(new Dimension(0, 0));
+            leftTopPanel.setPreferredSize(null);
+        }
+        leftTopPanel.revalidate();
+        leftTopPanel.repaint();
+    }
+
+    private static void clearCompletion() {
+        if (completionContainer == null || leftTopPanel == null) {
+            return;
+        }
+        completionContainer.removeAll();
+        leftTopPanel.remove(completionContainer);
+        jbList = null;
+        refreshLeftTopVisibility();
     }
 
     private static void bindKeyListener() {
@@ -292,28 +321,42 @@ public class InputAction implements MainWindowInitializedEventListener {
 
     private static void atUserAndCommandTips(KeyEvent e) {
         boolean isAt = false;
+        boolean isToUser = false;
         List<String> dataList = null;
         String content = contentArea.getText();
         int caretPosition = contentArea.getCaretPosition();
         int atIndex = -1;
+        int replaceStart = 0;
         String commandPrefix = Command.COMMAND_PREFIX;
         if (content.startsWith(commandPrefix)) {
-            Map<String, String> commandMap = new LinkedHashMap<>();
-            for (Command command : Command.values()) {
-                commandMap.put(command.getCommand(), command.getCommand() + " (" + command.getDesc() + ")");
-            }
-
-            String command = content.substring(1);
-            if (StrUtil.isBlank(command)) {
-                dataList = new ArrayList<>(commandMap.values());
+            String commandContent = content.substring(0, caretPosition);
+            String toCommand = Command.TO.getCommand();
+            if (commandContent.startsWith(toCommand + " ")) {
+                isToUser = true;
+                replaceStart = toCommand.length();
+                while (replaceStart < caretPosition && Character.isWhitespace(content.charAt(replaceStart))) {
+                    replaceStart++;
+                }
+                String name = content.substring(replaceStart, caretPosition);
+                dataList = getPrivateChatUserCandidates(name);
             } else {
-                final List<String> matchList = new ArrayList<>();
-                commandMap.forEach((k, v) -> {
-                    if (k.toLowerCase().contains(command.toLowerCase()) || command.startsWith(k)) {
-                        matchList.add(v);
-                    }
-                });
-                dataList = matchList;
+                Map<String, String> commandMap = new LinkedHashMap<>();
+                for (Command command : Command.values()) {
+                    commandMap.put(command.getCommand(), command.getCommand() + " (" + command.getDesc() + ")");
+                }
+
+                String command = content.substring(1);
+                if (StrUtil.isBlank(command)) {
+                    dataList = new ArrayList<>(commandMap.values());
+                } else {
+                    final List<String> matchList = new ArrayList<>();
+                    commandMap.forEach((k, v) -> {
+                        if (k.toLowerCase().contains(command.toLowerCase()) || command.startsWith(k)) {
+                            matchList.add(v);
+                        }
+                    });
+                    dataList = matchList;
+                }
             }
         } else {
             if (DataCache.isOnline) {
@@ -359,12 +402,12 @@ public class InputAction implements MainWindowInitializedEventListener {
             }
         }
 
-        // 只清 @ 补全容器,banner 不动
-        completionContainer.removeAll();
-        refreshLeftTopVisibility();
+        // 只清补全容器,banner 不动
+        clearCompletion();
 
         if (CollectionUtil.isNotEmpty(dataList)) {
             boolean copyIsAt = isAt;
+            boolean copyIsToUser = isToUser;
             int copyAtIndex = atIndex;
 
             Runnable runnable = () -> {
@@ -380,13 +423,14 @@ public class InputAction implements MainWindowInitializedEventListener {
                 String value = selectedValue.toString();
                 if (copyIsAt) {
                     contentArea.replaceRange(value + " ", copyAtIndex + 1, caretPosition);
+                } else if (copyIsToUser) {
+                    contentArea.setText(Command.TO.getCommand() + " " + value);
                 } else {
                     contentArea.setText(value.substring(0, value.indexOf(" ")));
                 }
 
                 requestFocus();
-                completionContainer.removeAll();
-                refreshLeftTopVisibility();
+                clearCompletion();
             };
 
             jbList = new JBList();
@@ -413,7 +457,7 @@ public class InputAction implements MainWindowInitializedEventListener {
             scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
             scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
 
-            leftTopPanel.setMinimumSize(new Dimension(0, 100));
+            leftTopPanel.add(completionContainer, BorderLayout.CENTER);
             completionContainer.add(scrollPane, BorderLayout.CENTER);
             refreshLeftTopVisibility();
 
@@ -421,13 +465,40 @@ public class InputAction implements MainWindowInitializedEventListener {
                 String value = dataList.get(0);
                 if (copyIsAt) {
                     contentArea.replaceRange(value + " ", copyAtIndex + 1, caretPosition);
+                } else if (copyIsToUser) {
+                    contentArea.setText(Command.TO.getCommand() + " " + value);
                 } else {
                     contentArea.replaceRange(value.substring(0, value.indexOf(" ")), 0, caretPosition);
                 }
+                clearCompletion();
             }
         }
 
         leftTopPanel.updateUI();
+    }
+
+    private static List<String> getPrivateChatUserCandidates(String keyword) {
+        if (!DataCache.isOnline) {
+            return Collections.emptyList();
+        }
+
+        List<User> onlineUserList = new ArrayList<>(DataCache.userMap.values());
+        onlineUserList.sort((u1, u2) -> Integer.compare(u1.getRole().ordinal(), u2.getRole().ordinal()));
+
+        String lowerKeyword = keyword == null ? "" : keyword.toLowerCase();
+        List<String> users = new ArrayList<>();
+        onlineUserList.forEach(user -> {
+            String username = user.getUsername();
+            if (StringUtils.isBlank(username)
+                    || username.equals(DataCache.username)
+                    || StringUtils.isBlank(user.getAccount())) {
+                return;
+            }
+            if (StrUtil.isBlank(lowerKeyword) || username.toLowerCase().contains(lowerKeyword)) {
+                users.add(username);
+            }
+        });
+        return users;
     }
 
     private static void sendMsg() {
