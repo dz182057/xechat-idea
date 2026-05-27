@@ -14,6 +14,7 @@ import cn.xeblog.commons.entity.react.request.DownloadReact;
 import cn.xeblog.commons.entity.react.result.DownloadReactResult;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.Platform;
+import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.plugin.action.ConsoleAction;
 import cn.xeblog.plugin.action.ReactAction;
 import cn.xeblog.plugin.action.handler.ReactResultConsumer;
@@ -84,10 +85,11 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
         if (user.getRole() == User.Role.ADMIN) {
             roleDisplay = " ☆";
         }
+        UserStatus status = user.getStatus() == null ? UserStatus.FISHING : user.getStatus();
 
         ConsoleAction.renderText(
                 String.format("[%s][%s] %s (%s)%s%s：", response.getTime(), user.getShortRegion(), user.getUsername(),
-                        user.getStatus().getName(), platform, roleDisplay), Style.USER_NAME);
+                        status.getName(), platform, roleDisplay), Style.USER_NAME);
     }
 
     private void renderImage(Response<UserMsgDTO> response) {

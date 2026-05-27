@@ -7,6 +7,8 @@ import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserMsgDTO;
 import cn.xeblog.commons.enums.MessageType;
+import cn.xeblog.commons.enums.Platform;
+import cn.xeblog.commons.enums.UserStatus;
 import cn.hutool.json.JSONUtil;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.history.entity.Message;
@@ -144,6 +146,8 @@ public final class MessageHistoryService {
         User sender = new User();
         sender.setNickname(m.getSenderNickname());
         sender.setUsername(m.getSenderNickname());
+        sender.setStatus(UserStatus.FISHING);
+        sender.setPlatform(Platform.IDEA);
         if (m.getSenderAccountId() != null) {
             sender.setAccountId(m.getSenderAccountId());
         } else {
