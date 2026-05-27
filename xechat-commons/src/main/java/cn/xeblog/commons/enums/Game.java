@@ -21,6 +21,7 @@ public enum Game {
     CHINESE_CHESS("中国象棋", false),
     TETRIS("俄罗斯方块", false),
     MINESWEEPER("扫雷", false),
+    DRAW_GUESS("你画我猜", false),
     ;
 
     /**
