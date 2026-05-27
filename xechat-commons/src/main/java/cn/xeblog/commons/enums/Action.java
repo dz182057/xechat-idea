@@ -129,5 +129,10 @@ public enum Action {
     /**
      * 拉取与某 peer 的私聊密文历史
      */
-    PULL_PRIVATE_HISTORY;
+    PULL_PRIVATE_HISTORY,
+
+    /**
+     * 撤回消息
+     */
+    RECALL_MESSAGE;
 }

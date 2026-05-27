@@ -14,6 +14,7 @@ import cn.xeblog.commons.enums.Permissions;
 import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.annotation.DoReact;
 import cn.xeblog.server.config.GlobalConfig;
+import cn.xeblog.server.history.MessageHistoryService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -60,6 +61,9 @@ public class UploadReactHandler extends AbstractReactHandler<UploadReact, Upload
                     UserMsgDTO dto = new UserMsgDTO();
                     dto.setMsgType(UserMsgDTO.MsgType.IMAGE);
                     dto.setContent(filename);
+                    cn.xeblog.server.history.entity.Message saved = MessageHistoryService.savePublic(user, dto);
+                    dto.setServerId(saved.getId());
+                    dto.setServerCreatedAt(saved.getCreatedAt());
                     ChannelAction.send(user, dto, MessageType.USER);
                 } catch (Exception e) {
                     log.error("文件上传异常", e);

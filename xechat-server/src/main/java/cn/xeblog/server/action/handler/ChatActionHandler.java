@@ -48,8 +48,7 @@ public class ChatActionHandler extends AbstractActionHandler<UserMsgDTO> {
 
             BaiDuFyUtil baiDuFyUtil = Singleton.get(BaiDuFyUtil.class.getName(), () -> new BaiDuFyUtil("", ""));
             body.setContent(baiDuFyUtil.translate(SensitiveWordUtils.loveChina(msg)));
-        } else {
-            // 暂时不支持这种形式的消息，全部转为文本消息
+        } else if (body.getMsgType() != UserMsgDTO.MsgType.IMAGE) {
             body.setMsgType(UserMsgDTO.MsgType.TEXT);
         }
 

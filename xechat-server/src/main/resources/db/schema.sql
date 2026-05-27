@@ -93,7 +93,8 @@ CREATE TABLE IF NOT EXISTS messages_private (
     conv_max              INTEGER NOT NULL,       -- max(sender, recipient)
     iv                    TEXT    NOT NULL,       -- AES-GCM IV(base64url 12B)
     ciphertext            TEXT    NOT NULL,       -- AES-256-GCM 密文(base64url,含 tag)
-    version               TEXT    NOT NULL DEFAULT 'v1'  -- 信封版本
+    version               TEXT    NOT NULL DEFAULT 'v1', -- 信封版本
+    recalled_at           INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_messages_private_conv ON messages_private(conv_min, conv_max, id);
 
@@ -105,6 +106,8 @@ CREATE TABLE IF NOT EXISTS messages_public (
     sender_guest_uuid   TEXT,                         -- 游客 client uuid,注册用户为 null
     sender_nickname     TEXT    NOT NULL,             -- 冗余存当时昵称
     msg_type            TEXT    NOT NULL,             -- 'TEXT' / 'IMAGE'
-    content             TEXT    NOT NULL
+    content             TEXT    NOT NULL,
+    quote_json          TEXT,
+    recalled_at         INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_messages_public_created ON messages_public(created_at);

@@ -1,8 +1,12 @@
 package cn.xeblog.plugin.action.handler.message;
 
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.EncryptedEnvelopeDTO;
+import cn.xeblog.commons.entity.MessageQuoteDTO;
+import cn.xeblog.commons.entity.RecallMessageDTO;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
+import cn.xeblog.commons.entity.UserMsgDTO;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.Platform;
 import cn.xeblog.plugin.action.ConsoleAction;
@@ -10,6 +14,7 @@ import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.crypto.E2EECrypto;
 import cn.xeblog.plugin.crypto.E2EESessionService;
+import cn.xeblog.plugin.entity.ChatMessageRef;
 import cn.xeblog.plugin.enums.Style;
 import cn.xeblog.plugin.util.NotifyUtils;
 
@@ -53,8 +58,9 @@ public class PrivateUserMessageHandler extends AbstractMessageHandler<EncryptedE
                 return;
             }
             try {
-                String plaintext = E2EECrypto.decryptMessage(entry.sessionKey,
-                        env.getIv(), env.getCiphertext());
+                String plaintext = Boolean.TRUE.equals(env.getRecalled())
+                        ? ""
+                        : E2EECrypto.decryptMessage(entry.sessionKey, env.getIv(), env.getCiphertext());
                 renderPrivate(response, fromUser, entry, plaintext, isSelf);
             } catch (Exception ex) {
                 ConsoleAction.showSimpleMsg("[E2EE] 私聊解密失败: " + ex.getMessage());
@@ -79,6 +85,13 @@ public class PrivateUserMessageHandler extends AbstractMessageHandler<EncryptedE
         }
 
         ConsoleAction.atomicExec(() -> {
+            PrivatePayload payload = decodePayload(plaintext);
+            UserMsgDTO refBody = new UserMsgDTO(payload.content);
+            refBody.setServerId(response.getBody().getServerId());
+            refBody.setServerCreatedAt(response.getBody().getServerCreatedAt());
+            refBody.setMsgType(UserMsgDTO.MsgType.TEXT);
+            ChatMessageRef ref = ConsoleAction.beginMessage(isSelf ? DataCache.getCurrentUser() : fromUser,
+                    refBody, RecallMessageDTO.ConversationType.PRIVATE, payload.content);
             String time = response.getTime();
             String region = fromUser != null ? fromUser.getShortRegion() : "";
             String platform = fromUser != null && fromUser.getPlatform() == Platform.WEB ? " ༄" : " ♨";
@@ -91,13 +104,56 @@ public class PrivateUserMessageHandler extends AbstractMessageHandler<EncryptedE
                 header = String.format("[%s][%s][私聊←我] %s%s:", time, region, peerDisplay, platform);
             }
             ConsoleAction.renderText(header, Style.USER_NAME);
-            ConsoleAction.renderText(plaintext + "\n", Style.LIGHT);
+            renderQuote(payload.quote);
+            String content = Boolean.TRUE.equals(response.getBody().getRecalled())
+                    ? (isSelf ? "你撤回了一条消息" : "对方撤回了一条消息")
+                    : payload.content;
+            ConsoleAction.renderText(content + "\n", Style.LIGHT);
+            ConsoleAction.endMessage(ref);
 
             // 收到的私聊触发通知(自己发的不通知)
             if (!isSelf && DataCache.msgNotify != 3) {
-                NotifyUtils.info(peerDisplay, "[私聊] " + plaintext, true);
+                NotifyUtils.info(peerDisplay, "[私聊] " + content, true);
             }
         });
+    }
+
+    private void renderQuote(MessageQuoteDTO quote) {
+        if (quote == null) {
+            return;
+        }
+        String sender = quote.getSender() == null ? "未知" : quote.getSender();
+        String content = quote.getMsgType() == UserMsgDTO.MsgType.IMAGE ? "[图片]" : quote.getContent();
+        ConsoleAction.renderText("↪ 引用 " + sender + "：" + content + "\n", Style.LIGHT);
+    }
+
+    private PrivatePayload decodePayload(String plaintext) {
+        if (plaintext == null || !plaintext.startsWith("{")) {
+            return new PrivatePayload(plaintext == null ? "" : plaintext, null);
+        }
+        try {
+            cn.hutool.json.JSONObject obj = JSONUtil.parseObj(plaintext);
+            String content = obj.getStr("content");
+            if (content == null) {
+                return new PrivatePayload(plaintext, null);
+            }
+            MessageQuoteDTO quote = obj.get("quote") == null
+                    ? null
+                    : JSONUtil.toBean(obj.get("quote").toString(), MessageQuoteDTO.class);
+            return new PrivatePayload(content, quote);
+        } catch (Exception e) {
+            return new PrivatePayload(plaintext, null);
+        }
+    }
+
+    private static class PrivatePayload {
+        private final String content;
+        private final MessageQuoteDTO quote;
+
+        private PrivatePayload(String content, MessageQuoteDTO quote) {
+            this.content = content;
+            this.quote = quote;
+        }
     }
 
 }

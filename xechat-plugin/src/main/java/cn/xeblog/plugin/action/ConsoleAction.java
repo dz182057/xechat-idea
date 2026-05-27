@@ -1,6 +1,12 @@
 package cn.xeblog.plugin.action;
 
 import cn.hutool.core.util.StrUtil;
+import cn.xeblog.commons.entity.RecallMessageDTO;
+import cn.xeblog.commons.entity.User;
+import cn.xeblog.commons.entity.UserMsgDTO;
+import cn.xeblog.commons.enums.Action;
+import cn.xeblog.plugin.cache.DataCache;
+import cn.xeblog.plugin.entity.ChatMessageRef;
 import cn.xeblog.plugin.entity.TextRender;
 import cn.xeblog.plugin.enums.Command;
 import cn.xeblog.plugin.enums.Style;
@@ -17,6 +23,7 @@ import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +43,10 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
     private static JScrollPane consoleScroll;
 
     private static volatile boolean isNewLine;
+
+    private static final List<ChatMessageRef> MESSAGE_REFS = new ArrayList<>();
+
+    private static ChatMessageRef selectedMessageRef;
 
     @Override
     public void afterInit(MainWindow mainWindow) {
@@ -134,6 +145,47 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
         SwingUtilities.invokeLater(() -> verticalScrollBar.setValue(beforeScrollVal));
     }
 
+    public static ChatMessageRef beginMessage(User user, UserMsgDTO body,
+                                              RecallMessageDTO.ConversationType conversationType,
+                                              String summary) {
+        ChatMessageRef ref = new ChatMessageRef();
+        ref.setUser(user);
+        ref.setSummary(summary);
+        ref.setConversationType(conversationType);
+        if (body != null) {
+            ref.setMessageId(body.getServerId());
+            ref.setMsgType(body.getMsgType());
+            ref.setCreatedAt(body.getServerCreatedAt() == null ? System.currentTimeMillis() : body.getServerCreatedAt());
+        } else {
+            ref.setCreatedAt(System.currentTimeMillis());
+        }
+        ref.setStartOffset(console.getDocument().getLength());
+        return ref;
+    }
+
+    public static void endMessage(ChatMessageRef ref) {
+        if (ref == null) {
+            return;
+        }
+        ref.setEndOffset(console.getDocument().getLength());
+        MESSAGE_REFS.add(ref);
+    }
+
+    public static void bindImageMessage(JLabel label, ChatMessageRef ref) {
+        ref.setImageLabel(label);
+        label.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowMessagePopup(e, ref);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowMessagePopup(e, ref);
+            }
+        });
+    }
+
     public static void clean() {
         console.setText("");
     }
@@ -169,9 +221,90 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
     }
 
     private static void bindPopupMenu() {
-        JPopupMenu jPopupMenu = new JPopupMenu("右键菜单");
-        console.setComponentPopupMenu(jPopupMenu);
+        console.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowConsolePopup(e);
+            }
 
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowConsolePopup(e);
+            }
+        });
+    }
+
+    private static void maybeShowConsolePopup(MouseEvent e) {
+        if (!e.isPopupTrigger()) {
+            return;
+        }
+        ChatMessageRef ref = findMessageRef(console.viewToModel(e.getPoint()));
+        if (ref != null) {
+            showMessagePopup(ref, console, e.getX(), e.getY());
+            return;
+        }
+        buildDefaultPopup().show(console, e.getX(), e.getY());
+    }
+
+    private static void maybeShowMessagePopup(MouseEvent e, ChatMessageRef ref) {
+        if (e.isPopupTrigger()) {
+            showMessagePopup(ref, e.getComponent(), e.getX(), e.getY());
+        }
+    }
+
+    private static ChatMessageRef findMessageRef(int offset) {
+        for (int i = MESSAGE_REFS.size() - 1; i >= 0; i--) {
+            ChatMessageRef ref = MESSAGE_REFS.get(i);
+            if (offset >= ref.getStartOffset() && offset <= ref.getEndOffset()) {
+                return ref;
+            }
+        }
+        return null;
+    }
+
+    private static void showMessagePopup(ChatMessageRef ref, Component invoker, int x, int y) {
+        selectMessage(ref);
+        JPopupMenu popup = new JPopupMenu("消息菜单");
+        JMenuItem quoteItem = new JMenuItem("引用此消息");
+        quoteItem.setEnabled(ref.getMessageId() != null);
+        quoteItem.addActionListener(e -> InputAction.quoteMessage(ref));
+        popup.add(quoteItem);
+
+        JMenuItem recallItem = new JMenuItem("撤回此消息");
+        recallItem.setEnabled(ref.canRecall(DataCache.username));
+        recallItem.addActionListener(e -> {
+            int ok = JOptionPane.showConfirmDialog(panel,
+                    "确定撤回这条消息吗？\n" + ref.getSummary(),
+                    "撤回消息",
+                    JOptionPane.OK_CANCEL_OPTION);
+            if (ok != JOptionPane.OK_OPTION) {
+                return;
+            }
+            RecallMessageDTO dto = new RecallMessageDTO();
+            dto.setMessageId(ref.getMessageId());
+            dto.setConversationType(ref.getConversationType());
+            MessageAction.send(dto, Action.RECALL_MESSAGE);
+        });
+        popup.add(recallItem);
+        popup.show(invoker, x, y);
+    }
+
+    private static void selectMessage(ChatMessageRef ref) {
+        selectedMessageRef = ref;
+        console.requestFocusInWindow();
+        console.select(ref.getStartOffset(), ref.getEndOffset());
+        for (ChatMessageRef item : MESSAGE_REFS) {
+            if (item.getImageLabel() != null) {
+                item.getImageLabel().setBorder(null);
+            }
+        }
+        if (ref.getImageLabel() != null) {
+            ref.getImageLabel().setBorder(BorderFactory.createLineBorder(new Color(52, 129, 235), 1));
+        }
+    }
+
+    private static JPopupMenu buildDefaultPopup() {
+        JPopupMenu jPopupMenu = new JPopupMenu("右键菜单");
         JMenuItem copyItem = new JMenuItem("复制内容");
         copyItem.addActionListener(ev -> {
             String selectedText = console.getSelectedText();
@@ -224,6 +357,7 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
             ConsoleAction.showSimpleMsg(v.getCommand());
             v.exec();
         }));
+        return jPopupMenu;
     }
 
     public static void showSystemMsg(String time, String msg) {

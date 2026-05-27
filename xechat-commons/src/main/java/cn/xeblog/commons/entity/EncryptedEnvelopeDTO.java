@@ -70,4 +70,23 @@ public class EncryptedEnvelopeDTO implements Serializable {
      */
     private Long senderAccountId;
 
+    /**
+     * 是否已撤回。历史查询下行时用于让客户端不展示密文正文。
+     */
+    private Boolean recalled;
+
+    public EncryptedEnvelopeDTO(String version, String peerAccount, Long peerAccountId,
+                                String iv, String ciphertext, Long serverId,
+                                Long serverCreatedAt, Long senderAccountId) {
+        this.version = version;
+        this.peerAccount = peerAccount;
+        this.peerAccountId = peerAccountId;
+        this.iv = iv;
+        this.ciphertext = ciphertext;
+        this.serverId = serverId;
+        this.serverCreatedAt = serverCreatedAt;
+        this.senderAccountId = senderAccountId;
+        this.recalled = false;
+    }
+
 }

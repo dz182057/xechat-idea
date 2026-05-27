@@ -5,7 +5,9 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.EncryptedEnvelopeDTO;
+import cn.xeblog.commons.entity.MessageQuoteDTO;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserMsgDTO;
 import cn.xeblog.commons.enums.Action;
@@ -13,6 +15,7 @@ import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.crypto.E2EECrypto;
 import cn.xeblog.plugin.crypto.E2EESessionService;
 import cn.xeblog.plugin.enums.Command;
+import cn.xeblog.plugin.entity.ChatMessageRef;
 import cn.xeblog.plugin.listener.MainWindowInitializedEventListener;
 import cn.xeblog.plugin.ui.EmojiPicker;
 import cn.xeblog.plugin.ui.MainWindow;
@@ -51,6 +54,9 @@ public class InputAction implements MainWindowInitializedEventListener {
      */
     private static JPanel privateBannerPanel;
     private static JLabel privateBannerLabel;
+    private static JPanel quoteBannerPanel;
+    private static JLabel quoteBannerLabel;
+    private static ChatMessageRef quoteMessageRef;
 
     /**
      * leftTopPanel 内部:原本的 @ 补全 JBList 放进这个容器(CENTER)。
@@ -151,6 +157,20 @@ public class InputAction implements MainWindowInitializedEventListener {
         leftTopPanel.setLayout(new BorderLayout(0, 0));
         leftTopPanel.removeAll();
 
+        JPanel bannerStack = new JPanel(new GridLayout(0, 1, 0, 0));
+
+        quoteBannerPanel = new JPanel(new BorderLayout(4, 0));
+        quoteBannerPanel.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 4));
+        quoteBannerLabel = new JLabel(" ");
+        quoteBannerPanel.add(quoteBannerLabel, BorderLayout.CENTER);
+        JButton cancelQuoteBtn = new JButton("取消引用 ×");
+        cancelQuoteBtn.setMargin(new Insets(0, 6, 0, 6));
+        cancelQuoteBtn.setFocusable(false);
+        cancelQuoteBtn.addActionListener(e -> clearQuoteMessage());
+        quoteBannerPanel.add(cancelQuoteBtn, BorderLayout.EAST);
+        quoteBannerPanel.setVisible(false);
+        bannerStack.add(quoteBannerPanel);
+
         privateBannerPanel = new JPanel(new BorderLayout(4, 0));
         privateBannerPanel.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 4));
         privateBannerLabel = new JLabel(" ");
@@ -169,10 +189,11 @@ public class InputAction implements MainWindowInitializedEventListener {
         });
         privateBannerPanel.add(closeBtn, BorderLayout.EAST);
         privateBannerPanel.setVisible(false);
+        bannerStack.add(privateBannerPanel);
 
         completionContainer = new JPanel(new BorderLayout());
 
-        leftTopPanel.add(privateBannerPanel, BorderLayout.NORTH);
+        leftTopPanel.add(bannerStack, BorderLayout.NORTH);
         leftTopPanel.add(completionContainer, BorderLayout.CENTER);
         leftTopPanel.setVisible(false);
     }
@@ -185,7 +206,8 @@ public class InputAction implements MainWindowInitializedEventListener {
         if (leftTopPanel == null) {
             return;
         }
-        boolean bannerOn = privateBannerPanel != null && privateBannerPanel.isVisible();
+        boolean bannerOn = (privateBannerPanel != null && privateBannerPanel.isVisible())
+                || (quoteBannerPanel != null && quoteBannerPanel.isVisible());
         boolean completionOn = completionContainer != null && completionContainer.getComponentCount() > 0;
         leftTopPanel.setVisible(bannerOn || completionOn);
         if (!completionOn) {
@@ -486,13 +508,16 @@ public class InputAction implements MainWindowInitializedEventListener {
                         sendPrivateE2EE(content, toUsers);
                     } else {
                         // 显式 cast 避免与 UserMsgDTO(Object,MsgType) 重载二义性
-                        MessageAction.send(new UserMsgDTO(content, (String[]) null), Action.CHAT);
+                        UserMsgDTO dto = new UserMsgDTO(content, (String[]) null);
+                        dto.setQuote(buildQuote());
+                        MessageAction.send(dto, Action.CHAT);
                     }
                 } else {
                     ConsoleAction.showLoginMsg();
                 }
             }
             clean();
+            clearQuoteMessage();
         }
 
         ConsoleAction.gotoConsoleLow();
@@ -512,6 +537,7 @@ public class InputAction implements MainWindowInitializedEventListener {
             ConsoleAction.showSimpleMsg("E2EE 私钥未解锁,token 登录无法私聊,请 #exit 后用密码重登");
             return;
         }
+        String payload = buildPrivatePayload(content);
         for (String peerUsername : toUsers) {
             User peer = DataCache.getUser(peerUsername);
             if (peer == null) {
@@ -530,7 +556,7 @@ public class InputAction implements MainWindowInitializedEventListener {
                     return;
                 }
                 try {
-                    E2EECrypto.EncryptedMessage enc = E2EECrypto.encryptMessage(entry.sessionKey, content);
+                    E2EECrypto.EncryptedMessage enc = E2EECrypto.encryptMessage(entry.sessionKey, payload);
                     EncryptedEnvelopeDTO env = new EncryptedEnvelopeDTO();
                     env.setVersion("v1");
                     env.setPeerAccount(peerAccount);
@@ -592,6 +618,54 @@ public class InputAction implements MainWindowInitializedEventListener {
         } else {
             SwingUtilities.invokeLater(r);
         }
+    }
+
+    public static void quoteMessage(ChatMessageRef ref) {
+        Runnable r = () -> {
+            quoteMessageRef = ref;
+            if (quoteBannerPanel == null || quoteBannerLabel == null) {
+                return;
+            }
+            String sender = ref.getUser() == null ? "未知" : ref.getUser().getUsername();
+            quoteBannerLabel.setText(" 引用 @" + sender + "：" + ref.getSummary());
+            quoteBannerPanel.setVisible(true);
+            refreshLeftTopVisibility();
+            leftTopPanel.revalidate();
+            leftTopPanel.repaint();
+            requestFocus();
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            r.run();
+        } else {
+            SwingUtilities.invokeLater(r);
+        }
+    }
+
+    private static void clearQuoteMessage() {
+        quoteMessageRef = null;
+        if (quoteBannerPanel != null) {
+            quoteBannerPanel.setVisible(false);
+            refreshLeftTopVisibility();
+        }
+    }
+
+    private static MessageQuoteDTO buildQuote() {
+        if (quoteMessageRef == null || quoteMessageRef.getMessageId() == null) {
+            return null;
+        }
+        MessageQuoteDTO quote = new MessageQuoteDTO();
+        quote.setMessageId(quoteMessageRef.getMessageId());
+        quote.setSender(quoteMessageRef.getUser() == null ? "未知" : quoteMessageRef.getUser().getUsername());
+        quote.setMsgType(quoteMessageRef.getMsgType());
+        quote.setContent(quoteMessageRef.getSummary());
+        return quote;
+    }
+
+    private static String buildPrivatePayload(String content) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("content", content);
+        payload.put("quote", buildQuote());
+        return JSONUtil.toJsonStr(payload);
     }
 
     public static boolean requestFocus() {

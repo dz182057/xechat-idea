@@ -64,6 +64,18 @@ public final class PrivateMessageService {
         return msg;
     }
 
+    public static PrivateMessage findById(long id) {
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            return session.getMapper(PrivateMessageMapper.class).findById(id);
+        }
+    }
+
+    public static boolean markRecalled(long id, long recalledAt) {
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            return session.getMapper(PrivateMessageMapper.class).markRecalled(id, recalledAt) > 0;
+        }
+    }
+
     /**
      * 查与某 peer 的私聊密文历史。返回 (envelopes 按 id 升序, hasMore)。
      */
@@ -109,7 +121,8 @@ public final class PrivateMessageService {
                 m.getCiphertext(),
                 m.getId(),
                 m.getCreatedAt(),
-                m.getSenderAccountId());
+                m.getSenderAccountId(),
+                m.getRecalledAt() != null);
     }
 
     /**

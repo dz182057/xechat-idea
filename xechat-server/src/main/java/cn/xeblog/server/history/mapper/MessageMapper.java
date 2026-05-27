@@ -15,6 +15,10 @@ public interface MessageMapper {
 
     void insert(Message message);
 
+    Message findById(@Param("id") long id);
+
+    int markRecalled(@Param("id") long id, @Param("recalledAt") long recalledAt);
+
     /**
      * 按条件分页查询。
      * <ul>

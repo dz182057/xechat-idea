@@ -33,5 +33,7 @@ public class Message {
     private String senderNickname;
     private String msgType;
     private String content;
+    private String quoteJson;
+    private Long recalledAt;
 
 }

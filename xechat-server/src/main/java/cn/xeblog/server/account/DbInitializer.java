@@ -75,6 +75,7 @@ public final class DbInitializer {
 
             // 3. 首次启动建表
             ensureSchema();
+            ensureMessageColumns();
 
             log.info("账号体系数据库就绪: {}", GlobalConfig.DB_PATH);
         } catch (Exception e) {
@@ -119,6 +120,42 @@ public final class DbInitializer {
                 return rs.next();
             }
         }
+    }
+
+    /**
+     * 给已有 SQLite 数据库补齐聊天字段。SQLite 的 IF NOT EXISTS 不覆盖已存在表结构,
+     * 因此这里做轻量迁移。
+     */
+    private static void ensureMessageColumns() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true);
+             Connection conn = session.getConnection();
+             Statement st = conn.createStatement()) {
+            addColumnIfMissing(conn, st, "messages_public", "quote_json", "TEXT");
+            addColumnIfMissing(conn, st, "messages_public", "recalled_at", "INTEGER");
+            addColumnIfMissing(conn, st, "messages_private", "recalled_at", "INTEGER");
+        }
+    }
+
+    private static void addColumnIfMissing(Connection conn, Statement st, String tableName,
+                                           String columnName, String columnDef) throws Exception {
+        if (!tableExists(conn, tableName) || columnExists(conn, tableName, columnName)) {
+            return;
+        }
+        st.execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + columnDef);
+        log.info("数据库迁移: {} 增加字段 {}", tableName, columnName);
+    }
+
+    private static boolean columnExists(Connection conn, String tableName, String columnName) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("PRAGMA table_info(" + tableName + ")")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    if (columnName.equalsIgnoreCase(rs.getString("name"))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**

@@ -1,10 +1,13 @@
 package cn.xeblog.server.action.handler;
 
+import cn.hutool.core.util.ClassUtil;
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.react.request.ReactRequest;
 import cn.xeblog.commons.entity.react.result.ReactResult;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.server.annotation.DoAction;
+import cn.xeblog.server.action.handler.react.ReactHandler;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.factory.ReactHandlerFactory;
@@ -32,7 +35,15 @@ public class ReactActionHandler implements ActionHandler<ReactRequest> {
             result.setMsg("请先登录！");
         } else {
             try {
-                ReactHandlerFactory.INSTANCE.produce(request.getReact()).handle(user, request.getBody(), result);
+                ReactHandler handler = ReactHandlerFactory.INSTANCE.produce(request.getReact());
+                Object body = request.getBody();
+                Class<?> bodyClass = ClassUtil.getTypeArgument(handler.getClass());
+                if (body != null) {
+                    if (bodyClass != null && !bodyClass.isInstance(body)) {
+                        body = JSONUtil.toBean(body.toString(), bodyClass);
+                    }
+                }
+                handler.handle(user, body, result);
             } catch (Exception e) {
                 log.error("React请求处理异常", e);
             }

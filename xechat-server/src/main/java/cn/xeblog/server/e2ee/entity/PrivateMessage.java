@@ -32,5 +32,7 @@ public class PrivateMessage {
     private String ciphertext;
     /** 信封版本(默认 v1) */
     private String version;
+    /** 撤回时间 epoch ms,未撤回为 null */
+    private Long recalledAt;
 
 }

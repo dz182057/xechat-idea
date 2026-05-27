@@ -1,8 +1,6 @@
 package cn.xeblog.plugin.util;
 
-import cn.hutool.core.img.ImgUtil;
 import cn.hutool.core.io.FileTypeUtil;
-import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.xeblog.commons.entity.react.React;
 import cn.xeblog.commons.entity.react.request.UploadReact;
@@ -17,6 +15,10 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * @author anlingyi
@@ -25,19 +27,25 @@ import java.io.*;
 public class UploadUtils {
 
     private static boolean UPLOADING;
-    private static final String[] ACCEPT_IMAGE_TYPE = new String[]{
-            ImgUtil.IMAGE_TYPE_GIF,
-            ImgUtil.IMAGE_TYPE_JPG,
-            ImgUtil.IMAGE_TYPE_JPEG,
-            ImgUtil.IMAGE_TYPE_BMP,
-            ImgUtil.IMAGE_TYPE_PNG
-    };
+    private static final Set<String> IMAGE_EXTENSIONS = new HashSet<>(Arrays.asList(
+            "apng", "avif", "bmp", "gif", "heic", "heif", "ico", "jfif",
+            "jpeg", "jpg", "png", "svg", "tif", "tiff", "webp"
+    ));
 
     public static void uploadImageFile(File file) {
         try (BufferedInputStream inputStream = new BufferedInputStream(new FileInputStream(file))) {
             inputStream.mark(28);
             String fileType = FileTypeUtil.getType(inputStream);
-            if (!ArrayUtil.contains(ACCEPT_IMAGE_TYPE, fileType)) {
+            if (fileType == null) {
+                fileType = getExtension(file.getName());
+            }
+            String contentType = Files.probeContentType(file.toPath());
+            String extension = getExtension(file.getName());
+            boolean isImage = contentType != null
+                    ? contentType.startsWith("image/")
+                    : (fileType != null && IMAGE_EXTENSIONS.contains(fileType))
+                    || (extension != null && IMAGE_EXTENSIONS.contains(extension));
+            if (!isImage) {
                 throw new Exception("不支持的图片类型！");
             }
 
@@ -63,6 +71,14 @@ public class UploadUtils {
     private static String generateFileName(String fileType) {
         fileType = fileType == null ? "jpg" : fileType;
         return IdUtil.fastUUID() + "." + fileType;
+    }
+
+    private static String getExtension(String fileName) {
+        int idx = fileName == null ? -1 : fileName.lastIndexOf(".");
+        if (idx < 0 || idx == fileName.length() - 1) {
+            return null;
+        }
+        return fileName.substring(idx + 1).toLowerCase();
     }
 
     private static void sendImgAsync(byte[] bytes, String fileName) {

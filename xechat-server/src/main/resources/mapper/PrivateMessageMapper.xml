@@ -6,18 +6,30 @@
 
     <sql id="cols">
         id, created_at, sender_account_id, recipient_account_id,
-        conv_min, conv_max, iv, ciphertext, version
+        conv_min, conv_max, iv, ciphertext, version, recalled_at
     </sql>
 
     <insert id="insert" parameterType="cn.xeblog.server.e2ee.entity.PrivateMessage">
         INSERT INTO messages_private (
             id, created_at, sender_account_id, recipient_account_id,
-            conv_min, conv_max, iv, ciphertext, version
+            conv_min, conv_max, iv, ciphertext, version, recalled_at
         ) VALUES (
             #{id}, #{createdAt}, #{senderAccountId}, #{recipientAccountId},
-            #{convMin}, #{convMax}, #{iv}, #{ciphertext}, #{version}
+            #{convMin}, #{convMax}, #{iv}, #{ciphertext}, #{version}, #{recalledAt}
         )
     </insert>
+
+    <select id="findById" resultType="cn.xeblog.server.e2ee.entity.PrivateMessage">
+        SELECT <include refid="cols"/>
+        FROM messages_private
+        WHERE id = #{id}
+    </select>
+
+    <update id="markRecalled">
+        UPDATE messages_private
+        SET recalled_at = #{recalledAt}
+        WHERE id = #{id} AND recalled_at IS NULL
+    </update>
 
     <select id="query" resultType="cn.xeblog.server.e2ee.entity.PrivateMessage">
         SELECT <include refid="cols"/>

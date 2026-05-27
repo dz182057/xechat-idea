@@ -2,10 +2,12 @@ package cn.xeblog.server.history;
 
 import cn.hutool.core.util.IdUtil;
 import cn.xeblog.commons.entity.HistoryMsgDTO;
+import cn.xeblog.commons.entity.MessageQuoteDTO;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserMsgDTO;
 import cn.xeblog.commons.enums.MessageType;
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.history.entity.Message;
 import cn.xeblog.server.history.mapper.MessageMapper;
@@ -65,6 +67,7 @@ public final class MessageHistoryService {
                 .senderNickname(sender.getNickname())
                 .msgType(body.getMsgType() == null ? Message.MSG_TYPE_TEXT : body.getMsgType().name())
                 .content(body.getContent() == null ? "" : String.valueOf(body.getContent()))
+                .quoteJson(body.getQuote() == null ? null : JSONUtil.toJsonStr(body.getQuote()))
                 .build();
 
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
@@ -76,6 +79,18 @@ public final class MessageHistoryService {
                     msg.getContent().length(), e);
         }
         return msg;
+    }
+
+    public static Message findPublic(long id) {
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            return session.getMapper(MessageMapper.class).findById(id);
+        }
+    }
+
+    public static boolean markPublicRecalled(long id, long recalledAt) {
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            return session.getMapper(MessageMapper.class).markRecalled(id, recalledAt) > 0;
+        }
     }
 
     /**
@@ -128,8 +143,16 @@ public final class MessageHistoryService {
 
         UserMsgDTO body = new UserMsgDTO();
         body.setContent(m.getContent());
+        if (m.getQuoteJson() != null && !m.getQuoteJson().isEmpty()) {
+            try {
+                body.setQuote(JSONUtil.toBean(m.getQuoteJson(), MessageQuoteDTO.class));
+            } catch (Exception e) {
+                log.warn("公共历史引用解析失败 messageId={}", m.getId(), e);
+            }
+        }
         body.setServerId(m.getId());
         body.setServerCreatedAt(m.getCreatedAt());
+        body.setRecalled(m.getRecalledAt() != null);
         try {
             body.setMsgType(UserMsgDTO.MsgType.valueOf(m.getMsgType()));
         } catch (Exception e) {

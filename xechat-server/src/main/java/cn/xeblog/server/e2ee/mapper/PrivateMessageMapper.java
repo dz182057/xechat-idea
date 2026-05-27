@@ -15,6 +15,10 @@ public interface PrivateMessageMapper {
 
     void insert(PrivateMessage msg);
 
+    PrivateMessage findById(@Param("id") long id);
+
+    int markRecalled(@Param("id") long id, @Param("recalledAt") long recalledAt);
+
     /**
      * 按会话对(convMin, convMax)查密文历史;过滤 sinceMs / beforeId,id DESC,limit+1 用于判 hasMore。
      */

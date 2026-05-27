@@ -86,5 +86,10 @@ public enum MessageType {
     /**
      * 与某 peer 的私聊密文历史(PULL_PRIVATE_HISTORY 响应)
      */
-    PRIVATE_HISTORY;
+    PRIVATE_HISTORY,
+
+    /**
+     * 消息已撤回
+     */
+    MESSAGE_RECALLED;
 }

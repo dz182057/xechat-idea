@@ -2,6 +2,8 @@ package cn.xeblog.plugin.action.handler.message;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.thread.GlobalThreadPool;
+import cn.xeblog.commons.entity.MessageQuoteDTO;
+import cn.xeblog.commons.entity.RecallMessageDTO;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserMsgDTO;
@@ -15,6 +17,7 @@ import cn.xeblog.plugin.action.ReactAction;
 import cn.xeblog.plugin.action.handler.ReactResultConsumer;
 import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.cache.DataCache;
+import cn.xeblog.plugin.entity.ChatMessageRef;
 import cn.xeblog.plugin.enums.Style;
 import cn.xeblog.plugin.util.NotifyUtils;
 import com.intellij.ide.actions.OpenFileAction;
@@ -42,15 +45,20 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
     protected void process(Response<UserMsgDTO> response) {
         User user = response.getUser();
         UserMsgDTO body = response.getBody();
-        boolean isImage = body.getMsgType() == UserMsgDTO.MsgType.IMAGE;
+        boolean isImage = body.getMsgType() == UserMsgDTO.MsgType.IMAGE && !Boolean.TRUE.equals(body.getRecalled());
         if (isImage) {
             renderImage(response);
         } else {
             ConsoleAction.atomicExec(() -> {
+                ChatMessageRef ref = ConsoleAction.beginMessage(user, body,
+                        RecallMessageDTO.ConversationType.PUBLIC, summary(body));
                 renderName(response);
+                renderQuote(body.getQuote());
                 boolean notified = body.hasUser(DataCache.username);
                 Style style = Style.DEFAULT;
-                String msg = (String) body.getContent();
+                String msg = Boolean.TRUE.equals(body.getRecalled())
+                        ? (user.getUsername().equals(DataCache.username) ? "你撤回了一条消息" : "对方撤回了一条消息")
+                        : (String) body.getContent();
                 if (notified) {
                     style = Style.LIGHT;
                     if (!user.getUsername().equals(DataCache.username)) {
@@ -58,6 +66,7 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
                     }
                 }
                 ConsoleAction.renderText(msg + "\n", style);
+                ConsoleAction.endMessage(ref);
             });
         }
     }
@@ -155,9 +164,34 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
         }
 
         ConsoleAction.atomicExec(() -> {
+            ChatMessageRef ref = ConsoleAction.beginMessage(response.getUser(), body,
+                    RecallMessageDTO.ConversationType.PUBLIC, summary(body));
+            ConsoleAction.bindImageMessage(imgLabel, ref);
             renderName(response);
+            renderQuote(body.getQuote());
             ConsoleAction.renderImageLabel(imgLabel);
+            ConsoleAction.endMessage(ref);
         });
+    }
+
+    private void renderQuote(MessageQuoteDTO quote) {
+        if (quote == null) {
+            return;
+        }
+        String sender = quote.getSender() == null ? "未知" : quote.getSender();
+        String content = quote.getMsgType() == UserMsgDTO.MsgType.IMAGE ? "[图片]" : quote.getContent();
+        ConsoleAction.renderText("↪ 引用 " + sender + "：" + content + "\n", Style.LIGHT);
+    }
+
+    private String summary(UserMsgDTO body) {
+        if (body == null) {
+            return "";
+        }
+        if (body.getMsgType() == UserMsgDTO.MsgType.IMAGE) {
+            return "[图片]";
+        }
+        String text = body.getContent() == null ? "" : String.valueOf(body.getContent());
+        return text.length() > 80 ? text.substring(0, 80) : text;
     }
 
 }
