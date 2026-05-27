@@ -2,10 +2,13 @@ package cn.xeblog.plugin.util;
 
 import cn.hutool.core.io.FileTypeUtil;
 import cn.hutool.core.util.IdUtil;
+import cn.xeblog.commons.entity.UserMsgDTO;
 import cn.xeblog.commons.entity.react.React;
 import cn.xeblog.commons.entity.react.request.UploadReact;
 import cn.xeblog.commons.entity.react.result.UploadReactResult;
+import cn.xeblog.commons.enums.Action;
 import cn.xeblog.plugin.action.ConsoleAction;
+import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.action.ReactAction;
 import cn.xeblog.plugin.action.handler.ReactResultConsumer;
 import com.intellij.util.ui.ImageUtil;
@@ -33,6 +36,10 @@ public class UploadUtils {
     ));
 
     public static void uploadImageFile(File file) {
+        uploadImageFile(file, null);
+    }
+
+    public static void uploadImageFile(File file, String[] toUsers) {
         try (BufferedInputStream inputStream = new BufferedInputStream(new FileInputStream(file))) {
             inputStream.mark(28);
             String fileType = FileTypeUtil.getType(inputStream);
@@ -50,7 +57,7 @@ public class UploadUtils {
             }
 
             inputStream.reset();
-            sendImgAsync(IOUtils.toByteArray(inputStream), generateFileName(fileType));
+            sendImgAsync(IOUtils.toByteArray(inputStream), generateFileName(fileType), toUsers);
         } catch (Exception e) {
             e.printStackTrace();
             ConsoleAction.showSimpleMsg(e.getMessage());
@@ -58,10 +65,14 @@ public class UploadUtils {
     }
 
     public static void uploadImage(Image image) {
+        uploadImage(image, null);
+    }
+
+    public static void uploadImage(Image image, String[] toUsers) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             BufferedImage bufferedImage = ImageUtil.toBufferedImage(image);
             ImageIO.write(bufferedImage, "png", out);
-            sendImgAsync(out.toByteArray(), generateFileName("png"));
+            sendImgAsync(out.toByteArray(), generateFileName("png"), toUsers);
         } catch (IOException e) {
             e.printStackTrace();
             ConsoleAction.showSimpleMsg("图片上传失败！");
@@ -81,7 +92,7 @@ public class UploadUtils {
         return fileName.substring(idx + 1).toLowerCase();
     }
 
-    private static void sendImgAsync(byte[] bytes, String fileName) {
+    private static void sendImgAsync(byte[] bytes, String fileName, String[] toUsers) {
         if (UPLOADING) {
             ConsoleAction.showSimpleMsg("请等待之前的图片上传完成！");
             return;
@@ -93,10 +104,17 @@ public class UploadUtils {
         UploadReact uploadReact = new UploadReact();
         uploadReact.setFileType(fileName.substring(fileName.lastIndexOf(".") + 1));
         uploadReact.setBytes(bytes);
+        if (toUsers != null && toUsers.length > 0) {
+            uploadReact.setBroadcast(false);
+        }
         ReactAction.request(uploadReact, React.UPLOAD, 600, new ReactResultConsumer<UploadReactResult>() {
             @Override
             public void doSucceed(UploadReactResult body) {
                 UPLOADING = false;
+                if (toUsers != null && toUsers.length > 0) {
+                    UserMsgDTO dto = new UserMsgDTO(body.getFileName(), UserMsgDTO.MsgType.IMAGE, toUsers);
+                    MessageAction.send(dto, Action.CHAT);
+                }
                 ConsoleAction.showSimpleMsg("图片上传成功！");
             }
 

@@ -13,4 +13,9 @@ public class UploadReact {
 
     private byte[] bytes;
 
+    /**
+     * false 表示只上传文件,不让服务端自动广播图片消息。
+     */
+    private Boolean broadcast;
+
 }

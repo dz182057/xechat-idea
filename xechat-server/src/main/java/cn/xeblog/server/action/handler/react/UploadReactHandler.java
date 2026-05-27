@@ -30,47 +30,70 @@ public class UploadReactHandler extends AbstractReactHandler<UploadReact, Upload
 
     @Override
     protected void process(User user, UploadReact body, ReactResult<UploadReactResult> result) {
+        UploadReactResult data = saveImage(user, body.getFileType(), body.getBytes(), result);
+        if (data == null) {
+            return;
+        }
+
+        if (Boolean.FALSE.equals(body.getBroadcast())) {
+            return;
+        }
+
+        UserMsgDTO dto = new UserMsgDTO();
+        dto.setMsgType(UserMsgDTO.MsgType.IMAGE);
+        dto.setContent(data.getFileName());
+        cn.xeblog.server.history.entity.Message saved = MessageHistoryService.savePublic(user, dto);
+        dto.setServerId(saved.getId());
+        dto.setServerCreatedAt(saved.getCreatedAt());
+        ChannelAction.send(user, dto, MessageType.USER);
+    }
+
+    public static UploadReactResult saveImage(User user, String fileType, byte[] bytes, ReactResult<UploadReactResult> result) {
         if (!user.hasPermit(Permissions.SEND_FILE)) {
             result.setMsg("您没有上传文件的权限！");
-            return;
+            return null;
         }
         if (!Permissions.SEND_FILE.hasPermit(GlobalConfig.GLOBAL_PERMIT)) {
             result.setMsg("鱼塘已禁止发送文件！");
-            return;
+            return null;
         }
 
         int maxSize = GlobalConfig.UPLOAD_FILE_MAX_SIZE;
 
-        int len = ArrayUtil.length(body.getBytes());
+        int len = ArrayUtil.length(bytes);
         if (len > maxSize * 1024) {
             result.setMsg("发送的文件大小不能超过" + maxSize + "KB!");
-        } else {
-            String filePath = GlobalConfig.UPLOAD_FILE_PATH;
-            String filename = IdUtil.fastUUID() + "." + body.getFileType();
-            File imageFile = new File(filePath + "/" + filename);
-            if (!imageFile.exists()) {
-                FileUtil.mkdir(filePath);
-                try (FileOutputStream out = new FileOutputStream(imageFile)) {
-                    out.write(body.getBytes());
+            return null;
+        }
 
-                    UploadReactResult data = new UploadReactResult();
-                    data.setFileName(filename);
-                    result.setData(data);
-                    result.setSucceed(true);
+        String filePath = GlobalConfig.UPLOAD_FILE_PATH;
+        String filename = IdUtil.fastUUID() + "." + normalizeFileType(fileType);
+        File imageFile = new File(filePath + "/" + filename);
+        if (!imageFile.exists()) {
+            FileUtil.mkdir(filePath);
+            try (FileOutputStream out = new FileOutputStream(imageFile)) {
+                out.write(bytes);
 
-                    UserMsgDTO dto = new UserMsgDTO();
-                    dto.setMsgType(UserMsgDTO.MsgType.IMAGE);
-                    dto.setContent(filename);
-                    cn.xeblog.server.history.entity.Message saved = MessageHistoryService.savePublic(user, dto);
-                    dto.setServerId(saved.getId());
-                    dto.setServerCreatedAt(saved.getCreatedAt());
-                    ChannelAction.send(user, dto, MessageType.USER);
-                } catch (Exception e) {
-                    log.error("文件上传异常", e);
-                    result.setMsg("文件上传失败！");
-                }
+                UploadReactResult data = new UploadReactResult();
+                data.setFileName(filename);
+                result.setData(data);
+                result.setSucceed(true);
+                return data;
+            } catch (Exception e) {
+                log.error("文件上传异常", e);
+                result.setMsg("文件上传失败！");
             }
         }
+        return null;
+    }
+
+    private static String normalizeFileType(String fileType) {
+        if (fileType == null || fileType.trim().isEmpty()) {
+            return "png";
+        }
+        String clean = fileType.trim().toLowerCase();
+        clean = clean.replaceAll("[^a-z0-9]", "");
+        return clean.isEmpty() ? "png" : clean;
     }
 
 }

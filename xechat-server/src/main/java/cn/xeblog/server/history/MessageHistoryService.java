@@ -66,7 +66,7 @@ public final class MessageHistoryService {
                 .senderGuestUuid(sender.isGuest() ? sender.getUuid() : null)
                 .senderNickname(sender.getNickname())
                 .msgType(body.getMsgType() == null ? Message.MSG_TYPE_TEXT : body.getMsgType().name())
-                .content(body.getContent() == null ? "" : String.valueOf(body.getContent()))
+                .content(serializeContent(body.getContent()))
                 .quoteJson(body.getQuote() == null ? null : JSONUtil.toJsonStr(body.getQuote()))
                 .build();
 
@@ -79,6 +79,16 @@ public final class MessageHistoryService {
                     msg.getContent().length(), e);
         }
         return msg;
+    }
+
+    private static String serializeContent(Object content) {
+        if (content == null) {
+            return "";
+        }
+        if (content instanceof CharSequence) {
+            return String.valueOf(content);
+        }
+        return JSONUtil.toJsonStr(content);
     }
 
     public static Message findPublic(long id) {

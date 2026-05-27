@@ -21,7 +21,7 @@ public class HttpAndWebSocketChannelInitializer extends ChannelInitializer<Socke
         ch.pipeline()
                 .addLast(new IdleStateHandler(0, 0, 60))
                 .addLast(new HttpServerCodec())
-                .addLast(new HttpObjectAggregator(65536))
+                .addLast(new HttpObjectAggregator(4 * 1024 * 1024))
                 .addLast(new ChunkedWriteHandler())
                 .addLast(new WebSocketMessageEncoder())
                 .addLast(new WebSocketServerCompressionHandler())

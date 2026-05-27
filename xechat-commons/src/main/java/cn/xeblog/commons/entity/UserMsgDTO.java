@@ -19,6 +19,8 @@ public class UserMsgDTO implements Serializable {
 
     private String[] toUsers;
 
+    private String originalFileName;
+
     private MessageQuoteDTO quote;
 
     /**

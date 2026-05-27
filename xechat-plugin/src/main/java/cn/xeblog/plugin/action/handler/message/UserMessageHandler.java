@@ -2,6 +2,8 @@ package cn.xeblog.plugin.action.handler.message;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.thread.GlobalThreadPool;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.MessageQuoteDTO;
 import cn.xeblog.commons.entity.RecallMessageDTO;
 import cn.xeblog.commons.entity.Response;
@@ -31,6 +33,7 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.util.Map;
 
 /**
  * @author anlingyi
@@ -45,13 +48,16 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
     protected void process(Response<UserMsgDTO> response) {
         User user = response.getUser();
         UserMsgDTO body = response.getBody();
+        if (isPrivate(body) && !isPrivateVisibleToMe(user, body)) {
+            return;
+        }
         boolean isImage = body.getMsgType() == UserMsgDTO.MsgType.IMAGE && !Boolean.TRUE.equals(body.getRecalled());
         if (isImage) {
             renderImage(response);
         } else {
             ConsoleAction.atomicExec(() -> {
                 ChatMessageRef ref = ConsoleAction.beginMessage(user, body,
-                        RecallMessageDTO.ConversationType.PUBLIC, summary(body));
+                        conversationType(body), summary(body));
                 renderName(response);
                 renderQuote(body.getQuote());
                 boolean notified = body.hasUser(DataCache.username);
@@ -86,7 +92,7 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
 
     private void renderImage(Response<UserMsgDTO> response) {
         UserMsgDTO body = response.getBody();
-        String fileName = (String) body.getContent();
+        String fileName = imageFileName(body);
         String filePath = IMAGES_DIR + "/" + fileName;
         boolean existFile = new File(filePath).exists();
 
@@ -165,7 +171,7 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
 
         ConsoleAction.atomicExec(() -> {
             ChatMessageRef ref = ConsoleAction.beginMessage(response.getUser(), body,
-                    RecallMessageDTO.ConversationType.PUBLIC, summary(body));
+                    conversationType(body), summary(body));
             ConsoleAction.bindImageMessage(imgLabel, ref);
             renderName(response);
             renderQuote(body.getQuote());
@@ -192,6 +198,54 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
         }
         String text = body.getContent() == null ? "" : String.valueOf(body.getContent());
         return text.length() > 80 ? text.substring(0, 80) : text;
+    }
+
+    private boolean isPrivate(UserMsgDTO body) {
+        return body != null && body.getToUsers() != null && body.getToUsers().length > 0;
+    }
+
+    private boolean isPrivateVisibleToMe(User user, UserMsgDTO body) {
+        return body.hasUser(DataCache.username)
+                || (user != null && user.getUsername() != null && user.getUsername().equals(DataCache.username));
+    }
+
+    private RecallMessageDTO.ConversationType conversationType(UserMsgDTO body) {
+        return isPrivate(body) ? RecallMessageDTO.ConversationType.PRIVATE : RecallMessageDTO.ConversationType.PUBLIC;
+    }
+
+    private String imageFileName(UserMsgDTO body) {
+        Object content = body.getContent();
+        if (content instanceof CharSequence) {
+            String text = String.valueOf(content);
+            if (text.trim().startsWith("{")) {
+                try {
+                    content = JSONUtil.parseObj(text);
+                } catch (Exception ignored) {
+                    return text;
+                }
+            } else {
+                return text;
+            }
+        }
+        String fileName = readImageField(content, "fileName");
+        if (fileName == null) {
+            fileName = readImageField(content, "thumbFileName");
+        }
+        if (fileName == null) {
+            fileName = readImageField(content, "compressedFileName");
+        }
+        return fileName == null ? String.valueOf(content) : fileName;
+    }
+
+    private String readImageField(Object content, String key) {
+        if (content instanceof JSONObject) {
+            return ((JSONObject) content).getStr(key);
+        }
+        if (content instanceof Map) {
+            Object value = ((Map<?, ?>) content).get(key);
+            return value == null ? null : String.valueOf(value);
+        }
+        return null;
     }
 
 }

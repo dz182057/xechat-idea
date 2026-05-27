@@ -7,6 +7,7 @@ import cn.xeblog.commons.entity.react.request.ReactRequest;
 import cn.xeblog.commons.entity.react.result.ReactResult;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.server.annotation.DoAction;
+import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.action.handler.react.ReactHandler;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
@@ -30,7 +31,10 @@ public class ReactActionHandler implements ActionHandler<ReactRequest> {
         result.setUid(request.getUid());
         result.setMsg("请求无响应！");
 
-        User user = UserCache.get(request.getUid());
+        User user = ChannelAction.getUser(ctx);
+        if (user == null) {
+            user = UserCache.get(request.getUid());
+        }
         if (user == null) {
             result.setMsg("请先登录！");
         } else {

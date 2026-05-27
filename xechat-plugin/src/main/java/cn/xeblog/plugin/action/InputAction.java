@@ -301,22 +301,45 @@ public class InputAction implements MainWindowInitializedEventListener {
     }
 
     private static void pasteImage() {
+        String[] toUsers = getStickyImageToUsers();
+        if (DataCache.stickyPrivateTarget != null && toUsers == null) {
+            return;
+        }
         // 粘贴图片
         Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
         Transferable transferable = clipboard.getContents(null);
         try {
             if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
                 List<File> fileList = (List<File>) transferable.getTransferData(DataFlavor.javaFileListFlavor);
-                UploadUtils.uploadImageFile(fileList.get(0));
+                UploadUtils.uploadImageFile(fileList.get(0), toUsers);
                 clean();
             } else if (transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) {
                 Image image = (Image) transferable.getTransferData(DataFlavor.imageFlavor);
-                UploadUtils.uploadImage(image);
+                UploadUtils.uploadImage(image, toUsers);
                 clean();
             }
         } catch (Exception exception) {
             exception.printStackTrace();
         }
+    }
+
+    private static String[] getStickyImageToUsers() {
+        if (DataCache.stickyPrivateTarget == null) {
+            return null;
+        }
+        if (DataCache.guestMode) {
+            ConsoleAction.showSimpleMsg("游客模式不能私聊,请先用 #login {账号} {密码} 登录账号");
+            return null;
+        }
+        User stickyPeer = DataCache.getUser(DataCache.stickyPrivateTarget);
+        if (stickyPeer == null) {
+            ConsoleAction.showSimpleMsg("锁定的私聊对象 @" + DataCache.stickyPrivateTarget
+                    + " 已不在线,自动退出私聊模式");
+            DataCache.stickyPrivateTarget = null;
+            hidePrivateBanner();
+            return null;
+        }
+        return new String[]{DataCache.stickyPrivateTarget};
     }
 
     private static void atUserAndCommandTips(KeyEvent e) {
