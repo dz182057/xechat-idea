@@ -111,7 +111,7 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
                 }
             });
             imgLabel.setEnabled(true);
-            imgLabel.setText("查看图片");
+            imgLabel.setText("查看图片 " + shortImageName(fileName));
             imgLabel.setToolTipText("点击查看图片");
             ConsoleAction.updateUI();
         };
@@ -119,7 +119,7 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
         Runnable notExistFileRunnable = () -> {
             imgLabel.setEnabled(true);
             imgLabel.setToolTipText("点击下载图片");
-            imgLabel.setText("下载图片");
+            imgLabel.setText("下载图片 " + shortImageName(fileName));
 
             imgLabel.addMouseListener(new MouseAdapter() {
                 MouseListener mouseListener = this;
@@ -127,7 +127,7 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
                 public void mouseClicked(MouseEvent e) {
                     imgLabel.removeMouseListener(mouseListener);
                     imgLabel.setEnabled(false);
-                    imgLabel.setText("图片下载中...");
+                    imgLabel.setText("图片下载中 " + shortImageName(fileName) + "...");
                     imgLabel.setToolTipText("图片下载中...");
                     ConsoleAction.updateUI();
 
@@ -152,7 +152,7 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
                             @Override
                             public void doFailed(String msg) {
                                 imgLabel.setEnabled(true);
-                                imgLabel.setText("重新下载");
+                                imgLabel.setText("重新下载 " + shortImageName(fileName));
                                 imgLabel.setToolTipText("点击重新下载");
                                 imgLabel.addMouseListener(mouseListener);
                                 ConsoleAction.showSimpleMsg("图片下载失败！原因：" + msg);
@@ -172,6 +172,8 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
         ConsoleAction.atomicExec(() -> {
             ChatMessageRef ref = ConsoleAction.beginMessage(response.getUser(), body,
                     conversationType(body), summary(body));
+            ref.setImageFileName(fileName);
+            ref.setImageFilePath(filePath);
             ConsoleAction.bindImageMessage(imgLabel, ref);
             renderName(response);
             renderQuote(body.getQuote());
@@ -185,8 +187,28 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
             return;
         }
         String sender = quote.getSender() == null ? "未知" : quote.getSender();
-        String content = quote.getMsgType() == UserMsgDTO.MsgType.IMAGE ? "[图片]" : quote.getContent();
+        String content = quote.getMsgType() == UserMsgDTO.MsgType.IMAGE
+                ? imageQuoteDisplay(quote.getContent())
+                : quote.getContent();
         ConsoleAction.renderText("↪ 引用 " + sender + "：" + content + "\n", Style.LIGHT);
+    }
+
+    private String imageQuoteDisplay(String content) {
+        if (content == null || content.isEmpty() || "[图片]".equals(content)) {
+            return "[图片]";
+        }
+        String fileName = content.startsWith("[图片]") ? content.substring("[图片]".length()).trim() : content;
+        if (fileName.length() > 16) {
+            fileName = fileName.substring(0, 8) + "..." + fileName.substring(fileName.length() - 8);
+        }
+        return "[图片] " + fileName;
+    }
+
+    private String shortImageName(String fileName) {
+        if (fileName == null || fileName.length() <= 16) {
+            return fileName;
+        }
+        return fileName.substring(0, 8) + "..." + fileName.substring(fileName.length() - 8);
     }
 
     private String summary(UserMsgDTO body) {

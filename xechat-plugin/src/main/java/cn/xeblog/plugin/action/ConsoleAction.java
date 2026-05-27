@@ -4,25 +4,36 @@ import cn.hutool.core.util.StrUtil;
 import cn.xeblog.commons.entity.RecallMessageDTO;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserMsgDTO;
+import cn.xeblog.commons.entity.react.React;
+import cn.xeblog.commons.entity.react.request.DownloadReact;
+import cn.xeblog.commons.entity.react.result.DownloadReactResult;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.entity.ChatMessageRef;
 import cn.xeblog.plugin.entity.TextRender;
 import cn.xeblog.plugin.enums.Command;
 import cn.xeblog.plugin.enums.Style;
+import cn.xeblog.plugin.action.handler.ReactResultConsumer;
 import cn.xeblog.plugin.listener.MainWindowInitializedEventListener;
 import cn.xeblog.plugin.mode.ModeContext;
 import cn.xeblog.plugin.ui.MainWindow;
 import com.intellij.ide.BrowserUtil;
+import cn.hutool.core.thread.GlobalThreadPool;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import javax.swing.text.*;
 import java.awt.*;
 import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -151,11 +162,16 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
         ChatMessageRef ref = new ChatMessageRef();
         ref.setUser(user);
         ref.setSummary(summary);
+        ref.setCopyContent(summary);
         ref.setConversationType(conversationType);
         if (body != null) {
             ref.setMessageId(body.getServerId());
             ref.setMsgType(body.getMsgType());
             ref.setCreatedAt(body.getServerCreatedAt() == null ? System.currentTimeMillis() : body.getServerCreatedAt());
+            ref.setRecalled(Boolean.TRUE.equals(body.getRecalled()));
+            if (body.getMsgType() == UserMsgDTO.MsgType.TEXT && body.getContent() != null) {
+                ref.setCopyContent(String.valueOf(body.getContent()));
+            }
         } else {
             ref.setCreatedAt(System.currentTimeMillis());
         }
@@ -234,6 +250,20 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
         });
     }
 
+    public static void markMessageRecalled(Long messageId) {
+        if (messageId == null) {
+            return;
+        }
+        for (ChatMessageRef ref : MESSAGE_REFS) {
+            if (messageId.equals(ref.getMessageId())) {
+                ref.setRecalled(true);
+                if (selectedMessageRef == ref && ref.getImageLabel() != null) {
+                    ref.getImageLabel().setBorder(null);
+                }
+            }
+        }
+    }
+
     private static void maybeShowConsolePopup(MouseEvent e) {
         if (!e.isPopupTrigger()) {
             return;
@@ -265,8 +295,13 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
     private static void showMessagePopup(ChatMessageRef ref, Component invoker, int x, int y) {
         selectMessage(ref);
         JPopupMenu popup = new JPopupMenu("消息菜单");
+        JMenuItem copyItem = new JMenuItem("复制内容");
+        copyItem.setEnabled(!ref.isRecalled());
+        copyItem.addActionListener(e -> copyMessage(ref));
+        popup.add(copyItem);
+
         JMenuItem quoteItem = new JMenuItem("引用此消息");
-        quoteItem.setEnabled(ref.getMessageId() != null);
+        quoteItem.setEnabled(ref.canQuote());
         quoteItem.addActionListener(e -> InputAction.quoteMessage(ref));
         popup.add(quoteItem);
 
@@ -287,6 +322,74 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
         });
         popup.add(recallItem);
         popup.show(invoker, x, y);
+    }
+
+    private static void copyMessage(ChatMessageRef ref) {
+        if (ref.getMsgType() == UserMsgDTO.MsgType.IMAGE) {
+            copyImageMessage(ref);
+            return;
+        }
+        copyText(StrUtil.blankToDefault(ref.getCopyContent(), ref.getSummary()));
+    }
+
+    private static void copyText(String text) {
+        if (StrUtil.isBlank(text)) {
+            return;
+        }
+        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+        clipboard.setContents(new StringSelection(text), null);
+    }
+
+    private static void copyImageMessage(ChatMessageRef ref) {
+        if (StrUtil.isBlank(ref.getImageFileName()) || StrUtil.isBlank(ref.getImageFilePath())) {
+            ConsoleAction.showSimpleMsg("图片信息不完整，无法复制");
+            return;
+        }
+        File imageFile = new File(ref.getImageFilePath());
+        if (imageFile.exists()) {
+            copyImageFile(imageFile);
+            return;
+        }
+
+        ConsoleAction.showSimpleMsg("图片下载中...");
+        GlobalThreadPool.execute(() -> ReactAction.request(new DownloadReact(ref.getImageFileName()), React.DOWNLOAD, 300,
+                new ReactResultConsumer<DownloadReactResult>() {
+                    @Override
+                    public void doSucceed(DownloadReactResult body) {
+                        try {
+                            File parent = imageFile.getParentFile();
+                            if (parent != null && !parent.exists()) {
+                                parent.mkdirs();
+                            }
+                            try (FileOutputStream out = new FileOutputStream(imageFile)) {
+                                out.write(body.getBytes());
+                            }
+                            copyImageFile(imageFile);
+                        } catch (Exception exception) {
+                            ConsoleAction.showSimpleMsg("图片复制失败：" + exception.getMessage());
+                        }
+                    }
+
+                    @Override
+                    public void doFailed(String msg) {
+                        ConsoleAction.showSimpleMsg("图片下载失败！原因：" + msg);
+                    }
+                }));
+    }
+
+    private static void copyImageFile(File imageFile) {
+        try {
+            Image image = ImageIO.read(imageFile);
+            if (image == null) {
+                ConsoleAction.showSimpleMsg("图片读取失败，无法复制");
+                return;
+            }
+            Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+            clipboard.setContents(new ImageSelection(image), null);
+            ConsoleAction.showSimpleMsg("图片已复制");
+        } catch (IOException e) {
+            ConsoleAction.showSimpleMsg("图片复制失败：" + e.getMessage());
+        }
     }
 
     private static void selectMessage(ChatMessageRef ref) {
@@ -358,6 +461,30 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
             v.exec();
         }));
         return jPopupMenu;
+    }
+
+    private static class ImageSelection implements Transferable {
+
+        private final Image image;
+
+        private ImageSelection(Image image) {
+            this.image = image;
+        }
+
+        @Override
+        public DataFlavor[] getTransferDataFlavors() {
+            return new DataFlavor[]{DataFlavor.imageFlavor};
+        }
+
+        @Override
+        public boolean isDataFlavorSupported(DataFlavor flavor) {
+            return DataFlavor.imageFlavor.equals(flavor);
+        }
+
+        @Override
+        public Object getTransferData(DataFlavor flavor) {
+            return image;
+        }
     }
 
     public static void showSystemMsg(String time, String msg) {

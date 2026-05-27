@@ -1,6 +1,8 @@
 package cn.xeblog.plugin.action.handler.message;
 
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.EncryptedEnvelopeDTO;
+import cn.xeblog.commons.entity.UserMsgDTO;
 import cn.xeblog.commons.entity.PullPrivateHistoryDTO;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.enums.MessageType;
@@ -61,8 +63,9 @@ public class PrivateHistoryMessageHandler extends AbstractMessageHandler<PullPri
                         String header = isSelf
                                 ? String.format("[%s][私聊→%s] 我:", time, peerName)
                                 : String.format("[%s][私聊←我] %s:", time, peerName);
+                        PrivatePayload payload = decodePayload(plaintext);
                         ConsoleAction.renderText(header, Style.USER_NAME);
-                        ConsoleAction.renderText(plaintext + "\n", Style.LIGHT);
+                        ConsoleAction.renderText(payload.displayText() + "\n", Style.LIGHT);
                     } catch (Exception ex) {
                         ConsoleAction.renderText("[解密失败] serverId=" + env.getServerId()
                                 + ": " + ex.getMessage() + "\n", Style.WARN);
@@ -71,6 +74,42 @@ public class PrivateHistoryMessageHandler extends AbstractMessageHandler<PullPri
                 ConsoleAction.renderText("====== 历史结束 ======\n", Style.SYSTEM_MSG);
             });
         });
+    }
+
+    private PrivatePayload decodePayload(String plaintext) {
+        String text = plaintext == null ? "" : plaintext.trim();
+        if (!text.startsWith("{")) {
+            return new PrivatePayload(plaintext == null ? "" : plaintext, UserMsgDTO.MsgType.TEXT);
+        }
+        try {
+            cn.hutool.json.JSONObject obj = JSONUtil.parseObj(text);
+            String content = obj.getStr("content");
+            if (content == null) {
+                return new PrivatePayload(plaintext, UserMsgDTO.MsgType.TEXT);
+            }
+            UserMsgDTO.MsgType msgType = UserMsgDTO.MsgType.TEXT;
+            try {
+                msgType = UserMsgDTO.MsgType.valueOf(obj.getStr("msgType", UserMsgDTO.MsgType.TEXT.name()));
+            } catch (Exception ignored) {
+            }
+            return new PrivatePayload(content, msgType);
+        } catch (Exception e) {
+            return new PrivatePayload(plaintext, UserMsgDTO.MsgType.TEXT);
+        }
+    }
+
+    private static class PrivatePayload {
+        private final String content;
+        private final UserMsgDTO.MsgType msgType;
+
+        private PrivatePayload(String content, UserMsgDTO.MsgType msgType) {
+            this.content = content;
+            this.msgType = msgType;
+        }
+
+        private String displayText() {
+            return msgType == UserMsgDTO.MsgType.IMAGE ? "[图片] " + content : content;
+        }
     }
 
 }

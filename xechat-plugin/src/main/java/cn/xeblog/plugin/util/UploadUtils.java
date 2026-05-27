@@ -1,16 +1,25 @@
 package cn.xeblog.plugin.util;
 
 import cn.hutool.core.io.FileTypeUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.json.JSONUtil;
+import cn.xeblog.commons.entity.EncryptedEnvelopeDTO;
+import cn.xeblog.commons.entity.MessageQuoteDTO;
+import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserMsgDTO;
 import cn.xeblog.commons.entity.react.React;
 import cn.xeblog.commons.entity.react.request.UploadReact;
 import cn.xeblog.commons.entity.react.result.UploadReactResult;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.plugin.action.ConsoleAction;
+import cn.xeblog.plugin.action.InputAction;
 import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.action.ReactAction;
 import cn.xeblog.plugin.action.handler.ReactResultConsumer;
+import cn.xeblog.plugin.cache.DataCache;
+import cn.xeblog.plugin.crypto.E2EECrypto;
+import cn.xeblog.plugin.crypto.E2EESessionService;
 import com.intellij.util.ui.ImageUtil;
 import org.apache.commons.io.IOUtils;
 
@@ -21,6 +30,8 @@ import java.io.*;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -104,17 +115,22 @@ public class UploadUtils {
         UploadReact uploadReact = new UploadReact();
         uploadReact.setFileType(fileName.substring(fileName.lastIndexOf(".") + 1));
         uploadReact.setBytes(bytes);
-        if (toUsers != null && toUsers.length > 0) {
-            uploadReact.setBroadcast(false);
-        }
+        uploadReact.setBroadcast(false);
         ReactAction.request(uploadReact, React.UPLOAD, 600, new ReactResultConsumer<UploadReactResult>() {
             @Override
             public void doSucceed(UploadReactResult body) {
                 UPLOADING = false;
+                MessageQuoteDTO quote = InputAction.currentQuote();
                 if (toUsers != null && toUsers.length > 0) {
-                    UserMsgDTO dto = new UserMsgDTO(body.getFileName(), UserMsgDTO.MsgType.IMAGE, toUsers);
-                    MessageAction.send(dto, Action.CHAT);
+                    sendPrivateImage(body.getFileName(), toUsers, quote);
+                    InputAction.clearQuoteMessage();
+                    ConsoleAction.showSimpleMsg("图片上传成功！");
+                    return;
                 }
+                UserMsgDTO dto = new UserMsgDTO(body.getFileName(), UserMsgDTO.MsgType.IMAGE, toUsers);
+                dto.setQuote(quote);
+                MessageAction.send(dto, Action.CHAT);
+                InputAction.clearQuoteMessage();
                 ConsoleAction.showSimpleMsg("图片上传成功！");
             }
 
@@ -124,5 +140,53 @@ public class UploadUtils {
                 ConsoleAction.showSimpleMsg("图片上传失败！原因：" + msg);
             }
         });
+    }
+
+    private static void sendPrivateImage(String fileName, String[] toUsers, MessageQuoteDTO quote) {
+        if (DataCache.identityPrivKey == null) {
+            ConsoleAction.showSimpleMsg("E2EE 私钥未解锁,token 登录无法私聊,请 #exit 后用密码重登");
+            return;
+        }
+        String payload = buildPrivateImagePayload(fileName, quote);
+        for (String peerUsername : toUsers) {
+            User peer = DataCache.getUser(peerUsername);
+            if (peer == null) {
+                ConsoleAction.showSimpleMsg("找不到用户: " + peerUsername);
+                continue;
+            }
+            String peerAccount = peer.getAccount();
+            if (StrUtil.isBlank(peerAccount)) {
+                ConsoleAction.showSimpleMsg(peerUsername + " 是游客,不能私聊");
+                continue;
+            }
+            DataCache.peerAccountByUsername.put(peerUsername, peerAccount);
+            E2EESessionService.ensureSessionKey(peerAccount).whenComplete((entry, err) -> {
+                if (err != null) {
+                    ConsoleAction.showSimpleMsg("E2EE 派生会话密钥失败(" + peerUsername + "): " + err.getMessage());
+                    return;
+                }
+                try {
+                    E2EECrypto.EncryptedMessage enc = E2EECrypto.encryptMessage(entry.sessionKey, payload);
+                    EncryptedEnvelopeDTO env = new EncryptedEnvelopeDTO();
+                    env.setVersion("v1");
+                    env.setPeerAccount(peerAccount);
+                    env.setPeerAccountId(entry.accountId);
+                    env.setIv(enc.iv);
+                    env.setCiphertext(enc.ciphertext);
+                    MessageAction.send(env, Action.PRIVATE_CHAT);
+                } catch (Exception ex) {
+                    ConsoleAction.showSimpleMsg("E2EE 加密失败(" + peerUsername + "): " + ex.getMessage());
+                }
+            });
+        }
+    }
+
+    private static String buildPrivateImagePayload(String fileName, MessageQuoteDTO quote) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("content", fileName);
+        payload.put("msgType", UserMsgDTO.MsgType.IMAGE.name());
+        payload.put("originalFileName", null);
+        payload.put("quote", quote);
+        return JSONUtil.toJsonStr(payload);
     }
 }

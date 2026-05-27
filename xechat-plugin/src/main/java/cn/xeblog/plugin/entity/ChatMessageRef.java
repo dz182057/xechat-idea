@@ -22,11 +22,15 @@ public class ChatMessageRef {
 
     private String summary;
 
+    private String copyContent;
+
     private UserMsgDTO.MsgType msgType;
 
     private RecallMessageDTO.ConversationType conversationType;
 
     private long createdAt;
+
+    private boolean recalled;
 
     private int startOffset;
 
@@ -34,8 +38,17 @@ public class ChatMessageRef {
 
     private JLabel imageLabel;
 
+    private String imageFileName;
+
+    private String imageFilePath;
+
+    public boolean canQuote() {
+        return messageId != null && !recalled;
+    }
+
     public boolean canRecall(String currentUsername) {
         return messageId != null
+                && !recalled
                 && user != null
                 && currentUsername != null
                 && currentUsername.equals(user.getUsername())

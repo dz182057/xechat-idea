@@ -721,7 +721,7 @@ public class InputAction implements MainWindowInitializedEventListener {
                 return;
             }
             String sender = ref.getUser() == null ? "未知" : ref.getUser().getUsername();
-            quoteBannerLabel.setText(" 引用 @" + sender + "：" + ref.getSummary());
+            quoteBannerLabel.setText(" 引用 @" + sender + "：" + quoteDisplay(ref));
             quoteBannerPanel.setVisible(true);
             refreshLeftTopVisibility();
             leftTopPanel.revalidate();
@@ -735,12 +735,23 @@ public class InputAction implements MainWindowInitializedEventListener {
         }
     }
 
-    private static void clearQuoteMessage() {
-        quoteMessageRef = null;
-        if (quoteBannerPanel != null) {
-            quoteBannerPanel.setVisible(false);
-            refreshLeftTopVisibility();
+    public static void clearQuoteMessage() {
+        Runnable r = () -> {
+            quoteMessageRef = null;
+            if (quoteBannerPanel != null) {
+                quoteBannerPanel.setVisible(false);
+                refreshLeftTopVisibility();
+            }
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            r.run();
+        } else {
+            SwingUtilities.invokeLater(r);
         }
+    }
+
+    public static MessageQuoteDTO currentQuote() {
+        return buildQuote();
     }
 
     private static MessageQuoteDTO buildQuote() {
@@ -751,8 +762,26 @@ public class InputAction implements MainWindowInitializedEventListener {
         quote.setMessageId(quoteMessageRef.getMessageId());
         quote.setSender(quoteMessageRef.getUser() == null ? "未知" : quoteMessageRef.getUser().getUsername());
         quote.setMsgType(quoteMessageRef.getMsgType());
-        quote.setContent(quoteMessageRef.getSummary());
+        quote.setContent(quoteMessageRef.getMsgType() == UserMsgDTO.MsgType.IMAGE
+                && StrUtil.isNotBlank(quoteMessageRef.getImageFileName())
+                ? quoteMessageRef.getImageFileName()
+                : quoteMessageRef.getSummary());
         return quote;
+    }
+
+    private static String quoteDisplay(ChatMessageRef ref) {
+        if (ref.getMsgType() != UserMsgDTO.MsgType.IMAGE) {
+            return ref.getSummary();
+        }
+        String fileName = StrUtil.blankToDefault(ref.getImageFileName(), ref.getSummary());
+        return "[图片] " + shortImageName(fileName);
+    }
+
+    private static String shortImageName(String fileName) {
+        if (StrUtil.isBlank(fileName) || fileName.length() <= 16) {
+            return fileName;
+        }
+        return fileName.substring(0, 8) + "..." + fileName.substring(fileName.length() - 8);
     }
 
     private static String buildPrivatePayload(String content) {
