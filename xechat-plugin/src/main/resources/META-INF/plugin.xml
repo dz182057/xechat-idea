@@ -26,6 +26,7 @@
                            key="xechat-idea"/>
         <applicationConfigurable parentId="tools" instance="cn.xeblog.plugin.setting.PluginConfigSetting"
                                  id="cn.xeblog.xechat.setting" displayName="XEChat"/>
+        <postStartupActivity implementation="cn.xeblog.plugin.listener.DevFileLogStartupActivity"/>
     </extensions>
 
     <actions>

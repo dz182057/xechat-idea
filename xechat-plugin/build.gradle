@@ -62,6 +62,10 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+tasks.named('runIde') {
+    systemProperty 'xechat.plugin.dev.log.file', file("${projectDir.parentFile}/logs/xechat-plugin-runIde.log").absolutePath
+}
+
 // E2EE 加密原语 self-check: 用独立 JavaExec 跑,绕开 IntelliJ Platform 给 test
 // 任务注入的 -Djna.boot.library.path=<IDE/lib/jna> 配置(那里是 jnidispatch 7.0.2,
 // 与 argon2-jvm 期待的 6.1.1 不兼容)。命令: ./gradlew :xechat-plugin:e2eeCheck
