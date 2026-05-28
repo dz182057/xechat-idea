@@ -36,3 +36,4 @@ build
 /.tmp/
 /.codegraph/
 /logs/
+/AGENTS.md

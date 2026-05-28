@@ -78,6 +78,7 @@ public final class DbInitializer {
             ensureMessageColumns();
             ensureDrawGuessWordTable();
             ensureQuickQuizTables();
+            ensureTurtleSoupTables();
 
             log.info("账号体系数据库就绪: {}", GlobalConfig.DB_PATH);
         } catch (Exception e) {
@@ -195,6 +196,59 @@ public final class DbInitializer {
                 st.execute("CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question " +
                         "ON quick_quiz_records(room_id, question_id)");
                 log.info("数据库迁移: 创建 quick_quiz_records 表");
+            }
+        }
+    }
+
+    /**
+     * 给已有数据库补齐海龟汤题库和历史记录表。
+     */
+    private static void ensureTurtleSoupTables() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true);
+             Connection conn = session.getConnection();
+             Statement st = conn.createStatement()) {
+            if (!tableExists(conn, "turtle_soup_stories")) {
+                st.execute("CREATE TABLE turtle_soup_stories (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "title TEXT," +
+                        "surface TEXT NOT NULL UNIQUE," +
+                        "bottom TEXT NOT NULL," +
+                        "difficulty TEXT," +
+                        "tags TEXT," +
+                        "sort_order INTEGER NOT NULL DEFAULT 0," +
+                        "active INTEGER NOT NULL DEFAULT 1," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                log.info("数据库迁移: 创建 turtle_soup_stories 表");
+            } else {
+                addColumnIfMissing(conn, st, "turtle_soup_stories", "title", "TEXT");
+                addColumnIfMissing(conn, st, "turtle_soup_stories", "difficulty", "TEXT");
+            }
+            if (!tableExists(conn, "turtle_soup_records")) {
+                st.execute("CREATE TABLE turtle_soup_records (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "room_id TEXT NOT NULL," +
+                        "story_id INTEGER NOT NULL," +
+                        "round_no INTEGER NOT NULL," +
+                        "host_key TEXT NOT NULL," +
+                        "host_name TEXT NOT NULL," +
+                        "guesser_key TEXT NOT NULL," +
+                        "guesser_name TEXT NOT NULL," +
+                        "guess_limit INTEGER NOT NULL," +
+                        "guess_used INTEGER NOT NULL," +
+                        "result TEXT NOT NULL," +
+                        "qa_json TEXT NOT NULL," +
+                        "started_at INTEGER NOT NULL," +
+                        "ended_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_turtle_soup_records_host " +
+                        "ON turtle_soup_records(host_key, story_id)");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_turtle_soup_records_guesser " +
+                        "ON turtle_soup_records(guesser_key, story_id)");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_turtle_soup_records_room " +
+                        "ON turtle_soup_records(room_id, round_no)");
+                log.info("数据库迁移: 创建 turtle_soup_records 表");
             }
         }
     }

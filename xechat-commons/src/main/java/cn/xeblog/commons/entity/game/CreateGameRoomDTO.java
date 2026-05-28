@@ -36,10 +36,27 @@ public class CreateGameRoomDTO implements Serializable {
      */
     private int quickQuizQuestionCount;
 
+    /**
+     * 海龟汤猜底机会
+     */
+    private int turtleSoupGuessLimit;
+
+    /**
+     * 海龟汤首轮主持人：OWNER / GUEST / RANDOM
+     */
+    private String turtleSoupHostMode;
+
     public CreateGameRoomDTO(Game game, int nums, String gameMode) {
         this.game = game;
         this.nums = nums;
         this.gameMode = gameMode;
+    }
+
+    public CreateGameRoomDTO(Game game, int nums, String gameMode, int quickQuizQuestionCount) {
+        this.game = game;
+        this.nums = nums;
+        this.gameMode = gameMode;
+        this.quickQuizQuestionCount = quickQuizQuestionCount;
     }
 
 }

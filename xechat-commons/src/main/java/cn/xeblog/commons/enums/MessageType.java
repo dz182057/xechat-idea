@@ -100,6 +100,14 @@ public enum MessageType {
      */
     QUICK_QUIZ_RECORDS,
     /**
+     * 海龟汤题库列表响应
+     */
+    TURTLE_SOUP_STORY_BANK,
+    /**
+     * 海龟汤历史记录
+     */
+    TURTLE_SOUP_RECORDS,
+    /**
      * 对端身份公钥(GET_PEER_KEY 响应)
      */
     PEER_KEY,

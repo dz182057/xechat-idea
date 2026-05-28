@@ -32,6 +32,7 @@
         <mapper resource="mapper/PrivateMessageMapper.xml"/>
         <mapper resource="mapper/DrawGuessWordMapper.xml"/>
         <mapper resource="mapper/QuickQuizMapper.xml"/>
+        <mapper resource="mapper/TurtleSoupMapper.xml"/>
     </mappers>
 
 </configuration>

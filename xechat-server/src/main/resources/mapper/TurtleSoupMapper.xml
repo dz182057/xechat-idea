@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.game.turtlesoup.TurtleSoupMapper">
+
+    <sql id="storyCols">
+        id, title, surface, bottom, difficulty, tags, sort_order, active, created_at, updated_at
+    </sql>
+
+    <insert id="upsertStory" parameterType="cn.xeblog.server.game.turtlesoup.TurtleSoupStory">
+        INSERT INTO turtle_soup_stories (
+            title, surface, bottom, difficulty, tags, sort_order, active, created_at, updated_at
+        ) VALUES (
+            #{title}, #{surface}, #{bottom}, #{difficulty}, #{tags}, #{sortOrder}, #{active}, #{createdAt}, #{updatedAt}
+        )
+        ON CONFLICT(surface) DO UPDATE SET
+            title = excluded.title,
+            bottom = excluded.bottom,
+            difficulty = excluded.difficulty,
+            tags = excluded.tags,
+            sort_order = excluded.sort_order,
+            active = excluded.active,
+            updated_at = excluded.updated_at
+    </insert>
+
+    <update id="deactivateAllStories">
+        UPDATE turtle_soup_stories SET active = 0, updated_at = strftime('%s','now') * 1000
+    </update>
+
+    <select id="listActiveStories" resultType="cn.xeblog.server.game.turtlesoup.TurtleSoupStory">
+        SELECT <include refid="storyCols"/>
+        FROM turtle_soup_stories
+        WHERE active = 1
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="randomAvailableStory" resultType="cn.xeblog.server.game.turtlesoup.TurtleSoupStory">
+        SELECT <include refid="storyCols"/>
+        FROM turtle_soup_stories s
+        WHERE s.active = 1
+        <if test="excludedStoryIds != null and excludedStoryIds.size() > 0">
+            AND s.id NOT IN
+            <foreach collection="excludedStoryIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+          AND NOT EXISTS (
+              SELECT 1
+              FROM turtle_soup_records r
+              WHERE r.story_id = s.id
+                AND (
+                    r.host_key = #{playerAKey}
+                    OR r.guesser_key = #{playerAKey}
+                    OR r.host_key = #{playerBKey}
+                    OR r.guesser_key = #{playerBKey}
+                )
+          )
+        ORDER BY RANDOM()
+        LIMIT 1
+    </select>
+
+    <insert id="insertRecord" parameterType="cn.xeblog.server.game.turtlesoup.TurtleSoupRecord">
+        INSERT INTO turtle_soup_records (
+            room_id, story_id, round_no, host_key, host_name, guesser_key, guesser_name,
+            guess_limit, guess_used, result, qa_json, started_at, ended_at
+        ) VALUES (
+            #{roomId}, #{storyId}, #{roundNo}, #{hostKey}, #{hostName}, #{guesserKey}, #{guesserName},
+            #{guessLimit}, #{guessUsed}, #{result}, #{qaJson}, #{startedAt}, #{endedAt}
+        )
+    </insert>
+
+    <select id="listRecordsByPlayer" resultType="cn.xeblog.server.game.turtlesoup.TurtleSoupRecord">
+        SELECT r.id, r.room_id, r.story_id, r.round_no, r.host_key, r.host_name,
+               r.guesser_key, r.guesser_name, r.guess_limit, r.guess_used,
+               r.result, r.qa_json, r.started_at, r.ended_at,
+               s.title, s.surface, s.bottom, s.difficulty, s.tags
+        FROM turtle_soup_records r
+        JOIN turtle_soup_stories s ON s.id = r.story_id
+        WHERE r.host_key = #{playerKey}
+           OR r.guesser_key = #{playerKey}
+        ORDER BY r.ended_at DESC, r.id DESC
+    </select>
+
+    <select id="listAllRecords" resultType="cn.xeblog.server.game.turtlesoup.TurtleSoupRecord">
+        SELECT r.id, r.room_id, r.story_id, r.round_no, r.host_key, r.host_name,
+               r.guesser_key, r.guesser_name, r.guess_limit, r.guess_used,
+               r.result, r.qa_json, r.started_at, r.ended_at,
+               s.title, s.surface, s.bottom, s.difficulty, s.tags
+        FROM turtle_soup_records r
+        JOIN turtle_soup_stories s ON s.id = r.story_id
+        ORDER BY r.ended_at DESC, r.id DESC
+    </select>
+
+</mapper>

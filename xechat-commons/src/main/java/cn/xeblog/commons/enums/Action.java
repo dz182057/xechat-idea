@@ -162,6 +162,31 @@ public enum Action {
     ADMIN_LIST_QUICK_QUIZ_RECORDS,
 
     /**
+     * 管理员:查看海龟汤题库
+     */
+    ADMIN_LIST_TURTLE_SOUP_STORIES,
+
+    /**
+     * 管理员:保存海龟汤题库
+     */
+    ADMIN_SAVE_TURTLE_SOUP_STORIES,
+
+    /**
+     * 海龟汤:房主请求下一题
+     */
+    TURTLE_SOUP_NEXT_STORY,
+
+    /**
+     * 海龟汤:查看我的游戏记录
+     */
+    TURTLE_SOUP_MY_RECORDS,
+
+    /**
+     * 管理员:查看全部海龟汤记录
+     */
+    ADMIN_LIST_TURTLE_SOUP_RECORDS,
+
+    /**
      * 游客登录(无账号体系,仅大厅聊天,禁止私聊)
      */
     GUEST_LOGIN,

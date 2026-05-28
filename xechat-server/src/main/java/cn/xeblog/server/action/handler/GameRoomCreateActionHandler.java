@@ -37,6 +37,8 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
         gameRoom.setNums(body.getNums());
         gameRoom.setGameMode(body.getGameMode());
         gameRoom.setQuickQuizQuestionCount(body.getQuickQuizQuestionCount());
+        gameRoom.setTurtleSoupGuessLimit(body.getTurtleSoupGuessLimit());
+        gameRoom.setTurtleSoupHostMode(body.getTurtleSoupHostMode());
         gameRoom.setHomeowner(user);
         if (!GameRoomCache.joinRoom(roomId, user)) {
             GameRoomCache.removeRoom(roomId);

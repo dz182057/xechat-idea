@@ -42,6 +42,16 @@ public class GameRoom implements Serializable {
     private int quickQuizQuestionCount;
 
     /**
+     * 海龟汤猜底机会
+     */
+    private int turtleSoupGuessLimit;
+
+    /**
+     * 海龟汤首轮主持人：OWNER / GUEST / RANDOM
+     */
+    private String turtleSoupHostMode;
+
+    /**
      * 房主
      */
     private User homeowner;

@@ -10,6 +10,7 @@ import cn.xeblog.commons.entity.game.chess.ChessDTO;
 import cn.xeblog.commons.entity.game.drawguess.DrawGuessDTO;
 import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.entity.game.landlords.LandlordsGameDTO;
+import cn.xeblog.commons.entity.game.turtlesoup.TurtleSoupDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.MessageType;
@@ -98,6 +99,8 @@ public class RequestHandler {
                 return GobangDTO.class;
             case DRAW_GUESS:
                 return DrawGuessDTO.class;
+            case TURTLE_SOUP:
+                return TurtleSoupDTO.class;
             case CHINESE_CHESS:
                 return ChessDTO.class;
             case LANDLORDS:
@@ -113,7 +116,10 @@ public class RequestHandler {
                 || action == Action.DRAW_GUESS_RANDOM_WORD
                 || action == Action.ADMIN_LIST_QUICK_QUIZ_QUESTIONS
                 || action == Action.QUICK_QUIZ_MY_RECORDS
-                || action == Action.ADMIN_LIST_QUICK_QUIZ_RECORDS;
+                || action == Action.ADMIN_LIST_QUICK_QUIZ_RECORDS
+                || action == Action.ADMIN_LIST_TURTLE_SOUP_STORIES
+                || action == Action.TURTLE_SOUP_MY_RECORDS
+                || action == Action.ADMIN_LIST_TURTLE_SOUP_RECORDS;
     }
 
 }
