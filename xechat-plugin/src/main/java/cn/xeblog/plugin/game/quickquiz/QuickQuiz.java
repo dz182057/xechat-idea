@@ -67,6 +67,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
         mainPanel = new JPanel();
         mainPanel.setLayout(null);
         mainPanel.setMinimumSize(new Dimension(240, 220));
+        mainPanel.setPreferredSize(new Dimension(320, 260));
 
         JPanel panel = new JPanel();
         panel.setBounds(10, 10, 220, 180);
@@ -111,6 +112,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
         mainPanel.removeAll();
         mainPanel.setLayout(new BorderLayout());
         mainPanel.setMinimumSize(new Dimension(560, 420));
+        mainPanel.setPreferredSize(new Dimension(620, 560));
 
         JPanel top = new JPanel(new BorderLayout());
         titleLabel = new JLabel("等待房主下发题目", JLabel.CENTER);

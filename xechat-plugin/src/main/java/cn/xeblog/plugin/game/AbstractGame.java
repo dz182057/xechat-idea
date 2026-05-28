@@ -245,6 +245,7 @@ public abstract class AbstractGame<T extends GameDTO> extends AbstractPanelCompo
         gameRoomPanel.setVisible(true);
         gameRoomPanel.setLayout(null);
         gameRoomPanel.setMinimumSize(new Dimension(300, 200));
+        gameRoomPanel.setPreferredSize(new Dimension(320, 560));
 
         Box mainVBox = Box.createVerticalBox();
         JPanel panel = new JPanel();

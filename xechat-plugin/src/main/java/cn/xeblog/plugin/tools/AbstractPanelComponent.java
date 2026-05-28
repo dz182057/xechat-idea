@@ -72,7 +72,7 @@ public abstract class AbstractPanelComponent {
 
         this.mainPanel.setLayout(new BorderLayout());
         if (component != null) {
-            this.mainPanel.add(component, BorderLayout.CENTER);
+            this.mainPanel.add(createScrollPane(component), BorderLayout.CENTER);
         }
 
         JPanel panel = new JPanel();
@@ -106,7 +106,7 @@ public abstract class AbstractPanelComponent {
             width = Math.max(250, width) + 50;
             height = Math.max(200, height) + 50;
             this.window.setSize(width, height);
-            this.window.add(component, BorderLayout.CENTER);
+            this.window.add(createScrollPane(component), BorderLayout.CENTER);
         }
 
         this.window.setOpacity(opacity / 100.0f);
@@ -150,6 +150,20 @@ public abstract class AbstractPanelComponent {
         panel.add(modeButton);
 
         return panel;
+    }
+
+    private JScrollPane createScrollPane(JComponent component) {
+        Dimension preferredSize = component.getPreferredSize();
+        Dimension minimumSize = component.getMinimumSize();
+        if ((preferredSize == null || preferredSize.width <= 0 || preferredSize.height <= 0)
+                && minimumSize != null && minimumSize.width > 0 && minimumSize.height > 0) {
+            component.setPreferredSize(minimumSize);
+        }
+
+        JScrollPane scrollPane = new JScrollPane(component);
+        scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_ALWAYS);
+        return scrollPane;
     }
 
     private void addWindowListener() {
