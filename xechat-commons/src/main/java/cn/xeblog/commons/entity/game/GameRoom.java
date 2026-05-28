@@ -37,6 +37,11 @@ public class GameRoom implements Serializable {
     private String gameMode;
 
     /**
+     * 快问快答本局答题数
+     */
+    private int quickQuizQuestionCount;
+
+    /**
      * 房主
      */
     private User homeowner;

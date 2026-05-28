@@ -110,7 +110,10 @@ public class RequestHandler {
     private static boolean isNoBodyAction(Action action) {
         return action == Action.LIST_USERS
                 || action == Action.ADMIN_LIST_DRAW_GUESS_WORDS
-                || action == Action.DRAW_GUESS_RANDOM_WORD;
+                || action == Action.DRAW_GUESS_RANDOM_WORD
+                || action == Action.ADMIN_LIST_QUICK_QUIZ_QUESTIONS
+                || action == Action.QUICK_QUIZ_MY_RECORDS
+                || action == Action.ADMIN_LIST_QUICK_QUIZ_RECORDS;
     }
 
 }

@@ -36,8 +36,15 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
         gameRoom.setGame(body.getGame());
         gameRoom.setNums(body.getNums());
         gameRoom.setGameMode(body.getGameMode());
+        gameRoom.setQuickQuizQuestionCount(body.getQuickQuizQuestionCount());
         gameRoom.setHomeowner(user);
-        GameRoomCache.joinRoom(roomId, user);
+        if (!GameRoomCache.joinRoom(roomId, user)) {
+            GameRoomCache.removeRoom(roomId);
+            user.send(ResponseBuilder.build(null, null, MessageType.GAME_ROOM_CREATED));
+            user.send(ResponseBuilder.system("你已经在游戏房间中，请先退出当前房间"));
+            log.debug("游戏房间创建失败，用户已在房间中 -> roomId: {}, user: {}", roomId, user.getUsername());
+            return;
+        }
         user.send(response);
         log.debug("游戏房间创建成功 -> {}", gameRoom);
     }

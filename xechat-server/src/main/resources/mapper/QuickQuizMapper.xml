@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.game.quickquiz.QuickQuizMapper">
+
+    <sql id="questionCols">
+        id, question, options_json, sort_order, active, created_at, updated_at
+    </sql>
+
+    <insert id="upsertQuestion" parameterType="cn.xeblog.server.game.quickquiz.QuickQuizQuestion">
+        INSERT INTO quick_quiz_questions (
+            question, options_json, sort_order, active, created_at, updated_at
+        ) VALUES (
+            #{question}, #{optionsJson}, #{sortOrder}, #{active}, #{createdAt}, #{updatedAt}
+        )
+        ON CONFLICT(question) DO UPDATE SET
+            options_json = excluded.options_json,
+            sort_order = excluded.sort_order,
+            active = excluded.active,
+            updated_at = excluded.updated_at
+    </insert>
+
+    <update id="deactivateAllQuestions">
+        UPDATE quick_quiz_questions SET active = 0, updated_at = strftime('%s','now') * 1000
+    </update>
+
+    <select id="listActiveQuestions" resultType="cn.xeblog.server.game.quickquiz.QuickQuizQuestion">
+        SELECT <include refid="questionCols"/>
+        FROM quick_quiz_questions
+        WHERE active = 1
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="randomAvailableQuestion" resultType="cn.xeblog.server.game.quickquiz.QuickQuizQuestion">
+        SELECT <include refid="questionCols"/>
+        FROM quick_quiz_questions q
+        WHERE q.active = 1
+        <if test="usedQuestionIds != null and usedQuestionIds.size() > 0">
+            AND q.id NOT IN
+            <foreach collection="usedQuestionIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+        AND NOT (
+            EXISTS (
+                SELECT 1 FROM quick_quiz_records r1
+                WHERE r1.question_id = q.id AND r1.player_key = #{playerAKey}
+            )
+            AND EXISTS (
+                SELECT 1 FROM quick_quiz_records r2
+                WHERE r2.question_id = q.id AND r2.player_key = #{playerBKey}
+            )
+        )
+        ORDER BY RANDOM()
+        LIMIT 1
+    </select>
+
+    <select id="countAvailableQuestions" resultType="int">
+        SELECT COUNT(1)
+        FROM quick_quiz_questions q
+        WHERE q.active = 1
+        <if test="usedQuestionIds != null and usedQuestionIds.size() > 0">
+            AND q.id NOT IN
+            <foreach collection="usedQuestionIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+        AND NOT (
+            EXISTS (
+                SELECT 1 FROM quick_quiz_records r1
+                WHERE r1.question_id = q.id AND r1.player_key = #{playerAKey}
+            )
+            AND EXISTS (
+                SELECT 1 FROM quick_quiz_records r2
+                WHERE r2.question_id = q.id AND r2.player_key = #{playerBKey}
+            )
+        )
+    </select>
+
+    <insert id="insertRecord" parameterType="cn.xeblog.server.game.quickquiz.QuickQuizRecord">
+        INSERT INTO quick_quiz_records (
+            room_id, question_id, player_key, username, choice_index, choice_text, created_at
+        ) VALUES (
+            #{roomId}, #{questionId}, #{playerKey}, #{username}, #{choiceIndex}, #{choiceText}, #{createdAt}
+        )
+    </insert>
+
+    <select id="listRecordsByPlayer" resultType="cn.xeblog.server.game.quickquiz.QuickQuizRecord">
+        SELECT r.id, r.room_id, r.question_id, r.player_key, r.username,
+               r.choice_index, r.choice_text, r.created_at,
+               q.question, q.options_json
+        FROM quick_quiz_records r
+        JOIN quick_quiz_questions q ON q.id = r.question_id
+        WHERE EXISTS (
+            SELECT 1 FROM quick_quiz_records mine
+            WHERE mine.room_id = r.room_id
+              AND mine.question_id = r.question_id
+              AND mine.player_key = #{playerKey}
+        )
+        ORDER BY r.created_at DESC, r.id ASC
+    </select>
+
+    <select id="listAllRecords" resultType="cn.xeblog.server.game.quickquiz.QuickQuizRecord">
+        SELECT r.id, r.room_id, r.question_id, r.player_key, r.username,
+               r.choice_index, r.choice_text, r.created_at,
+               q.question, q.options_json
+        FROM quick_quiz_records r
+        JOIN quick_quiz_questions q ON q.id = r.question_id
+        ORDER BY r.created_at DESC, r.id ASC
+    </select>
+
+</mapper>

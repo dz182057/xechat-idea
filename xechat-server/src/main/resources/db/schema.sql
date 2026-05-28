@@ -121,3 +121,28 @@ CREATE TABLE IF NOT EXISTS draw_guess_words (
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
 );
+
+-- 快问快答题库
+CREATE TABLE IF NOT EXISTS quick_quiz_questions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    question      TEXT    NOT NULL UNIQUE,
+    options_json  TEXT    NOT NULL,
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    active        INTEGER NOT NULL DEFAULT 1,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+);
+
+-- 快问快答答题记录
+CREATE TABLE IF NOT EXISTS quick_quiz_records (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id       TEXT    NOT NULL,
+    question_id   INTEGER NOT NULL,
+    player_key    TEXT    NOT NULL,
+    username      TEXT    NOT NULL,
+    choice_index  INTEGER NOT NULL,
+    choice_text   TEXT    NOT NULL,
+    created_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_player ON quick_quiz_records(player_key, question_id);
+CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question ON quick_quiz_records(room_id, question_id);

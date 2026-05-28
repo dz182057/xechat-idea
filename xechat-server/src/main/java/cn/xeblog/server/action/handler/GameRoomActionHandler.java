@@ -15,6 +15,7 @@ import cn.xeblog.server.annotation.DoAction;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.game.quickquiz.QuickQuizService;
 
 /**
  * @author anlingyi
@@ -75,6 +76,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
     private void roomClose(User user, GameRoom gameRoom) {
         GameRoomCache.removeRoom(gameRoom.getId());
+        QuickQuizService.clearRoom(gameRoom.getId());
 
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
         msg.setRoomId(gameRoom.getId());
@@ -105,6 +107,8 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         Response response = ResponseBuilder.build(player, body, MessageType.GAME_ROOM);
         if (dto.getStatus() == InviteStatus.ACCEPT) {
             if (GameRoomCache.joinRoom(gameRoom.getId(), player)) {
+                player.setStatus(UserStatus.PLAYING);
+                ChannelAction.updateUserStatus(player);
                 dto.setGameRoom(gameRoom);
                 sendMsg(gameRoom, response);
             } else {
@@ -144,11 +148,12 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             user.send(ResponseBuilder.system("人家正在" + player.getStatus().alias() + "呢！就你天天摸鱼？"));
             return;
         }
+        if (gameRoom.getInviteUsers().contains(player)) {
+            user.send(ResponseBuilder.system("已向" + player.getUsername() + "发送过邀请，请等待对方响应"));
+            return;
+        }
 
         gameRoom.addInviteUser(player);
-        player.setStatus(UserStatus.PLAYING);
-        ChannelAction.updateUserStatus(player);
-
         msg.setMsgType(GameRoomMsgDTO.MsgType.PLAYER_INVITE);
         player.send(ResponseBuilder.build(user, msg, MessageType.GAME_ROOM));
         user.send(ResponseBuilder.system("已向" + player.getUsername() + "发送《" + gameRoom.getGame().getName() + "》游戏邀请！"));
@@ -159,6 +164,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         ChannelAction.updateUserStatus(user);
 
         if (GameRoomCache.leftRoom(gameRoom.getId(), user)) {
+            QuickQuizService.clearRoom(gameRoom.getId());
             Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);
             sendMsg(gameRoom, resp);
             if (gameRoom.isHomeowner(user.getUsername())) {

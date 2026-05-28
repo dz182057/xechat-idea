@@ -31,4 +31,15 @@ public class CreateGameRoomDTO implements Serializable {
      */
     private String gameMode;
 
+    /**
+     * 快问快答本局答题数
+     */
+    private int quickQuizQuestionCount;
+
+    public CreateGameRoomDTO(Game game, int nums, String gameMode) {
+        this.game = game;
+        this.nums = nums;
+        this.gameMode = gameMode;
+    }
+
 }

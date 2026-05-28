@@ -80,6 +80,26 @@ public enum MessageType {
      */
     DRAW_GUESS_WORD,
     /**
+     * 快问快答题库列表响应
+     */
+    QUICK_QUIZ_QUESTION_BANK,
+    /**
+     * 快问快答当前剩余可用题数
+     */
+    QUICK_QUIZ_AVAILABLE_COUNT,
+    /**
+     * 快问快答题目下发
+     */
+    QUICK_QUIZ_QUESTION,
+    /**
+     * 快问快答答案揭示
+     */
+    QUICK_QUIZ_ANSWER_RESULT,
+    /**
+     * 快问快答答题记录
+     */
+    QUICK_QUIZ_RECORDS,
+    /**
      * 对端身份公钥(GET_PEER_KEY 响应)
      */
     PEER_KEY,

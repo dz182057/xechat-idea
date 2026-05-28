@@ -77,6 +77,7 @@ public final class DbInitializer {
             ensureSchema();
             ensureMessageColumns();
             ensureDrawGuessWordTable();
+            ensureQuickQuizTables();
 
             log.info("账号体系数据库就绪: {}", GlobalConfig.DB_PATH);
         } catch (Exception e) {
@@ -156,6 +157,45 @@ public final class DbInitializer {
                     "updated_at INTEGER NOT NULL" +
                     ")");
             log.info("数据库迁移: 创建 draw_guess_words 表");
+        }
+    }
+
+    /**
+     * 给已有数据库补齐快问快答题库和答题记录表。
+     */
+    private static void ensureQuickQuizTables() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true);
+             Connection conn = session.getConnection();
+             Statement st = conn.createStatement()) {
+            if (!tableExists(conn, "quick_quiz_questions")) {
+                st.execute("CREATE TABLE quick_quiz_questions (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "question TEXT NOT NULL UNIQUE," +
+                        "options_json TEXT NOT NULL," +
+                        "sort_order INTEGER NOT NULL DEFAULT 0," +
+                        "active INTEGER NOT NULL DEFAULT 1," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                log.info("数据库迁移: 创建 quick_quiz_questions 表");
+            }
+            if (!tableExists(conn, "quick_quiz_records")) {
+                st.execute("CREATE TABLE quick_quiz_records (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "room_id TEXT NOT NULL," +
+                        "question_id INTEGER NOT NULL," +
+                        "player_key TEXT NOT NULL," +
+                        "username TEXT NOT NULL," +
+                        "choice_index INTEGER NOT NULL," +
+                        "choice_text TEXT NOT NULL," +
+                        "created_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_player " +
+                        "ON quick_quiz_records(player_key, question_id)");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question " +
+                        "ON quick_quiz_records(room_id, question_id)");
+                log.info("数据库迁移: 创建 quick_quiz_records 表");
+            }
         }
     }
 
