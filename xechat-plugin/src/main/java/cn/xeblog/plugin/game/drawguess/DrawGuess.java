@@ -2,8 +2,11 @@ package cn.xeblog.plugin.game.drawguess;
 
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.drawguess.DrawGuessDTO;
+import cn.xeblog.commons.entity.game.drawguess.DrawGuessWordDTO;
+import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.plugin.action.GameAction;
+import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.annotation.DoGame;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.game.AbstractGame;
@@ -32,6 +35,8 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
     private JTextArea guessLog;
     private JTextField wordField;
     private JTextField guessField;
+    private JButton startButton;
+    private JButton randomWordButton;
     private JButton clearButton;
     private JButton guessButton;
     private JComboBox<String> colorBox;
@@ -40,10 +45,15 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
 
     private final List<DrawGuessDTO.Line> lines = new ArrayList<>();
     private String currentWord = "";
+    private String currentHint = "";
     private String drawerName;
     private boolean playing;
     private boolean drawer;
+    private boolean randomWordLoading;
     private Point lastPoint;
+    private Point resizeStartPoint;
+    private Dimension resizeStartSize;
+    private boolean resizingCanvas;
 
     @Override
     public void handle(DrawGuessDTO body) {
@@ -166,6 +176,7 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         playing = false;
         drawer = false;
         currentWord = "";
+        currentHint = "";
         drawerName = null;
         lines.clear();
         refreshControls();
@@ -173,32 +184,41 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
 
     private JPanel createRightPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setPreferredSize(new Dimension(230, DEFAULT_CANVAS_SIZE.getHeight()));
+        panel.setPreferredSize(new Dimension(250, DEFAULT_CANVAS_SIZE.getHeight()));
 
         guessLog = new JTextArea();
         guessLog.setEditable(false);
         guessLog.setLineWrap(true);
-        panel.add(new JScrollPane(guessLog), BorderLayout.CENTER);
+        guessLog.setRows(6);
 
         JPanel controls = new JPanel();
         controls.setLayout(new BoxLayout(controls, BoxLayout.Y_AXIS));
         controls.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         wordField = new JTextField();
-        JButton startButton = new JButton("开始画图");
+        startButton = new JButton("开始画图");
         startButton.addActionListener(e -> startRound());
+        randomWordButton = new JButton("从词库随机");
+        randomWordButton.addActionListener(e -> requestRandomWord());
         controls.add(new JLabel("题目："));
-        controls.add(wordField);
-        controls.add(startButton);
-        controls.add(Box.createVerticalStrut(8));
+        addFullWidth(controls, wordField);
+        addFullWidth(controls, startButton);
+        addFullWidth(controls, randomWordButton);
+        controls.add(Box.createVerticalStrut(10));
 
         guessField = new JTextField();
         guessButton = new JButton("发送答案");
         guessButton.addActionListener(e -> submitGuess());
         controls.add(new JLabel("猜答案："));
-        controls.add(guessField);
-        controls.add(guessButton);
-        controls.add(Box.createVerticalStrut(8));
+        addFullWidth(controls, guessField);
+        addFullWidth(controls, guessButton);
+        controls.add(Box.createVerticalStrut(10));
+
+        controls.add(new JLabel("猜词记录："));
+        JScrollPane logScroll = new JScrollPane(guessLog);
+        logScroll.setPreferredSize(new Dimension(210, 120));
+        addFullWidth(controls, logScroll);
+        controls.add(Box.createVerticalStrut(10));
 
         colorBox = new JComboBox<>(new String[]{"黑色", "红色", "橙色", "绿色", "蓝色", "紫色"});
         canvasSizeBox = new JComboBox<>(CanvasSize.values());
@@ -208,21 +228,39 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         clearButton = new JButton("清空画布");
         clearButton.addActionListener(e -> clearCanvas());
         controls.add(new JLabel("画布大小："));
-        controls.add(canvasSizeBox);
+        addFullWidth(controls, canvasSizeBox);
         controls.add(new JLabel("画笔颜色："));
-        controls.add(colorBox);
+        addFullWidth(controls, colorBox);
         controls.add(new JLabel("笔粗："));
-        controls.add(sizeSpinner);
-        controls.add(clearButton);
+        addFullWidth(controls, sizeSpinner);
+        addFullWidth(controls, clearButton);
+        controls.add(Box.createVerticalGlue());
 
-        panel.add(controls, BorderLayout.SOUTH);
+        JScrollPane scrollPane = new JScrollPane(controls);
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        panel.add(scrollPane, BorderLayout.CENTER);
         return panel;
+    }
+
+    private void addFullWidth(JPanel panel, JComponent component) {
+        component.setAlignmentX(Component.LEFT_ALIGNMENT);
+        component.setMaximumSize(new Dimension(Integer.MAX_VALUE, component.getPreferredSize().height));
+        panel.add(component);
+        panel.add(Box.createVerticalStrut(6));
     }
 
     private void bindCanvasMouse() {
         MouseAdapter adapter = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                if (isResizePoint(e.getPoint())) {
+                    resizingCanvas = true;
+                    resizeStartPoint = e.getPoint();
+                    resizeStartSize = canvas.getSize();
+                    canvas.setCursor(Cursor.getPredefinedCursor(Cursor.SE_RESIZE_CURSOR));
+                    return;
+                }
                 if (!canDraw()) {
                     return;
                 }
@@ -231,6 +269,10 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
 
             @Override
             public void mouseDragged(MouseEvent e) {
+                if (resizingCanvas) {
+                    resizeCanvas(e.getPoint());
+                    return;
+                }
                 if (!canDraw() || lastPoint == null) {
                     return;
                 }
@@ -254,6 +296,15 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
             @Override
             public void mouseReleased(MouseEvent e) {
                 lastPoint = null;
+                resizingCanvas = false;
+                resizeStartPoint = null;
+                resizeStartSize = null;
+            }
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                canvas.setCursor(Cursor.getPredefinedCursor(
+                        isResizePoint(e.getPoint()) ? Cursor.SE_RESIZE_CURSOR : Cursor.DEFAULT_CURSOR));
             }
         };
         canvas.addMouseListener(adapter);
@@ -265,10 +316,20 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         if (word.isEmpty()) {
             return;
         }
+        startRound(word, "");
+    }
+
+    private void startRound(String word, String hint) {
+        if (playing || word == null || word.trim().isEmpty()) {
+            return;
+        }
+        word = word.trim();
         currentWord = word;
+        currentHint = hint == null ? "" : hint.trim();
         drawerName = GameAction.getNickname();
         drawer = true;
         playing = true;
+        randomWordLoading = false;
         lines.clear();
         guessLog.setText("");
         setTips("你来画：" + currentWord);
@@ -279,8 +340,38 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         dto.setEvent(DrawGuessDTO.Event.START_ROUND);
         dto.setDrawerName(drawerName);
         dto.setMaskedWord(maskWord(word));
+        dto.setWordLength(countWordLength(word));
+        dto.setHint(currentHint.isEmpty() ? null : currentHint);
         sendMsg(dto);
         wordField.setText("");
+    }
+
+    private void requestRandomWord() {
+        if (playing || randomWordLoading) {
+            return;
+        }
+        randomWordLoading = true;
+        refreshControls();
+        MessageAction.send(new Object(), Action.DRAW_GUESS_RANDOM_WORD);
+        Timer timer = new Timer(5000, e -> {
+            if (randomWordLoading) {
+                randomWordLoading = false;
+                refreshControls();
+            }
+        });
+        timer.setRepeats(false);
+        timer.start();
+    }
+
+    public void onRandomWord(DrawGuessWordDTO word) {
+        SwingUtilities.invokeLater(() -> {
+            randomWordLoading = false;
+            if (word == null || word.getWord() == null || playing) {
+                refreshControls();
+                return;
+            }
+            startRound(word.getWord(), word.getHint());
+        });
     }
 
     private void submitGuess() {
@@ -321,9 +412,11 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
     }
 
     private void onStartRound(DrawGuessDTO body) {
-        currentWord = "";
+        boolean isMeDrawer = GameAction.getNickname().equals(body.getDrawerName());
+        currentWord = isMeDrawer && currentWord != null ? currentWord : "";
+        currentHint = body.getHint() == null ? "" : body.getHint();
         drawerName = body.getDrawerName();
-        drawer = GameAction.getNickname().equals(drawerName);
+        drawer = isMeDrawer;
         playing = true;
         lines.clear();
         guessLog.setText("");
@@ -385,6 +478,16 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         if (clearButton != null) {
             clearButton.setEnabled(canDraw);
         }
+        if (startButton != null) {
+            startButton.setEnabled(!playing);
+        }
+        if (randomWordButton != null) {
+            randomWordButton.setEnabled(!playing && !randomWordLoading);
+            randomWordButton.setText(randomWordLoading ? "获取中..." : "从词库随机");
+        }
+        if (wordField != null) {
+            wordField.setEnabled(!playing);
+        }
         if (guessButton != null) {
             guessButton.setEnabled(canGuess);
         }
@@ -410,6 +513,21 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         canvas.setPreferredSize(size.getDimension());
         canvas.revalidate();
         canvas.repaint();
+    }
+
+    private void resizeCanvas(Point point) {
+        if (resizeStartPoint == null || resizeStartSize == null) {
+            return;
+        }
+        int width = Math.max(220, Math.min(900, resizeStartSize.width + point.x - resizeStartPoint.x));
+        int height = Math.max(150, Math.min(620, resizeStartSize.height + point.y - resizeStartPoint.y));
+        canvas.setPreferredSize(new Dimension(width, height));
+        canvas.revalidate();
+        canvas.repaint();
+    }
+
+    private boolean isResizePoint(Point point) {
+        return point.x >= canvas.getWidth() - 14 && point.y >= canvas.getHeight() - 14;
     }
 
     private void setTips(String text) {
@@ -450,6 +568,16 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         return sb.toString();
     }
 
+    private int countWordLength(String word) {
+        int len = 0;
+        for (int i = 0; i < word.length(); i++) {
+            if (!Character.isWhitespace(word.charAt(i))) {
+                len++;
+            }
+        }
+        return len;
+    }
+
     private String normalize(String text) {
         return text == null ? "" : text.replaceAll("\\s+", "").toLowerCase();
     }
@@ -471,6 +599,11 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
                         (int) Math.round(line.getX2() * sx),
                         (int) Math.round(line.getY2() * sy));
             }
+            g2.setColor(new Color(180, 180, 180));
+            int w = getWidth();
+            int h = getHeight();
+            g2.drawLine(w - 12, h - 4, w - 4, h - 12);
+            g2.drawLine(w - 8, h - 4, w - 4, h - 8);
         }
     }
 
