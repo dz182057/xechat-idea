@@ -13,7 +13,9 @@ import java.io.Serializable;
  * <ul>
  *     <li>改昵称:仅填 {@link #nickname}</li>
  *     <li>换头像:仅填 {@link #avatarBase64}(限 256KB,服务端裁剪 256x256 PNG)</li>
- *     <li>改密码:同时填 {@link #oldPassword} 和 {@link #newPassword}</li>
+ *     <li>改密码:同时填 {@link #oldPassword}、{@link #newPassword}、{@link #newE2eeSalt}、
+ *     {@link #newIdentityPrivKeyEnvelope}</li>
+ *     <li>原设备恢复 E2EE:仅填 {@link #newE2eeSalt} 和 {@link #newIdentityPrivKeyEnvelope}</li>
  * </ul>
  * 成功后服务端会广播 {@link ProfileUpdatedDTO}(改密码不广播)。</p>
  *
@@ -46,5 +48,15 @@ public class UpdateProfileDTO implements Serializable {
      * 新密码(改密码时必填,至少 8 位含字母+数字)
      */
     private String newPassword;
+
+    /**
+     * 新 E2EE salt(改密或原设备恢复重包时填写)
+     */
+    private String newE2eeSalt;
+
+    /**
+     * 用新 masterKey 包裹后的身份私钥 envelope(改密或原设备恢复重包时填写)
+     */
+    private String newIdentityPrivKeyEnvelope;
 
 }

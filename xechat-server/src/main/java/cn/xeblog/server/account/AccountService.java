@@ -205,10 +205,11 @@ public final class AccountService {
 
     // ============ 改密码 ============
 
-    public static void changePassword(long accountId, String oldPwd, String newPwd) {
+    public static void changePassword(long accountId, String oldPwd, String newPwd,
+                                      String newE2eeSalt, String newIdentityPrivKeyEnvelope) {
         PasswordHasher.validatePolicy(newPwd);
 
-        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
             AccountMapper mapper = session.getMapper(AccountMapper.class);
             Account a = mapper.findById(accountId);
             if (a == null) {
@@ -219,9 +220,77 @@ public final class AccountService {
                 throw new AccountException("原密码错误");
             }
             mapper.updatePassword(accountId, PasswordHasher.hash(newPwd));
+            if (StrUtil.isNotBlank(a.getIdentityPubKey())) {
+                validateE2eeEnvelopeUpdate(newE2eeSalt, newIdentityPrivKeyEnvelope);
+                updateIdentityEnvelope(session, accountId, newE2eeSalt, newIdentityPrivKeyEnvelope);
+            } else if (StrUtil.isNotBlank(newE2eeSalt) || StrUtil.isNotBlank(newIdentityPrivKeyEnvelope)) {
+                validateE2eeEnvelopeUpdate(newE2eeSalt, newIdentityPrivKeyEnvelope);
+                updateIdentityEnvelope(session, accountId, newE2eeSalt, newIdentityPrivKeyEnvelope);
+            }
             // 改密后吊销该账号全部 token,强制重新登录
             session.getMapper(SessionMapper.class).revokeAllByAccount(accountId);
+            session.commit();
             log.info("账号 {} 修改密码,已吊销其全部 token", accountId);
+        }
+    }
+
+    public static Account resetPasswordByAdmin(String account, String newPwd) {
+        if (StrUtil.isBlank(account)) {
+            throw new AccountException("账号不能为空");
+        }
+        PasswordHasher.validatePolicy(newPwd);
+
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            AccountMapper mapper = session.getMapper(AccountMapper.class);
+            Account a = mapper.findByAccount(account);
+            if (a == null) {
+                throw new AccountException("目标账号不存在");
+            }
+            checkStatusUsable(a);
+            mapper.updatePassword(a.getAccountId(), PasswordHasher.hash(newPwd));
+            session.getMapper(SessionMapper.class).revokeAllByAccount(a.getAccountId());
+            log.info("管理员重置账号 {} 密码,已吊销其全部 token", a.getAccountId());
+            return a;
+        }
+    }
+
+    public static void updateIdentityEnvelope(long accountId, String newE2eeSalt,
+                                              String newIdentityPrivKeyEnvelope) {
+        validateE2eeEnvelopeUpdate(newE2eeSalt, newIdentityPrivKeyEnvelope);
+
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            AccountMapper mapper = session.getMapper(AccountMapper.class);
+            Account a = mapper.findById(accountId);
+            if (a == null) {
+                throw new AccountException("账号不存在");
+            }
+            checkStatusUsable(a);
+            if (StrUtil.isBlank(a.getIdentityPubKey())) {
+                throw new AccountException("当前账号未启用 E2EE");
+            }
+            updateIdentityEnvelope(session, accountId, newE2eeSalt, newIdentityPrivKeyEnvelope);
+            session.commit();
+            log.info("账号 {} 已更新 E2EE 身份私钥 envelope", accountId);
+        }
+    }
+
+    private static void updateIdentityEnvelope(SqlSession session, long accountId,
+                                               String newE2eeSalt,
+                                               String newIdentityPrivKeyEnvelope) {
+        long now = System.currentTimeMillis();
+        session.getMapper(AccountMapper.class).updateE2eeSalt(accountId, newE2eeSalt);
+        session.getMapper(KeyEnvelopeMapper.class).upsert(KeyEnvelope.builder()
+                .accountId(accountId)
+                .type(KeyEnvelope.TYPE_IDENTITY)
+                .envelope(newIdentityPrivKeyEnvelope)
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+    }
+
+    private static void validateE2eeEnvelopeUpdate(String salt, String envelope) {
+        if (StrUtil.isBlank(salt) || StrUtil.isBlank(envelope)) {
+            throw new AccountException("E2EE 重包字段不能为空");
         }
     }
 

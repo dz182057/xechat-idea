@@ -28,6 +28,9 @@ public interface AccountMapper {
     int updatePassword(@Param("accountId") long accountId,
                        @Param("passwordHash") String passwordHash);
 
+    int updateE2eeSalt(@Param("accountId") long accountId,
+                       @Param("e2eeSalt") String e2eeSalt);
+
     int updateRole(@Param("accountId") long accountId,
                    @Param("role") String role);
 

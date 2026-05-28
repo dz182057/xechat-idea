@@ -24,7 +24,8 @@ import lombok.extern.slf4j.Slf4j;
  * <ul>
  *     <li>nickname → 改昵称,广播 PROFILE_UPDATED</li>
  *     <li>avatarBase64 → 换头像,广播 PROFILE_UPDATED</li>
- *     <li>oldPassword + newPassword → 改密码,**不广播**,改密后该账号全部 token 被吊销</li>
+ *     <li>oldPassword + newPassword + 新 E2EE envelope → 改密码,**不广播**,改密后该账号全部 token 被吊销</li>
+ *     <li>newE2eeSalt + newIdentityPrivKeyEnvelope → 原设备自动恢复后重包身份私钥</li>
  * </ul>
  * 三类都失败则回 SYSTEM 中文错误。任一成功就把对应 user 字段更新并把广播的 dto 发出。</p>
  *
@@ -70,12 +71,21 @@ public class UpdateProfileActionHandler extends AbstractActionHandler<UpdateProf
 
             if (StrUtil.isNotBlank(body.getOldPassword()) || StrUtil.isNotBlank(body.getNewPassword())) {
                 AccountService.changePassword(user.getAccountId(),
-                        body.getOldPassword(), body.getNewPassword());
+                        body.getOldPassword(), body.getNewPassword(),
+                        body.getNewE2eeSalt(), body.getNewIdentityPrivKeyEnvelope());
                 user.send(ResponseBuilder.system("密码已修改,请重新登录"));
                 // 改密后该账号所有 token 已被吊销,关闭当前 channel,客户端清 token 后回登录页
                 if (user.getChannel() != null) {
                     user.getChannel().close();
                 }
+                return;
+            }
+
+            if (StrUtil.isNotBlank(body.getNewE2eeSalt())
+                    || StrUtil.isNotBlank(body.getNewIdentityPrivKeyEnvelope())) {
+                AccountService.updateIdentityEnvelope(user.getAccountId(),
+                        body.getNewE2eeSalt(), body.getNewIdentityPrivKeyEnvelope());
+                user.send(ResponseBuilder.system("E2EE 私钥已在原设备恢复"));
                 return;
             }
         } catch (AccountException e) {

@@ -107,6 +107,11 @@ public enum Action {
     ADMIN_DELETE_USER,
 
     /**
+     * 管理员:重置用户密码
+     */
+    ADMIN_RESET_PASSWORD,
+
+    /**
      * 游客登录(无账号体系,仅大厅聊天,禁止私聊)
      */
     GUEST_LOGIN,
