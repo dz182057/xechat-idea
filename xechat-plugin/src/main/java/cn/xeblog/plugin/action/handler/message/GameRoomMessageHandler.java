@@ -14,6 +14,9 @@ import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.cache.DataCache;
 
+import java.util.Timer;
+import java.util.TimerTask;
+
 /**
  * @author anlingyi
  * @date 2022/5/25 3:42 下午
@@ -121,9 +124,31 @@ public class GameRoomMessageHandler extends AbstractGameMessageHandler<GameRoomM
         GameAction.setNickname(DataCache.username);
         GameAction.setInviter(user.getUsername());
         GameAction.setGame(msg.getGame());
+        scheduleInviteTimeout(msg.getRoomId());
 
         ConsoleAction.showSystemMsg(response.getTime(),
                 user.getUsername() + "邀请你加入游戏-《" + GameAction.getName() + "》！");
+    }
+
+    private void scheduleInviteTimeout(String roomId) {
+        Timer timer = new Timer();
+        GameAction.setInviteTimeoutTimer(timer);
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                if (!roomId.equals(GameAction.getRoomId()) || GameAction.playing()) {
+                    timer.cancel();
+                    return;
+                }
+
+                GameRoomMsgDTO msg = new GameRoomMsgDTO();
+                msg.setRoomId(roomId);
+                msg.setMsgType(GameRoomMsgDTO.MsgType.PLAYER_INVITE_RESULT);
+                msg.setContent(new GameInviteResultDTO(InviteStatus.TIMEOUT));
+                MessageAction.send(msg, Action.GAME_ROOM);
+                GameAction.clean();
+            }
+        }, 30000);
     }
 
     private void playerInviteResult(Response<GameRoomMsgDTO> response) {

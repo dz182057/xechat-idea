@@ -6,6 +6,8 @@ import cn.xeblog.commons.enums.Game;
 import cn.xeblog.plugin.factory.GameFactory;
 import cn.xeblog.plugin.game.AbstractGame;
 
+import java.util.Timer;
+
 /**
  * @author anlingyi
  * @date 2020/8/31
@@ -36,6 +38,11 @@ public class GameAction {
      * 当前游戏房间号
      */
     private static String roomId;
+
+    /**
+     * 被邀请方等待响应的超时任务
+     */
+    private static Timer inviteTimeoutTimer;
 
     public static void setRoomId(String roomId) {
         GameAction.roomId = roomId;
@@ -109,11 +116,24 @@ public class GameAction {
     }
 
     public static void clean() {
+        cancelInviteTimeoutTimer();
         game = null;
         action = null;
         inviter = null;
         nickname = null;
         roomId = null;
+    }
+
+    public static void setInviteTimeoutTimer(Timer timer) {
+        cancelInviteTimeoutTimer();
+        inviteTimeoutTimer = timer;
+    }
+
+    public static void cancelInviteTimeoutTimer() {
+        if (inviteTimeoutTimer != null) {
+            inviteTimeoutTimer.cancel();
+            inviteTimeoutTimer = null;
+        }
     }
 
     public static boolean playing() {

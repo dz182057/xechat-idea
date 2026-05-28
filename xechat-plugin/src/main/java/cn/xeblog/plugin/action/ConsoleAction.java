@@ -34,6 +34,7 @@ import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -555,8 +556,23 @@ public class ConsoleAction implements MainWindowInitializedEventListener {
     }
 
     public static void atomicExec(Runnable runnable) {
-        synchronized (LOCK) {
-            runnable.run();
+        if (SwingUtilities.isEventDispatchThread()) {
+            synchronized (LOCK) {
+                runnable.run();
+            }
+            return;
+        }
+
+        try {
+            SwingUtilities.invokeAndWait(() -> {
+                synchronized (LOCK) {
+                    runnable.run();
+                }
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (InvocationTargetException e) {
+            e.getTargetException().printStackTrace();
         }
     }
 

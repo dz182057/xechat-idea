@@ -35,6 +35,8 @@ public class JoinCommandHandler extends AbstractCommandHandler {
             return;
         }
 
+        GameAction.cancelInviteTimeoutTimer();
+
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
         msg.setMsgType(GameRoomMsgDTO.MsgType.PLAYER_INVITE_RESULT);
         msg.setRoomId(roomId);
