@@ -112,6 +112,21 @@ public enum Action {
     ADMIN_RESET_PASSWORD,
 
     /**
+     * 管理员:查看你画我猜词库
+     */
+    ADMIN_LIST_DRAW_GUESS_WORDS,
+
+    /**
+     * 管理员:保存你画我猜词库
+     */
+    ADMIN_SAVE_DRAW_GUESS_WORDS,
+
+    /**
+     * 你画我猜:随机获取一个词
+     */
+    DRAW_GUESS_RANDOM_WORD,
+
+    /**
      * 游客登录(无账号体系,仅大厅聊天,禁止私聊)
      */
     GUEST_LOGIN,

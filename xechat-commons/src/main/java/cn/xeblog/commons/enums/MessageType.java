@@ -72,6 +72,14 @@ public enum MessageType {
      */
     INVITE_CREATED,
     /**
+     * 你画我猜词库列表响应
+     */
+    DRAW_GUESS_WORD_BANK,
+    /**
+     * 你画我猜随机词响应
+     */
+    DRAW_GUESS_WORD,
+    /**
      * 对端身份公钥(GET_PEER_KEY 响应)
      */
     PEER_KEY,

@@ -30,6 +30,7 @@
         <mapper resource="mapper/MessageMapper.xml"/>
         <mapper resource="mapper/KeyEnvelopeMapper.xml"/>
         <mapper resource="mapper/PrivateMessageMapper.xml"/>
+        <mapper resource="mapper/DrawGuessWordMapper.xml"/>
     </mappers>
 
 </configuration>

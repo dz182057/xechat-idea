@@ -24,6 +24,7 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
 
     private static final int VIEW_WIDTH = 640;
     private static final int VIEW_HEIGHT = 420;
+    private static final CanvasSize DEFAULT_CANVAS_SIZE = CanvasSize.SMALL;
 
     private JPanel mainPanel;
     private DrawCanvas canvas;
@@ -34,6 +35,7 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
     private JButton clearButton;
     private JButton guessButton;
     private JComboBox<String> colorBox;
+    private JComboBox<CanvasSize> canvasSizeBox;
     private JSpinner sizeSpinner;
 
     private final List<DrawGuessDTO.Line> lines = new ArrayList<>();
@@ -141,7 +143,7 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         }
         mainPanel.removeAll();
         mainPanel.setLayout(new BorderLayout());
-        mainPanel.setMinimumSize(new Dimension(900, 560));
+        mainPanel.setMinimumSize(new Dimension(560, 360));
 
         tipsLabel = new JLabel("等待有人出题并开始画图", JLabel.CENTER);
         tipsLabel.setFont(new Font("", Font.BOLD, 13));
@@ -149,10 +151,14 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         mainPanel.add(tipsLabel, BorderLayout.NORTH);
 
         canvas = new DrawCanvas();
-        canvas.setPreferredSize(new Dimension(VIEW_WIDTH, VIEW_HEIGHT));
+        canvas.setPreferredSize(DEFAULT_CANVAS_SIZE.getDimension());
         canvas.setBackground(Color.WHITE);
         bindCanvasMouse();
-        mainPanel.add(canvas, BorderLayout.CENTER);
+
+        JPanel canvasPanel = new JPanel(new GridBagLayout());
+        canvasPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        canvasPanel.add(canvas);
+        mainPanel.add(canvasPanel, BorderLayout.CENTER);
 
         mainPanel.add(createRightPanel(), BorderLayout.EAST);
         mainPanel.updateUI();
@@ -167,7 +173,7 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
 
     private JPanel createRightPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setPreferredSize(new Dimension(230, VIEW_HEIGHT));
+        panel.setPreferredSize(new Dimension(230, DEFAULT_CANVAS_SIZE.getHeight()));
 
         guessLog = new JTextArea();
         guessLog.setEditable(false);
@@ -195,9 +201,14 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         controls.add(Box.createVerticalStrut(8));
 
         colorBox = new JComboBox<>(new String[]{"黑色", "红色", "橙色", "绿色", "蓝色", "紫色"});
+        canvasSizeBox = new JComboBox<>(CanvasSize.values());
+        canvasSizeBox.setSelectedItem(DEFAULT_CANVAS_SIZE);
+        canvasSizeBox.addActionListener(e -> updateCanvasSize());
         sizeSpinner = new JSpinner(new SpinnerNumberModel(5, 2, 14, 1));
         clearButton = new JButton("清空画布");
         clearButton.addActionListener(e -> clearCanvas());
+        controls.add(new JLabel("画布大小："));
+        controls.add(canvasSizeBox);
         controls.add(new JLabel("画笔颜色："));
         controls.add(colorBox);
         controls.add(new JLabel("笔粗："));
@@ -388,6 +399,19 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
         }
     }
 
+    private void updateCanvasSize() {
+        if (canvas == null || canvasSizeBox == null) {
+            return;
+        }
+        CanvasSize size = (CanvasSize) canvasSizeBox.getSelectedItem();
+        if (size == null) {
+            return;
+        }
+        canvas.setPreferredSize(size.getDimension());
+        canvas.revalidate();
+        canvas.repaint();
+    }
+
     private void setTips(String text) {
         if (tipsLabel != null) {
             tipsLabel.setText(text);
@@ -447,6 +471,35 @@ public class DrawGuess extends AbstractGame<DrawGuessDTO> {
                         (int) Math.round(line.getX2() * sx),
                         (int) Math.round(line.getY2() * sy));
             }
+        }
+    }
+
+    private enum CanvasSize {
+        SMALL("小（320×210）", 320, 210),
+        MEDIUM("中（480×315）", 480, 315),
+        LARGE("大（640×420）", 640, 420);
+
+        private final String label;
+        private final int width;
+        private final int height;
+
+        CanvasSize(String label, int width, int height) {
+            this.label = label;
+            this.width = width;
+            this.height = height;
+        }
+
+        private Dimension getDimension() {
+            return new Dimension(width, height);
+        }
+
+        private int getHeight() {
+            return height;
+        }
+
+        @Override
+        public String toString() {
+            return label;
         }
     }
 

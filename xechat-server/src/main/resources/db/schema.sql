@@ -111,3 +111,13 @@ CREATE TABLE IF NOT EXISTS messages_public (
     recalled_at         INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_messages_public_created ON messages_public(created_at);
+
+-- 你画我猜服务端词库
+CREATE TABLE IF NOT EXISTS draw_guess_words (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    word        TEXT    NOT NULL UNIQUE,
+    hint        TEXT,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);

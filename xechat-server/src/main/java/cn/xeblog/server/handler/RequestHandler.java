@@ -47,8 +47,8 @@ public class RequestHandler {
             return;
         }
 
-        // LIST_USERS 是无参拉取，允许 body 为空
-        if (request.getAction() != Action.LIST_USERS && ObjectUtil.isEmpty(request.getBody())) {
+        // 部分拉取类 action 是无参请求，允许 body 为空。
+        if (!isNoBodyAction(request.getAction()) && ObjectUtil.isEmpty(request.getBody())) {
             ctx.writeAndFlush(ResponseBuilder.system("Body is null!"));
             return;
         }
@@ -57,8 +57,8 @@ public class RequestHandler {
             ActionHandler produce = ActionHandlerFactory.INSTANCE.produce(request.getAction());
             Object body = request.getBody();
 
-            // LIST_USERS 是无参 action，body 可能为空，直接走 handler 不做反序列化
-            if (request.getAction() == Action.LIST_USERS) {
+            // 无参 action 的 body 可能为空，直接走 handler 不做反序列化。
+            if (isNoBodyAction(request.getAction())) {
                 produce.handle(ctx, body);
                 return;
             }
@@ -105,6 +105,12 @@ public class RequestHandler {
             default:
                 return GameDTO.class;
         }
+    }
+
+    private static boolean isNoBodyAction(Action action) {
+        return action == Action.LIST_USERS
+                || action == Action.ADMIN_LIST_DRAW_GUESS_WORDS
+                || action == Action.DRAW_GUESS_RANDOM_WORD;
     }
 
 }

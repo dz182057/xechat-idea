@@ -19,6 +19,8 @@ public class DrawGuessDTO extends GameDTO {
     private String guesserId;
     private String guesserName;
     private String maskedWord;
+    private Integer wordLength;
+    private String hint;
     private String word;
     private String text;
     private Line line;

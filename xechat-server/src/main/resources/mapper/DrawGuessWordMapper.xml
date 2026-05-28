@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.game.drawguess.DrawGuessWordMapper">
+
+    <sql id="cols">
+        id, word, hint, sort_order, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.game.drawguess.DrawGuessWord">
+        INSERT INTO draw_guess_words (
+            word, hint, sort_order, created_at, updated_at
+        ) VALUES (
+            #{word}, #{hint}, #{sortOrder}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM draw_guess_words
+    </delete>
+
+    <select id="listAll" resultType="cn.xeblog.server.game.drawguess.DrawGuessWord">
+        SELECT <include refid="cols"/>
+        FROM draw_guess_words
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="randomOne" resultType="cn.xeblog.server.game.drawguess.DrawGuessWord">
+        SELECT <include refid="cols"/>
+        FROM draw_guess_words
+        ORDER BY RANDOM()
+        LIMIT 1
+    </select>
+
+    <select id="findByWord" resultType="cn.xeblog.server.game.drawguess.DrawGuessWord">
+        SELECT <include refid="cols"/>
+        FROM draw_guess_words
+        WHERE word = #{word}
+    </select>
+
+</mapper>

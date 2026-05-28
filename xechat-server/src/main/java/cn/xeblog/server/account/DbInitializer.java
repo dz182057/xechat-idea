@@ -76,6 +76,7 @@ public final class DbInitializer {
             // 3. 首次启动建表
             ensureSchema();
             ensureMessageColumns();
+            ensureDrawGuessWordTable();
 
             log.info("账号体系数据库就绪: {}", GlobalConfig.DB_PATH);
         } catch (Exception e) {
@@ -133,6 +134,28 @@ public final class DbInitializer {
             addColumnIfMissing(conn, st, "messages_public", "quote_json", "TEXT");
             addColumnIfMissing(conn, st, "messages_public", "recalled_at", "INTEGER");
             addColumnIfMissing(conn, st, "messages_private", "recalled_at", "INTEGER");
+        }
+    }
+
+    /**
+     * 给已有数据库补齐你画我猜词库表。
+     */
+    private static void ensureDrawGuessWordTable() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true);
+             Connection conn = session.getConnection();
+             Statement st = conn.createStatement()) {
+            if (tableExists(conn, "draw_guess_words")) {
+                return;
+            }
+            st.execute("CREATE TABLE draw_guess_words (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "word TEXT NOT NULL UNIQUE," +
+                    "hint TEXT," +
+                    "sort_order INTEGER NOT NULL DEFAULT 0," +
+                    "created_at INTEGER NOT NULL," +
+                    "updated_at INTEGER NOT NULL" +
+                    ")");
+            log.info("数据库迁移: 创建 draw_guess_words 表");
         }
     }
 
