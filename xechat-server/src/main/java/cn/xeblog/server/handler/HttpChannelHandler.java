@@ -301,11 +301,17 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
             response.content().writeBytes(bytes);
             response.headers().set(HttpHeaderNames.CACHE_CONTROL, "no-cache");
             response.headers().set(HttpHeaderNames.CONTENT_TYPE, contentType(fileName));
-            response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment;filename=\"" + fileName + "\"");
+            response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment;filename=\"" + attachmentName(fileName) + "\"");
             response.setStatus(HttpResponseStatus.OK);
         } catch (Exception e) {
             response.setStatus(HttpResponseStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private String attachmentName(String fileName) {
+        String normalized = fileName == null ? "" : fileName.replace('\\', '/');
+        int idx = normalized.lastIndexOf('/');
+        return idx >= 0 ? normalized.substring(idx + 1) : normalized;
     }
 
     private String contentType(String fileName) {

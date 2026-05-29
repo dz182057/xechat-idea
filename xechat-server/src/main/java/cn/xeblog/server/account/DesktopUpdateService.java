@@ -77,9 +77,11 @@ public final class DesktopUpdateService {
         }
 
         ensureDir();
-        Files.write(new File(storageDir(), versionLatestFileName(normalizedVersion)).toPath(), latestBytes);
-        Files.write(new File(storageDir(), installerName).toPath(), installerBytes);
-        Files.write(new File(storageDir(), blockMapName).toPath(), blockMapBytes);
+        File versionDir = versionDir(normalizedVersion);
+        Files.createDirectories(versionDir.toPath());
+        Files.write(new File(versionDir, ELECTRON_LATEST_FILE).toPath(), latestBytes);
+        Files.write(new File(versionDir, installerName).toPath(), installerBytes);
+        Files.write(new File(versionDir, blockMapName).toPath(), blockMapBytes);
 
         DesktopUpdateInfoDTO info = new DesktopUpdateInfoDTO();
         info.setVersion(normalizedVersion);
@@ -87,13 +89,13 @@ public final class DesktopUpdateService {
         info.setNotes(notes == null ? "" : notes.trim());
         info.setMandatory(mandatory);
         info.setEnabled(true);
-        info.setFileName(installerName);
-        info.setLatestFileName(versionLatestFileName(normalizedVersion));
-        info.setBlockMapFileName(blockMapName);
+        info.setFileName(versionFileName(normalizedVersion, installerName));
+        info.setLatestFileName(versionFileName(normalizedVersion, ELECTRON_LATEST_FILE));
+        info.setBlockMapFileName(versionFileName(normalizedVersion, blockMapName));
         info.setSize(installerBytes.length);
         info.setSha256(sha256(installerBytes));
         info.setPublishedAt(System.currentTimeMillis());
-        info.setDownloadUrl("/updates/desktop/" + installerName);
+        info.setDownloadUrl("/updates/desktop/" + info.getFileName());
 
         list.add(info);
         writeAll(list);
@@ -151,8 +153,7 @@ public final class DesktopUpdateService {
     }
 
     public static byte[] readFile(String fileName) throws IOException {
-        String name = safeName(fileName);
-        File file = new File(storageDir(), name);
+        File file = storageFile(fileName);
         if (!file.isFile()) {
             return null;
         }
@@ -206,7 +207,10 @@ public final class DesktopUpdateService {
         }
         byte[] bytes = readFile(latest.getLatestFileName());
         if (bytes != null) {
-            Files.write(target.toPath(), bytes);
+            String installerName = safeName(latest.getFileName());
+            String latestText = new String(bytes, StandardCharsets.UTF_8);
+            String rootLatestText = latestText.replace(installerName, latest.getFileName());
+            Files.write(target.toPath(), rootLatestText.getBytes(StandardCharsets.UTF_8));
         }
     }
 
@@ -251,8 +255,30 @@ public final class DesktopUpdateService {
         return copy;
     }
 
-    private static String versionLatestFileName(String version) {
-        return "latest-" + version + ".yml";
+    private static File versionDir(String version) {
+        return new File(storageDir(), version);
+    }
+
+    private static String versionFileName(String version, String fileName) {
+        return version + "/" + safeName(fileName);
+    }
+
+    private static File storageFile(String fileName) throws IOException {
+        String name = fileName == null ? "" : fileName.replace('\\', '/').trim();
+        if (name.contains("../") || name.startsWith("/") || name.startsWith(".")) {
+            return new File(storageDir(), "not-found");
+        }
+        String[] parts = name.split("/");
+        File file = storageDir();
+        for (String part : parts) {
+            file = new File(file, safeName(part));
+        }
+        String root = storageDir().getCanonicalPath();
+        String target = file.getCanonicalPath();
+        if (!target.equals(root) && !target.startsWith(root + File.separator)) {
+            return new File(storageDir(), "not-found");
+        }
+        return file;
     }
 
     private static String normalizeVersion(String version) {
