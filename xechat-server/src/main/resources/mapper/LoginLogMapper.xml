@@ -12,4 +12,56 @@
         )
     </insert>
 
+    <sql id="queryWhere">
+        <where>
+            <if test="account != null and account != ''">
+                AND a.account LIKE '%' || #{account} || '%'
+            </if>
+            <if test="nickname != null and nickname != ''">
+                AND a.nickname LIKE '%' || #{nickname} || '%'
+            </if>
+            <if test="ip != null and ip != ''">
+                AND l.ip LIKE '%' || #{ip} || '%'
+            </if>
+            <if test="platform != null and platform != ''">
+                AND l.platform = #{platform}
+            </if>
+            <if test="success != null">
+                AND l.success = #{success}
+            </if>
+            <if test="startAt != null">
+                AND l.created_at &gt;= #{startAt}
+            </if>
+            <if test="endAt != null">
+                AND l.created_at &lt;= #{endAt}
+            </if>
+        </where>
+    </sql>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM login_logs l
+        LEFT JOIN accounts a ON a.account_id = l.account_id
+        <include refid="queryWhere"/>
+    </select>
+
+    <select id="query" resultType="cn.xeblog.commons.entity.react.result.AdminLoginLogDTO">
+        SELECT
+            l.id,
+            l.account_id,
+            a.account,
+            a.nickname,
+            l.ip,
+            l.region,
+            l.platform,
+            l.success,
+            l.fail_reason,
+            l.created_at
+        FROM login_logs l
+        LEFT JOIN accounts a ON a.account_id = l.account_id
+        <include refid="queryWhere"/>
+        ORDER BY l.created_at DESC, l.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
 </mapper>

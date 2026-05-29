@@ -35,6 +35,51 @@ public class AdminReact extends BaseReact {
      */
     private String value;
 
+    /**
+     * 登录账号筛选
+     */
+    private String account;
+
+    /**
+     * 昵称筛选
+     */
+    private String nickname;
+
+    /**
+     * IP 筛选
+     */
+    private String ip;
+
+    /**
+     * 平台筛选
+     */
+    private String platform;
+
+    /**
+     * 登录结果筛选
+     */
+    private Boolean success;
+
+    /**
+     * 开始时间(epoch ms)
+     */
+    private Long startAt;
+
+    /**
+     * 结束时间(epoch ms)
+     */
+    private Long endAt;
+
+    /**
+     * 当前页,从 1 开始
+     */
+    private Integer page;
+
+    /**
+     * 每页条数
+     */
+    private Integer pageSize;
+
     public AdminReact(Operate operate, String value) {
         this.operate = operate;
         this.value = value;
@@ -75,7 +120,11 @@ public class AdminReact extends BaseReact {
         /**
          * 用户权限移除
          */
-        USER_PERMIT_REMOVE
+        USER_PERMIT_REMOVE,
+        /**
+         * 查询用户登录记录
+         */
+        QUERY_LOGIN_LOGS
         ;
     }
 

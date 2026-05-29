@@ -8,6 +8,7 @@ import cn.xeblog.commons.entity.react.result.ReactResult;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.annotation.DoReact;
+import cn.xeblog.server.account.LoginLogService;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.config.GlobalConfig;
@@ -28,6 +29,10 @@ public class AdminReactHandler extends AbstractReactHandler<AdminReact, AdminRea
 
         String msg = null;
         switch (body.getOperate()) {
+            case QUERY_LOGIN_LOGS:
+                result.setSucceed(true);
+                result.setData(LoginLogService.query(body));
+                return;
             case QUERY_PERMIT:
                 break;
             case GLOBAL_MAX_FILE_SIZE:
