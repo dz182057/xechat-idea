@@ -19,12 +19,12 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 桌面端更新包与版本信息管理。
+ * 桌面端增量更新产物管理。
  */
 public final class DesktopUpdateService {
 
     private static final String INDEX_FILE = "versions.json";
-    private static final String LATEST_FILE = "latest.json";
+    private static final String ELECTRON_LATEST_FILE = "latest.yml";
 
     private DesktopUpdateService() {
     }
@@ -34,18 +34,39 @@ public final class DesktopUpdateService {
             String title,
             String notes,
             boolean mandatory,
-            String originalFileName,
-            byte[] bytes
+            String latestFileName,
+            byte[] latestBytes,
+            String installerFileName,
+            byte[] installerBytes,
+            String blockMapFileName,
+            byte[] blockMapBytes
     ) throws IOException {
         String normalizedVersion = normalizeVersion(version);
+        String installerName = safeName(installerFileName);
+        String blockMapName = safeName(blockMapFileName);
+        String latestName = safeName(latestFileName);
+        String latestText = latestBytes == null ? "" : new String(latestBytes, StandardCharsets.UTF_8);
+
         if (!isSemver(normalizedVersion)) {
             throw new IllegalArgumentException("版本号格式应为 x.y.z，例如 0.2.0");
         }
-        if (bytes == null || bytes.length == 0) {
-            throw new IllegalArgumentException("请选择安装包文件");
+        if (!"latest.yml".equalsIgnoreCase(latestName)) {
+            throw new IllegalArgumentException("请选择 electron-builder 生成的 latest.yml");
         }
-        if (!safeName(originalFileName).toLowerCase().endsWith(".exe")) {
-            throw new IllegalArgumentException("安装包必须是 .exe 文件");
+        if (latestBytes == null || latestBytes.length == 0) {
+            throw new IllegalArgumentException("请选择 latest.yml");
+        }
+        if (installerBytes == null || installerBytes.length == 0 || !installerName.toLowerCase().endsWith(".exe")) {
+            throw new IllegalArgumentException("请选择 .exe 安装包");
+        }
+        if (blockMapBytes == null || blockMapBytes.length == 0 || !blockMapName.equals(installerName + ".blockmap")) {
+            throw new IllegalArgumentException("请选择与安装包同名的 .blockmap 文件");
+        }
+        if (!latestText.contains("version: " + normalizedVersion) && !latestText.contains("version: \"" + normalizedVersion + "\"")) {
+            throw new IllegalArgumentException("latest.yml 中的版本号与填写版本不一致");
+        }
+        if (!latestText.contains(installerName)) {
+            throw new IllegalArgumentException("latest.yml 未引用当前安装包文件名");
         }
 
         List<DesktopUpdateInfoDTO> list = readAll();
@@ -56,9 +77,9 @@ public final class DesktopUpdateService {
         }
 
         ensureDir();
-        String fileName = normalizedVersion + "-" + safeName(originalFileName);
-        File target = new File(storageDir(), fileName);
-        Files.write(target.toPath(), bytes);
+        Files.write(new File(storageDir(), versionLatestFileName(normalizedVersion)).toPath(), latestBytes);
+        Files.write(new File(storageDir(), installerName).toPath(), installerBytes);
+        Files.write(new File(storageDir(), blockMapName).toPath(), blockMapBytes);
 
         DesktopUpdateInfoDTO info = new DesktopUpdateInfoDTO();
         info.setVersion(normalizedVersion);
@@ -66,15 +87,17 @@ public final class DesktopUpdateService {
         info.setNotes(notes == null ? "" : notes.trim());
         info.setMandatory(mandatory);
         info.setEnabled(true);
-        info.setFileName(fileName);
-        info.setSize(bytes.length);
-        info.setSha256(sha256(bytes));
+        info.setFileName(installerName);
+        info.setLatestFileName(versionLatestFileName(normalizedVersion));
+        info.setBlockMapFileName(blockMapName);
+        info.setSize(installerBytes.length);
+        info.setSha256(sha256(installerBytes));
         info.setPublishedAt(System.currentTimeMillis());
-        info.setDownloadUrl("/updates/desktop/" + fileName);
+        info.setDownloadUrl("/updates/desktop/" + installerName);
 
         list.add(info);
         writeAll(list);
-        writeLatest(list);
+        writeElectronLatest(list);
         return info;
     }
 
@@ -91,10 +114,7 @@ public final class DesktopUpdateService {
 
     public static synchronized DesktopUpdateInfoDTO latest(String baseUrl) {
         DesktopUpdateInfoDTO latest = latestEnabled(readAll());
-        if (latest == null) {
-            return null;
-        }
-        return withBaseUrl(latest, baseUrl);
+        return latest == null ? null : withBaseUrl(latest, baseUrl);
     }
 
     public static synchronized boolean disable(String version) throws IOException {
@@ -109,7 +129,7 @@ public final class DesktopUpdateService {
         }
         if (changed) {
             writeAll(list);
-            writeLatest(list);
+            writeElectronLatest(list);
         }
         return changed;
     }
@@ -130,7 +150,7 @@ public final class DesktopUpdateService {
         return count;
     }
 
-    public static byte[] readPackage(String fileName) throws IOException {
+    public static byte[] readFile(String fileName) throws IOException {
         String name = safeName(fileName);
         File file = new File(storageDir(), name);
         if (!file.isFile()) {
@@ -176,11 +196,18 @@ public final class DesktopUpdateService {
         Files.write(index.toPath(), JSONUtil.toJsonPrettyStr(list).getBytes(StandardCharsets.UTF_8));
     }
 
-    private static void writeLatest(List<DesktopUpdateInfoDTO> list) throws IOException {
+    private static void writeElectronLatest(List<DesktopUpdateInfoDTO> list) throws IOException {
+        ensureDir();
         DesktopUpdateInfoDTO latest = latestEnabled(list);
-        File latestFile = new File(storageDir(), LATEST_FILE);
-        String json = latest == null ? "{}" : JSONUtil.toJsonPrettyStr(latest);
-        Files.write(latestFile.toPath(), json.getBytes(StandardCharsets.UTF_8));
+        File target = new File(storageDir(), ELECTRON_LATEST_FILE);
+        if (latest == null) {
+            Files.deleteIfExists(target.toPath());
+            return;
+        }
+        byte[] bytes = readFile(latest.getLatestFileName());
+        if (bytes != null) {
+            Files.write(target.toPath(), bytes);
+        }
     }
 
     private static DesktopUpdateInfoDTO latestEnabled(List<DesktopUpdateInfoDTO> list) {
@@ -205,22 +232,27 @@ public final class DesktopUpdateService {
     }
 
     private static DesktopUpdateInfoDTO withBaseUrl(DesktopUpdateInfoDTO item, String baseUrl) {
-        DesktopUpdateInfoDTO copy = new DesktopUpdateInfoDTO(
-                item.getVersion(),
-                item.getTitle(),
-                item.getNotes(),
-                item.isMandatory(),
-                item.isEnabled(),
-                item.getFileName(),
-                item.getSize(),
-                item.getSha256(),
-                item.getPublishedAt(),
-                item.getDownloadUrl()
-        );
+        DesktopUpdateInfoDTO copy = new DesktopUpdateInfoDTO();
+        copy.setVersion(item.getVersion());
+        copy.setTitle(item.getTitle());
+        copy.setNotes(item.getNotes());
+        copy.setMandatory(item.isMandatory());
+        copy.setEnabled(item.isEnabled());
+        copy.setFileName(item.getFileName());
+        copy.setLatestFileName(item.getLatestFileName());
+        copy.setBlockMapFileName(item.getBlockMapFileName());
+        copy.setSize(item.getSize());
+        copy.setSha256(item.getSha256());
+        copy.setPublishedAt(item.getPublishedAt());
+        copy.setDownloadUrl(item.getDownloadUrl());
         if (baseUrl != null && !baseUrl.isEmpty()) {
             copy.setDownloadUrl(baseUrl + "/updates/desktop/" + copy.getFileName());
         }
         return copy;
+    }
+
+    private static String versionLatestFileName(String version) {
+        return "latest-" + version + ".yml";
     }
 
     private static String normalizeVersion(String version) {
@@ -246,7 +278,7 @@ public final class DesktopUpdateService {
     private static String safeName(String fileName) {
         String name = fileName == null ? "" : new File(fileName).getName();
         name = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-        return name.isEmpty() ? "XeChat-Setup.exe" : name;
+        return name.isEmpty() ? "file" : name;
     }
 
     private static String emptyToDefault(String value, String defaultValue) {

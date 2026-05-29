@@ -205,14 +205,27 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
             String title = null;
             String notes = null;
             boolean mandatory = false;
-            String fileName = null;
-            byte[] bytes = null;
+            String latestFileName = null;
+            byte[] latestBytes = null;
+            String installerFileName = null;
+            byte[] installerBytes = null;
+            String blockMapFileName = null;
+            byte[] blockMapBytes = null;
             for (InterfaceHttpData data : decoder.getBodyHttpDatas()) {
                 if (data.getHttpDataType() == InterfaceHttpData.HttpDataType.FileUpload) {
                     FileUpload upload = (FileUpload) data;
-                    fileName = upload.getFilename();
-                    bytes = new byte[(int) upload.length()];
-                    upload.getByteBuf().getBytes(upload.getByteBuf().readerIndex(), bytes);
+                    byte[] uploadBytes = new byte[(int) upload.length()];
+                    upload.getByteBuf().getBytes(upload.getByteBuf().readerIndex(), uploadBytes);
+                    if ("latest".equals(upload.getName())) {
+                        latestFileName = upload.getFilename();
+                        latestBytes = uploadBytes;
+                    } else if ("installer".equals(upload.getName())) {
+                        installerFileName = upload.getFilename();
+                        installerBytes = uploadBytes;
+                    } else if ("blockMap".equals(upload.getName())) {
+                        blockMapFileName = upload.getFilename();
+                        blockMapBytes = uploadBytes;
+                    }
                 } else if (data.getHttpDataType() == InterfaceHttpData.HttpDataType.Attribute) {
                     Attribute attr = (Attribute) data;
                     if ("version".equals(attr.getName())) {
@@ -226,7 +239,18 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
                     }
                 }
             }
-            writeOk(response, DesktopUpdateService.publish(version, title, notes, mandatory, fileName, bytes));
+            writeOk(response, DesktopUpdateService.publish(
+                    version,
+                    title,
+                    notes,
+                    mandatory,
+                    latestFileName,
+                    latestBytes,
+                    installerFileName,
+                    installerBytes,
+                    blockMapFileName,
+                    blockMapBytes
+            ));
         } catch (IllegalArgumentException e) {
             writeResult(response, false, e.getMessage(), null, HttpResponseStatus.BAD_REQUEST);
         } catch (Exception e) {
@@ -269,19 +293,30 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
     private void handleDesktopUpdateDownload(String path, FullHttpResponse response) {
         try {
             String fileName = URLDecoder.decode(path.substring("/updates/desktop/".length()), StandardCharsets.UTF_8.name());
-            byte[] bytes = DesktopUpdateService.readPackage(fileName);
+            byte[] bytes = DesktopUpdateService.readFile(fileName);
             if (bytes == null) {
                 response.setStatus(HttpResponseStatus.NOT_FOUND);
                 return;
             }
             response.content().writeBytes(bytes);
             response.headers().set(HttpHeaderNames.CACHE_CONTROL, "no-cache");
-            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/vnd.microsoft.portable-executable");
+            response.headers().set(HttpHeaderNames.CONTENT_TYPE, contentType(fileName));
             response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment;filename=\"" + fileName + "\"");
             response.setStatus(HttpResponseStatus.OK);
         } catch (Exception e) {
             response.setStatus(HttpResponseStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private String contentType(String fileName) {
+        String lower = fileName == null ? "" : fileName.toLowerCase();
+        if (lower.endsWith(".yml") || lower.endsWith(".yaml")) {
+            return "text/yaml; charset=UTF-8";
+        }
+        if (lower.endsWith(".blockmap")) {
+            return "application/octet-stream";
+        }
+        return "application/vnd.microsoft.portable-executable";
     }
 
     private String readVersion(FullHttpRequest request) {

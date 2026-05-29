@@ -22,6 +22,8 @@ public class DesktopUpdateInfoDTO implements Serializable {
     private boolean mandatory;
     private boolean enabled;
     private String fileName;
+    private String latestFileName;
+    private String blockMapFileName;
     private long size;
     private String sha256;
     private long publishedAt;
