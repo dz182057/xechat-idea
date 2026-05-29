@@ -10,6 +10,7 @@ import cn.xeblog.commons.enums.Platform;
 import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.account.AccountException;
 import cn.xeblog.server.account.AccountService;
+import cn.xeblog.server.account.LoginLogService;
 import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.action.handler.account.AccountLoginHelper;
 import cn.xeblog.server.annotation.DoAction;
@@ -48,19 +49,23 @@ public class GuestLoginActionHandler implements ActionHandler<GuestLoginDTO> {
             return;
         }
         if (body == null || StrUtil.isBlank(body.getNickname()) || StrUtil.isBlank(body.getUuid())) {
+            LoginLogService.record(null, IpUtil.getIpByCtx(ctx), null, false, "游客登录参数不完整(需 nickname + uuid)");
             ctx.writeAndFlush(ResponseBuilder.system("游客登录参数不完整(需 nickname + uuid)"));
             return;
         }
 
         String nickname = body.getNickname().trim();
+        Platform platform = body.getPlatform() == null ? Platform.IDEA : body.getPlatform();
         try {
             AccountService.validateNicknameFormat(nickname);
         } catch (AccountException e) {
+            LoginLogService.record(null, IpUtil.getIpByCtx(ctx), platform, false, e.getMessage());
             ctx.writeAndFlush(ResponseBuilder.system(e.getMessage()));
             return;
         }
 
         if (!UserCache.tryAcquireGuestNickname(nickname, body.getUuid())) {
+            LoginLogService.record(null, IpUtil.getIpByCtx(ctx), platform, false, "该昵称当前已被使用,请换一个");
             ctx.writeAndFlush(ResponseBuilder.system("该昵称当前已被使用,请换一个"));
             return;
         }
@@ -76,7 +81,7 @@ public class GuestLoginActionHandler implements ActionHandler<GuestLoginDTO> {
             user.setNickname(nickname);
             user.setGuest(true);
             user.setStatus(UserStatus.FISHING);
-            user.setPlatform(body.getPlatform() == null ? Platform.IDEA : body.getPlatform());
+            user.setPlatform(platform);
             user.setIp(ip);
             user.setRegion(region);
             user.setChannel(ctx.channel());
@@ -91,6 +96,7 @@ public class GuestLoginActionHandler implements ActionHandler<GuestLoginDTO> {
             // 上线失败要回滚游客池占用,避免昵称被永远锁住
             UserCache.releaseGuestNickname(nickname, body.getUuid());
             log.error("游客登录异常 nickname={}", nickname, e);
+            LoginLogService.record(null, IpUtil.getIpByCtx(ctx), platform, false, "登录失败,请稍后重试");
             ctx.writeAndFlush(ResponseBuilder.system("登录失败,请稍后重试"));
         }
     }

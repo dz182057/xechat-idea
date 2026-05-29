@@ -75,6 +75,7 @@ public final class DbInitializer {
 
             // 3. 首次启动建表
             ensureSchema();
+            ensureLoginLogsTable();
             ensureMessageColumns();
             ensureDrawGuessWordTable();
             ensureQuickQuizTables();
@@ -122,6 +123,30 @@ public final class DbInitializer {
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();
             }
+        }
+    }
+
+    /**
+     * 给已有数据库补齐登录记录表。
+     */
+    private static void ensureLoginLogsTable() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true);
+             Connection conn = session.getConnection();
+             Statement st = conn.createStatement()) {
+            if (tableExists(conn, "login_logs")) {
+                return;
+            }
+            st.execute("CREATE TABLE login_logs (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "account_id INTEGER," +
+                    "ip TEXT," +
+                    "region TEXT," +
+                    "platform TEXT," +
+                    "success INTEGER NOT NULL," +
+                    "fail_reason TEXT," +
+                    "created_at INTEGER NOT NULL" +
+                    ")");
+            log.info("数据库迁移: 创建 login_logs 表");
         }
     }
 

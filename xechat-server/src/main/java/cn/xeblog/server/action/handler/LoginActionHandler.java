@@ -7,6 +7,7 @@ import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Platform;
 import cn.xeblog.server.account.AccountException;
 import cn.xeblog.server.account.AccountService;
+import cn.xeblog.server.account.LoginLogService;
 import cn.xeblog.server.account.SessionService;
 import cn.xeblog.server.account.entity.Account;
 import cn.xeblog.server.account.entity.SessionEntity;
@@ -69,9 +70,11 @@ public class LoginActionHandler implements ActionHandler<LoginDTO> {
                     sess.getExpiresAt(), body.getUuid(), platform);
             log.info("账号 {} 上线(密码登录)", account.getAccount());
         } catch (AccountException e) {
+            LoginLogService.record(null, ip, platform, false, e.getMessage());
             ctx.writeAndFlush(ResponseBuilder.system(e.getMessage()));
         } catch (Exception e) {
             log.error("登录异常", e);
+            LoginLogService.record(null, ip, platform, false, "登录失败,请稍后重试");
             ctx.writeAndFlush(ResponseBuilder.system("登录失败,请稍后重试"));
         }
     }

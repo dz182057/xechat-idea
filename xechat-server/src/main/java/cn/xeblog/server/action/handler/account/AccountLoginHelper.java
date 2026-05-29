@@ -10,6 +10,7 @@ import cn.xeblog.commons.enums.Permissions;
 import cn.xeblog.commons.enums.Platform;
 import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.account.entity.Account;
+import cn.xeblog.server.account.LoginLogService;
 import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
@@ -94,6 +95,8 @@ public final class AccountLoginHelper {
                                     String identityPrivKeyEnvelope) {
         UserCache.add(user.getId(), user);
         ChannelAction.add(user.getChannel());
+        Long accountId = user.getAccountId() > 0 ? user.getAccountId() : null;
+        LoginLogService.record(accountId, user.getIp(), user.getPlatform(), true, null);
 
         // 1) 把 LoginResultDTO 发给自己
         LoginResultDTO dto = new LoginResultDTO(token, expiresAt, copyForLoginResult(user));
