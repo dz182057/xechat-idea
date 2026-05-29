@@ -16,6 +16,8 @@ import io.netty.handler.timeout.IdleStateHandler;
  */
 public class HttpAndWebSocketChannelInitializer extends ChannelInitializer<SocketChannel> {
 
+    private static final int MAX_WEBSOCKET_FRAME_BYTES = 512 * 1024;
+
     @Override
     protected void initChannel(SocketChannel ch) throws Exception {
         ch.pipeline()
@@ -25,7 +27,7 @@ public class HttpAndWebSocketChannelInitializer extends ChannelInitializer<Socke
                 .addLast(new ChunkedWriteHandler())
                 .addLast(new WebSocketMessageEncoder())
                 .addLast(new WebSocketServerCompressionHandler())
-                .addLast(new WebSocketServerProtocolHandler("/xechat", null, true))
+                .addLast(new WebSocketServerProtocolHandler("/xechat", null, true, MAX_WEBSOCKET_FRAME_BYTES))
                 .addLast(new HttpChannelHandler())
                 .addLast(new WebSocketChannelHandler());
     }
