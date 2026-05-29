@@ -16,6 +16,7 @@ import cn.xeblog.plugin.game.AbstractGame;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -31,8 +32,17 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
     private JTextArea logArea;
     private JTextArea inputArea;
     private JTextField customAnswerField;
+    private JPanel questionPanel;
+    private JPanel answerPanel;
+    private JPanel judgePanel;
+    private JPanel storyControlPanel;
+    private JPanel previewControlPanel;
+    private final List<JButton> answerButtons = new ArrayList<>();
     private JButton questionButton;
     private JButton guessButton;
+    private JButton customAnswerButton;
+    private JButton previewChangeButton;
+    private JButton previewConfirmButton;
     private JButton correctButton;
     private JButton partialButton;
     private JButton wrongButton;
@@ -131,10 +141,11 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
     private void showStartPanel() {
         mainPanel = new JPanel();
         mainPanel.setLayout(null);
-        mainPanel.setMinimumSize(new Dimension(260, 260));
+        mainPanel.setMinimumSize(new Dimension(260, 300));
+        mainPanel.setPreferredSize(new Dimension(320, 320));
 
         JPanel panel = new JPanel();
-        panel.setBounds(10, 10, 240, 230);
+        panel.setBounds(10, 10, 260, 280);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         JLabel title = new JLabel("海龟汤");
         title.setFont(new Font("", Font.BOLD, 15));
@@ -168,6 +179,11 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
             });
             panel.add(createRoomButton);
             panel.add(Box.createVerticalStrut(8));
+
+            JButton recordButton = new JButton("查看我的记录");
+            recordButton.addActionListener(e -> MessageAction.send(new Object(), Action.TURTLE_SOUP_MY_RECORDS));
+            panel.add(recordButton);
+            panel.add(Box.createVerticalStrut(8));
         }
         panel.add(getExitButton());
 
@@ -183,22 +199,39 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         mainPanel.setLayout(new BorderLayout());
         mainPanel.setMinimumSize(new Dimension(620, 540));
 
+        JPanel headerPanel = new JPanel(new BorderLayout());
         titleLabel = new JLabel("等待房主分发汤面", JLabel.CENTER);
         titleLabel.setFont(new Font("", Font.BOLD, 14));
-        mainPanel.add(titleLabel, BorderLayout.NORTH);
+        headerPanel.add(titleLabel, BorderLayout.NORTH);
+        previewControlPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 4));
+        previewChangeButton = new JButton("换题");
+        previewChangeButton.addActionListener(e -> requestStory());
+        previewConfirmButton = new JButton("确认题目");
+        previewConfirmButton.addActionListener(e -> confirmStory());
+        previewControlPanel.add(previewChangeButton);
+        previewControlPanel.add(previewConfirmButton);
+        headerPanel.add(previewControlPanel, BorderLayout.SOUTH);
+        mainPanel.add(headerPanel, BorderLayout.NORTH);
 
-        JPanel center = new JPanel(new GridLayout(1, 2, 8, 8));
+        JPanel storyPanel = new JPanel(new GridLayout(1, 2, 8, 8));
         surfaceArea = readonlyArea();
         bottomArea = readonlyArea();
-        center.add(wrap("汤面", surfaceArea));
-        center.add(wrap("汤底", bottomArea));
-        mainPanel.add(center, BorderLayout.CENTER);
+        storyPanel.add(wrap("汤面", surfaceArea));
+        storyPanel.add(wrap("汤底", bottomArea));
 
         JPanel bottom = new JPanel(new BorderLayout());
+        bottom.setMinimumSize(new Dimension(520, 220));
         logArea = readonlyArea();
         bottom.add(wrap("问答记录", logArea), BorderLayout.CENTER);
-        bottom.add(createControlPanel(), BorderLayout.EAST);
-        mainPanel.add(bottom, BorderLayout.SOUTH);
+        JScrollPane controlScrollPane = new JScrollPane(createControlPanel());
+        controlScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        controlScrollPane.setPreferredSize(new Dimension(270, 260));
+        bottom.add(controlScrollPane, BorderLayout.EAST);
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, storyPanel, bottom);
+        splitPane.setResizeWeight(0.45);
+        splitPane.setBorder(null);
+        mainPanel.add(splitPane, BorderLayout.CENTER);
         mainPanel.updateUI();
 
         previewing = false;
@@ -208,54 +241,77 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
 
     private JPanel createControlPanel() {
         JPanel panel = new JPanel();
-        panel.setPreferredSize(new Dimension(250, 260));
+        panel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+
+        questionPanel = new JPanel();
+        questionPanel.setLayout(new BoxLayout(questionPanel, BoxLayout.Y_AXIS));
+        questionPanel.setBorder(BorderFactory.createTitledBorder("猜题区"));
         inputArea = new JTextArea(4, 18);
         inputArea.setLineWrap(true);
         questionButton = new JButton("提问");
         questionButton.addActionListener(e -> sendQuestion());
         guessButton = new JButton("猜底");
         guessButton.addActionListener(e -> sendGuess());
-        panel.add(new JScrollPane(inputArea));
-        panel.add(questionButton);
-        panel.add(guessButton);
+        questionPanel.add(new JScrollPane(inputArea));
+        JPanel questionButtons = new JPanel(new GridLayout(1, 2, 4, 0));
+        questionButtons.add(questionButton);
+        questionButtons.add(guessButton);
+        questionPanel.add(questionButtons);
+        panel.add(questionPanel);
 
+        answerPanel = new JPanel();
+        answerPanel.setLayout(new BoxLayout(answerPanel, BoxLayout.Y_AXIS));
+        answerPanel.setBorder(BorderFactory.createTitledBorder("主持回答"));
+        JPanel answerGrid = new JPanel(new GridLayout(0, 2, 4, 4));
         String[] answers = {"是", "否", "无关", "接近", "请重问", "不确定", "部分正确"};
+        answerButtons.clear();
         for (String answer : answers) {
             JButton button = new JButton(answer);
             button.addActionListener(e -> sendAnswer(answer));
-            panel.add(button);
+            answerButtons.add(button);
+            answerGrid.add(button);
         }
+        answerPanel.add(answerGrid);
         customAnswerField = new JTextField();
-        JButton customButton = new JButton("自定义回答");
-        customButton.addActionListener(e -> sendAnswer(customAnswerField.getText()));
-        panel.add(customAnswerField);
-        panel.add(customButton);
+        customAnswerButton = new JButton("自定义回答");
+        customAnswerButton.addActionListener(e -> sendAnswer(customAnswerField.getText()));
+        answerPanel.add(customAnswerField);
+        answerPanel.add(customAnswerButton);
+        panel.add(answerPanel);
 
+        judgePanel = new JPanel(new GridLayout(0, 1, 0, 4));
+        judgePanel.setBorder(BorderFactory.createTitledBorder("正式猜底判定"));
         correctButton = new JButton("判定正确");
         correctButton.addActionListener(e -> judge(TurtleSoupDTO.GuessResult.CORRECT));
         partialButton = new JButton("判定部分正确");
         partialButton.addActionListener(e -> judge(TurtleSoupDTO.GuessResult.PARTIAL));
         wrongButton = new JButton("判定错误");
         wrongButton.addActionListener(e -> judge(TurtleSoupDTO.GuessResult.WRONG));
-        panel.add(correctButton);
-        panel.add(partialButton);
-        panel.add(wrongButton);
+        judgePanel.add(correctButton);
+        judgePanel.add(partialButton);
+        judgePanel.add(wrongButton);
+        panel.add(judgePanel);
 
+        storyControlPanel = new JPanel(new GridLayout(0, 1, 0, 4));
+        storyControlPanel.setBorder(BorderFactory.createTitledBorder("题目控制"));
         changeButton = new JButton("换题");
         changeButton.addActionListener(e -> requestStory());
         confirmButton = new JButton("确认题目");
         confirmButton.addActionListener(e -> confirmStory());
         nextButton = new JButton("下一轮");
         nextButton.addActionListener(e -> requestStory());
+        storyControlPanel.add(changeButton);
+        storyControlPanel.add(confirmButton);
+        storyControlPanel.add(nextButton);
+        panel.add(storyControlPanel);
+
         JButton recordButton = new JButton("我的记录");
         recordButton.addActionListener(e -> MessageAction.send(new Object(), Action.TURTLE_SOUP_MY_RECORDS));
-        panel.add(changeButton);
-        panel.add(confirmButton);
-        panel.add(nextButton);
         panel.add(recordButton);
 
         recordArea = readonlyArea();
+        recordArea.setRows(5);
         panel.add(new JScrollPane(recordArea));
         return panel;
     }
@@ -282,7 +338,17 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
                 }
                 sb.append("----------\n");
             }
-            recordArea.setText(sb.length() == 0 ? "暂无记录" : sb.toString());
+            String text = sb.length() == 0 ? "暂无记录" : sb.toString();
+            if (recordArea != null) {
+                recordArea.setText(text);
+                return;
+            }
+            JTextArea area = readonlyArea();
+            area.setText(text);
+            area.setCaretPosition(0);
+            JScrollPane pane = new JScrollPane(area);
+            pane.setPreferredSize(new Dimension(520, 360));
+            JOptionPane.showMessageDialog(mainPanel, pane, "海龟汤记录", JOptionPane.INFORMATION_MESSAGE);
         });
     }
 
@@ -343,7 +409,7 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
 
     private void sendQuestion() {
         String text = inputArea.getText().trim();
-        if (text.isEmpty()) {
+        if (text.isEmpty() || !playing || !isCurrentGuesser()) {
             return;
         }
         TurtleSoupDTO dto = new TurtleSoupDTO();
@@ -355,7 +421,7 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
 
     private void sendGuess() {
         String text = inputArea.getText().trim();
-        if (text.isEmpty()) {
+        if (text.isEmpty() || !playing || !isCurrentGuesser() || guessUsed >= guessLimit) {
             return;
         }
         TurtleSoupDTO dto = new TurtleSoupDTO();
@@ -366,7 +432,7 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
     }
 
     private void sendAnswer(String answer) {
-        if (answer == null || answer.trim().isEmpty()) {
+        if (answer == null || answer.trim().isEmpty() || !playing || !isCurrentHost() || lastGuessPending) {
             return;
         }
         TurtleSoupDTO dto = new TurtleSoupDTO();
@@ -377,6 +443,9 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
     }
 
     private void judge(TurtleSoupDTO.GuessResult result) {
+        if (!playing || !isCurrentHost() || !lastGuessPending) {
+            return;
+        }
         TurtleSoupDTO dto = new TurtleSoupDTO();
         dto.setEvent(TurtleSoupDTO.Event.JUDGE);
         dto.setGuessResult(result);
@@ -398,22 +467,46 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
 
     private void refreshControls() {
         boolean isHost = playing && isCurrentHost();
-        boolean isGuesser = playing && GameAction.getNickname() != null && GameAction.getNickname().equals(guesserName);
+        boolean isGuesser = playing && isCurrentGuesser();
+        boolean canAnswerQuestion = isHost && !lastGuessPending;
         boolean canPreview = previewing && isCurrentHost();
+        boolean canNext = !previewing && !playing && isHomeowner();
+        if (previewControlPanel != null) previewControlPanel.setVisible(canPreview);
+        if (previewChangeButton != null) previewChangeButton.setEnabled(canPreview);
+        if (previewConfirmButton != null) previewConfirmButton.setEnabled(canPreview);
+        if (questionPanel != null) questionPanel.setVisible(isGuesser);
+        if (answerPanel != null) answerPanel.setVisible(canAnswerQuestion);
+        if (judgePanel != null) judgePanel.setVisible(isHost && lastGuessPending);
+        if (storyControlPanel != null) storyControlPanel.setVisible(canNext);
         if (questionButton != null) questionButton.setEnabled(isGuesser);
         if (guessButton != null) guessButton.setEnabled(isGuesser && guessUsed < guessLimit);
         if (inputArea != null) inputArea.setEnabled(isGuesser);
-        if (customAnswerField != null) customAnswerField.setEnabled(isHost);
+        for (JButton button : answerButtons) {
+            button.setEnabled(canAnswerQuestion);
+        }
+        if (customAnswerField != null) customAnswerField.setEnabled(canAnswerQuestion);
+        if (customAnswerButton != null) customAnswerButton.setEnabled(canAnswerQuestion);
         if (correctButton != null) correctButton.setEnabled(isHost && lastGuessPending);
         if (partialButton != null) partialButton.setEnabled(isHost && lastGuessPending);
         if (wrongButton != null) wrongButton.setEnabled(isHost && lastGuessPending);
         if (changeButton != null) changeButton.setEnabled(canPreview);
         if (confirmButton != null) confirmButton.setEnabled(canPreview);
-        if (nextButton != null) nextButton.setEnabled(!previewing && !playing && isHomeowner());
+        if (changeButton != null) changeButton.setVisible(canPreview);
+        if (confirmButton != null) confirmButton.setVisible(canPreview);
+        if (nextButton != null) nextButton.setEnabled(canNext);
+        if (nextButton != null) nextButton.setVisible(canNext);
+        if (mainPanel != null) {
+            mainPanel.revalidate();
+            mainPanel.repaint();
+        }
     }
 
     private boolean isCurrentHost() {
         return GameAction.getNickname() != null && GameAction.getNickname().equals(hostName);
+    }
+
+    private boolean isCurrentGuesser() {
+        return GameAction.getNickname() != null && GameAction.getNickname().equals(guesserName);
     }
 
     private void appendLog(String username, String action, String text) {
