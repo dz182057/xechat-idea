@@ -6,6 +6,7 @@ import cn.xeblog.commons.entity.react.result.ReactResult;
 import cn.xeblog.commons.entity.react.result.UploadReactResult;
 import cn.xeblog.server.account.AccountService;
 import cn.xeblog.server.account.AvatarService;
+import cn.xeblog.server.account.DesktopUpdateService;
 import cn.xeblog.server.account.SessionService;
 import cn.xeblog.server.account.entity.Account;
 import cn.xeblog.server.account.entity.SessionEntity;
@@ -23,6 +24,10 @@ import io.netty.handler.codec.http.multipart.InterfaceHttpData;
 import io.netty.util.CharsetUtil;
 
 import java.util.List;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author anlingyi
@@ -44,6 +49,18 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
 
         if (fullHttpRequest.method() == HttpMethod.OPTIONS) {
             response.setStatus(HttpResponseStatus.NO_CONTENT);
+        } else if (path.equals("/api/desktop-updates/latest") && fullHttpRequest.method() == HttpMethod.GET) {
+            writeOk(response, DesktopUpdateService.latest(baseUrl(fullHttpRequest)));
+        } else if (path.equals("/api/admin/desktop-updates") && fullHttpRequest.method() == HttpMethod.GET) {
+            handleAdminListDesktopUpdates(fullHttpRequest, response);
+        } else if (path.equals("/api/admin/desktop-updates") && fullHttpRequest.method() == HttpMethod.POST) {
+            handleAdminPublishDesktopUpdate(fullHttpRequest, response);
+        } else if (path.equals("/api/admin/desktop-updates/push") && fullHttpRequest.method() == HttpMethod.POST) {
+            handleAdminPushDesktopUpdate(fullHttpRequest, response);
+        } else if (path.equals("/api/admin/desktop-updates/disable") && fullHttpRequest.method() == HttpMethod.POST) {
+            handleAdminDisableDesktopUpdate(fullHttpRequest, response);
+        } else if (path.startsWith("/updates/desktop/")) {
+            handleDesktopUpdateDownload(path, response);
         } else if (path.equals("/upload") && fullHttpRequest.method() == HttpMethod.POST) {
             handleUpload(fullHttpRequest, response);
         } else if (path.startsWith("/download/")) {
@@ -147,6 +164,146 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
         return authorization.startsWith(prefix) ? authorization.substring(prefix.length()) : null;
     }
 
+    private User resolveHttpUser(FullHttpRequest request) {
+        String token = bearerToken(request.headers().get(HttpHeaderNames.AUTHORIZATION));
+        SessionEntity session = SessionService.validateAndTouch(token);
+        if (session == null) {
+            return null;
+        }
+        List<User> users = UserCache.getByAccount(session.getAccountId());
+        return users.isEmpty() ? null : users.get(0);
+    }
+
+    private User requireAdmin(FullHttpRequest request, FullHttpResponse response) {
+        User user = resolveHttpUser(request);
+        if (user == null) {
+            writeResult(response, false, "请先登录", null, HttpResponseStatus.UNAUTHORIZED);
+            return null;
+        }
+        if (!user.isAdmin()) {
+            writeResult(response, false, "仅管理员可操作", null, HttpResponseStatus.FORBIDDEN);
+            return null;
+        }
+        return user;
+    }
+
+    private void handleAdminListDesktopUpdates(FullHttpRequest request, FullHttpResponse response) {
+        if (requireAdmin(request, response) == null) {
+            return;
+        }
+        writeOk(response, DesktopUpdateService.list(baseUrl(request)));
+    }
+
+    private void handleAdminPublishDesktopUpdate(FullHttpRequest request, FullHttpResponse response) {
+        if (requireAdmin(request, response) == null) {
+            return;
+        }
+        HttpPostRequestDecoder decoder = null;
+        try {
+            decoder = new HttpPostRequestDecoder(new DefaultHttpDataFactory(false), request);
+            String version = null;
+            String title = null;
+            String notes = null;
+            boolean mandatory = false;
+            String fileName = null;
+            byte[] bytes = null;
+            for (InterfaceHttpData data : decoder.getBodyHttpDatas()) {
+                if (data.getHttpDataType() == InterfaceHttpData.HttpDataType.FileUpload) {
+                    FileUpload upload = (FileUpload) data;
+                    fileName = upload.getFilename();
+                    bytes = new byte[(int) upload.length()];
+                    upload.getByteBuf().getBytes(upload.getByteBuf().readerIndex(), bytes);
+                } else if (data.getHttpDataType() == InterfaceHttpData.HttpDataType.Attribute) {
+                    Attribute attr = (Attribute) data;
+                    if ("version".equals(attr.getName())) {
+                        version = attr.getValue();
+                    } else if ("title".equals(attr.getName())) {
+                        title = attr.getValue();
+                    } else if ("notes".equals(attr.getName())) {
+                        notes = attr.getValue();
+                    } else if ("mandatory".equals(attr.getName())) {
+                        mandatory = Boolean.parseBoolean(attr.getValue());
+                    }
+                }
+            }
+            writeOk(response, DesktopUpdateService.publish(version, title, notes, mandatory, fileName, bytes));
+        } catch (IllegalArgumentException e) {
+            writeResult(response, false, e.getMessage(), null, HttpResponseStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            writeResult(response, false, "发布桌面端更新失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        } finally {
+            if (decoder != null) {
+                decoder.destroy();
+            }
+        }
+    }
+
+    private void handleAdminPushDesktopUpdate(FullHttpRequest request, FullHttpResponse response) {
+        if (requireAdmin(request, response) == null) {
+            return;
+        }
+        int count = DesktopUpdateService.pushToDesktopClients();
+        Map<String, Object> body = new HashMap<>();
+        body.put("count", count);
+        writeOk(response, body);
+    }
+
+    private void handleAdminDisableDesktopUpdate(FullHttpRequest request, FullHttpResponse response) {
+        if (requireAdmin(request, response) == null) {
+            return;
+        }
+        try {
+            String version = readVersion(request);
+            if (version == null || version.trim().isEmpty()) {
+                writeResult(response, false, "版本号不能为空", null, HttpResponseStatus.BAD_REQUEST);
+                return;
+            }
+            boolean changed = DesktopUpdateService.disable(version);
+            writeResult(response, changed, changed ? "已禁用该版本" : "未找到可禁用的版本", null,
+                    changed ? HttpResponseStatus.OK : HttpResponseStatus.NOT_FOUND);
+        } catch (Exception e) {
+            writeResult(response, false, "禁用桌面端更新失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private void handleDesktopUpdateDownload(String path, FullHttpResponse response) {
+        try {
+            String fileName = URLDecoder.decode(path.substring("/updates/desktop/".length()), StandardCharsets.UTF_8.name());
+            byte[] bytes = DesktopUpdateService.readPackage(fileName);
+            if (bytes == null) {
+                response.setStatus(HttpResponseStatus.NOT_FOUND);
+                return;
+            }
+            response.content().writeBytes(bytes);
+            response.headers().set(HttpHeaderNames.CACHE_CONTROL, "no-cache");
+            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/vnd.microsoft.portable-executable");
+            response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment;filename=\"" + fileName + "\"");
+            response.setStatus(HttpResponseStatus.OK);
+        } catch (Exception e) {
+            response.setStatus(HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private String readVersion(FullHttpRequest request) {
+        String body = request.content().toString(CharsetUtil.UTF_8);
+        if (body == null || body.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return JSONUtil.parseObj(body).getStr("version");
+        } catch (Exception ignored) {
+            return body.trim();
+        }
+    }
+
+    private String baseUrl(FullHttpRequest request) {
+        String host = request.headers().get(HttpHeaderNames.HOST);
+        if (host == null || host.trim().isEmpty()) {
+            return "";
+        }
+        return "http://" + host;
+    }
+
     private String extensionOf(String fileName) {
         int idx = fileName == null ? -1 : fileName.lastIndexOf('.');
         if (idx < 0 || idx == fileName.length() - 1) {
@@ -159,6 +316,18 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
         response.setStatus(status);
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json; charset=UTF-8");
         response.content().writeBytes(JSONUtil.toJsonStr(body).getBytes(CharsetUtil.UTF_8));
+    }
+
+    private void writeOk(FullHttpResponse response, Object data) {
+        writeResult(response, true, "ok", data, HttpResponseStatus.OK);
+    }
+
+    private void writeResult(FullHttpResponse response, boolean succeed, String msg, Object data, HttpResponseStatus status) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("succeed", succeed);
+        result.put("msg", msg);
+        result.put("data", data);
+        writeJson(response, result, status);
     }
 
     /**

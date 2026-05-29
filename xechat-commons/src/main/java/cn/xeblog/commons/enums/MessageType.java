@@ -64,6 +64,10 @@ public enum MessageType {
      */
     LOGIN_RESULT,
     /**
+     * 桌面端更新可用通知(下行 DesktopUpdateInfoDTO)
+     */
+    DESKTOP_UPDATE_AVAILABLE,
+    /**
      * 管理员邀请码列表响应
      */
     INVITE_LIST,

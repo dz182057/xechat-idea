@@ -17,13 +17,14 @@ import io.netty.handler.timeout.IdleStateHandler;
 public class HttpAndWebSocketChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     private static final int MAX_WEBSOCKET_FRAME_BYTES = 512 * 1024;
+    private static final int MAX_HTTP_CONTENT_BYTES = 256 * 1024 * 1024;
 
     @Override
     protected void initChannel(SocketChannel ch) throws Exception {
         ch.pipeline()
                 .addLast(new IdleStateHandler(0, 0, 60))
                 .addLast(new HttpServerCodec())
-                .addLast(new HttpObjectAggregator(4 * 1024 * 1024))
+                .addLast(new HttpObjectAggregator(MAX_HTTP_CONTENT_BYTES))
                 .addLast(new ChunkedWriteHandler())
                 .addLast(new WebSocketMessageEncoder())
                 .addLast(new WebSocketServerCompressionHandler())
