@@ -23,7 +23,12 @@ public class HistoryMessageHandler extends AbstractMessageHandler<HistoryMsgDTO>
         if (CollectionUtil.isNotEmpty(msgList)) {
             ConsoleAction.atomicExec(() -> {
                 ConsoleAction.showSimpleMsg("正在加载历史消息...");
-                msgList.forEach(msg -> MessageHandlerFactory.INSTANCE.produce(msg.getType()).handle(msg));
+                msgList.forEach(msg -> {
+                    MessageHandler handler = MessageHandlerFactory.INSTANCE.produce(msg.getType());
+                    if (handler != null) {
+                        handler.handle(msg);
+                    }
+                });
                 ConsoleAction.showSimpleMsg("------以上是历史消息------");
             });
         }

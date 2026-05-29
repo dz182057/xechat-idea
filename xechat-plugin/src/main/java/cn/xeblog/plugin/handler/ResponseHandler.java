@@ -2,6 +2,7 @@ package cn.xeblog.plugin.handler;
 
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.enums.MessageType;
+import cn.xeblog.plugin.action.handler.message.MessageHandler;
 import cn.xeblog.plugin.factory.MessageHandlerFactory;
 import lombok.AllArgsConstructor;
 
@@ -23,7 +24,12 @@ public class ResponseHandler {
     }
 
     private void process() {
-        MessageHandlerFactory.INSTANCE.produce(response.getType()).handle(response);
+        MessageHandler handler = MessageHandlerFactory.INSTANCE.produce(response.getType());
+        if (handler == null) {
+            System.err.println("未注册的消息处理器：" + response.getType());
+            return;
+        }
+        handler.handle(response);
     }
 
 }
