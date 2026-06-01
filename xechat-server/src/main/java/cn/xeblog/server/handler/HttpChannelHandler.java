@@ -21,6 +21,7 @@ import io.netty.handler.codec.http.multipart.DefaultHttpDataFactory;
 import io.netty.handler.codec.http.multipart.FileUpload;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.handler.codec.http.multipart.InterfaceHttpData;
+import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.CharsetUtil;
 
 import java.util.List;
@@ -60,7 +61,7 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
         } else if (path.equals("/api/admin/desktop-updates/disable") && fullHttpRequest.method() == HttpMethod.POST) {
             handleAdminDisableDesktopUpdate(fullHttpRequest, response);
         } else if (path.startsWith("/updates/desktop/")) {
-            handleDesktopUpdateDownload(path, response);
+            handleDesktopUpdateDownload(ctx, fullHttpRequest, path, response);
         } else if (path.equals("/upload") && fullHttpRequest.method() == HttpMethod.POST) {
             handleUpload(fullHttpRequest, response);
         } else if (path.startsWith("/download/")) {
@@ -290,21 +291,102 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
         }
     }
 
-    private void handleDesktopUpdateDownload(String path, FullHttpResponse response) {
+    private void handleDesktopUpdateDownload(ChannelHandlerContext ctx, FullHttpRequest request, String path, FullHttpResponse response) {
         try {
+            IdleStateHandler idleStateHandler = ctx.pipeline().get(IdleStateHandler.class);
+            if (idleStateHandler != null) {
+                ctx.pipeline().remove(idleStateHandler);
+            }
             String fileName = URLDecoder.decode(path.substring("/updates/desktop/".length()), StandardCharsets.UTF_8.name());
             byte[] bytes = DesktopUpdateService.readFile(fileName);
             if (bytes == null) {
                 response.setStatus(HttpResponseStatus.NOT_FOUND);
                 return;
             }
-            response.content().writeBytes(bytes);
+            response.headers().set(HttpHeaderNames.ACCEPT_RANGES, "bytes");
             response.headers().set(HttpHeaderNames.CACHE_CONTROL, "no-cache");
             response.headers().set(HttpHeaderNames.CONTENT_TYPE, contentType(fileName));
             response.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment;filename=\"" + attachmentName(fileName) + "\"");
+            String range = request.headers().get(HttpHeaderNames.RANGE);
+            if (range != null && range.startsWith("bytes=")) {
+                if (writeRanges(bytes, range, contentType(fileName), response)) {
+                    return;
+                }
+                response.headers().set(HttpHeaderNames.CONTENT_RANGE, "bytes */" + bytes.length);
+                response.setStatus(HttpResponseStatus.REQUESTED_RANGE_NOT_SATISFIABLE);
+                return;
+            }
+            response.content().writeBytes(bytes);
             response.setStatus(HttpResponseStatus.OK);
         } catch (Exception e) {
             response.setStatus(HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private boolean writeRanges(byte[] bytes, String range, String contentType, FullHttpResponse response) {
+        String spec = range.substring("bytes=".length()).trim();
+        String[] rangeSpecs = spec.split(",");
+        java.util.List<long[]> ranges = new java.util.ArrayList<>();
+        for (String item : rangeSpecs) {
+            long[] parsed = parseRange(bytes.length, item.trim());
+            if (parsed == null) {
+                return false;
+            }
+            ranges.add(parsed);
+        }
+        if (ranges.isEmpty()) {
+            return false;
+        }
+        if (ranges.size() == 1) {
+            long[] parsed = ranges.get(0);
+            int length = (int) (parsed[1] - parsed[0] + 1);
+            response.content().writeBytes(bytes, (int) parsed[0], length);
+            response.headers().set(HttpHeaderNames.CONTENT_RANGE, "bytes " + parsed[0] + "-" + parsed[1] + "/" + bytes.length);
+            response.setStatus(HttpResponseStatus.PARTIAL_CONTENT);
+            return true;
+        }
+
+        String boundary = "xechat-update-boundary";
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "multipart/byteranges; boundary=" + boundary);
+        for (long[] parsed : ranges) {
+            String header = "--" + boundary + "\r\n"
+                    + "Content-Type: " + contentType + "\r\n"
+                    + "Content-Range: bytes " + parsed[0] + "-" + parsed[1] + "/" + bytes.length + "\r\n\r\n";
+            response.content().writeBytes(header.getBytes(CharsetUtil.UTF_8));
+            response.content().writeBytes(bytes, (int) parsed[0], (int) (parsed[1] - parsed[0] + 1));
+            response.content().writeBytes("\r\n".getBytes(CharsetUtil.UTF_8));
+        }
+        response.content().writeBytes(("--" + boundary + "--\r\n").getBytes(CharsetUtil.UTF_8));
+        response.setStatus(HttpResponseStatus.PARTIAL_CONTENT);
+        return true;
+    }
+
+    private long[] parseRange(int size, String spec) {
+        int dash = spec.indexOf('-');
+        if (dash < 0) {
+            return null;
+        }
+        try {
+            long start;
+            long end;
+            if (dash == 0) {
+                long suffixLength = Long.parseLong(spec.substring(1));
+                if (suffixLength <= 0) {
+                    return null;
+                }
+                start = Math.max(0, size - suffixLength);
+                end = size - 1L;
+            } else {
+                start = Long.parseLong(spec.substring(0, dash));
+                end = dash == spec.length() - 1 ? size - 1L : Long.parseLong(spec.substring(dash + 1));
+            }
+            if (start < 0 || end < start || start >= size) {
+                return null;
+            }
+            end = Math.min(end, size - 1L);
+            return new long[]{start, end};
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
