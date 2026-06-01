@@ -46,6 +46,8 @@ public class TurtleSoupRecord {
 
     private String bottom;
 
+    private String keyClue;
+
     private String title;
 
     private String difficulty;

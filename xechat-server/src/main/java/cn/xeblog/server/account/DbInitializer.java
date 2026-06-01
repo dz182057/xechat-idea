@@ -238,6 +238,7 @@ public final class DbInitializer {
                         "title TEXT," +
                         "surface TEXT NOT NULL UNIQUE," +
                         "bottom TEXT NOT NULL," +
+                        "key_clue TEXT," +
                         "difficulty TEXT," +
                         "tags TEXT," +
                         "sort_order INTEGER NOT NULL DEFAULT 0," +
@@ -248,6 +249,7 @@ public final class DbInitializer {
                 log.info("数据库迁移: 创建 turtle_soup_stories 表");
             } else {
                 addColumnIfMissing(conn, st, "turtle_soup_stories", "title", "TEXT");
+                addColumnIfMissing(conn, st, "turtle_soup_stories", "key_clue", "TEXT");
                 addColumnIfMissing(conn, st, "turtle_soup_stories", "difficulty", "TEXT");
             }
             if (!tableExists(conn, "turtle_soup_records")) {

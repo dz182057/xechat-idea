@@ -32,6 +32,11 @@ public class TurtleSoupStoryDTO implements Serializable {
     private String bottom;
 
     /**
+     * 关键线索，给猜底方辅助推理。
+     */
+    private String keyClue;
+
+    /**
      * 难度，后续可用于按难度随机。
      */
     private String difficulty;

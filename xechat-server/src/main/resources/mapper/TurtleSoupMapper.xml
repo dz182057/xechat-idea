@@ -5,18 +5,19 @@
 <mapper namespace="cn.xeblog.server.game.turtlesoup.TurtleSoupMapper">
 
     <sql id="storyCols">
-        id, title, surface, bottom, difficulty, tags, sort_order, active, created_at, updated_at
+        id, title, surface, bottom, key_clue, difficulty, tags, sort_order, active, created_at, updated_at
     </sql>
 
     <insert id="upsertStory" parameterType="cn.xeblog.server.game.turtlesoup.TurtleSoupStory">
         INSERT INTO turtle_soup_stories (
-            title, surface, bottom, difficulty, tags, sort_order, active, created_at, updated_at
+            title, surface, bottom, key_clue, difficulty, tags, sort_order, active, created_at, updated_at
         ) VALUES (
-            #{title}, #{surface}, #{bottom}, #{difficulty}, #{tags}, #{sortOrder}, #{active}, #{createdAt}, #{updatedAt}
+            #{title}, #{surface}, #{bottom}, #{keyClue}, #{difficulty}, #{tags}, #{sortOrder}, #{active}, #{createdAt}, #{updatedAt}
         )
         ON CONFLICT(surface) DO UPDATE SET
             title = excluded.title,
             bottom = excluded.bottom,
+            key_clue = excluded.key_clue,
             difficulty = excluded.difficulty,
             tags = excluded.tags,
             sort_order = excluded.sort_order,
@@ -74,7 +75,7 @@
         SELECT r.id, r.room_id, r.story_id, r.round_no, r.host_key, r.host_name,
                r.guesser_key, r.guesser_name, r.guess_limit, r.guess_used,
                r.result, r.qa_json, r.started_at, r.ended_at,
-               s.title, s.surface, s.bottom, s.difficulty, s.tags
+               s.title, s.surface, s.bottom, s.key_clue, s.difficulty, s.tags
         FROM turtle_soup_records r
         JOIN turtle_soup_stories s ON s.id = r.story_id
         WHERE r.host_key = #{playerKey}
@@ -86,7 +87,7 @@
         SELECT r.id, r.room_id, r.story_id, r.round_no, r.host_key, r.host_name,
                r.guesser_key, r.guesser_name, r.guess_limit, r.guess_used,
                r.result, r.qa_json, r.started_at, r.ended_at,
-               s.title, s.surface, s.bottom, s.difficulty, s.tags
+               s.title, s.surface, s.bottom, s.key_clue, s.difficulty, s.tags
         FROM turtle_soup_records r
         JOIN turtle_soup_stories s ON s.id = r.story_id
         ORDER BY r.ended_at DESC, r.id DESC

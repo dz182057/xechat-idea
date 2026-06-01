@@ -29,6 +29,8 @@ public class TurtleSoupRecordDTO implements Serializable {
 
     private String bottom;
 
+    private String keyClue;
+
     private String difficulty;
 
     private String tags;

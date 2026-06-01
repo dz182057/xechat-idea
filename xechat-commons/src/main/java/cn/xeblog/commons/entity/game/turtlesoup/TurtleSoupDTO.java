@@ -36,6 +36,8 @@ public class TurtleSoupDTO extends GameDTO {
 
     private String bottom;
 
+    private String keyClue;
+
     private String difficulty;
 
     private String tags;
@@ -49,6 +51,8 @@ public class TurtleSoupDTO extends GameDTO {
     private int guessLimit;
 
     private int guessUsed;
+
+    private boolean clueApproved;
 
     private boolean finished;
 
@@ -64,6 +68,8 @@ public class TurtleSoupDTO extends GameDTO {
         ANSWER,
         GUESS,
         JUDGE,
+        CLUE_REQUEST,
+        CLUE_RESPONSE,
         REVEAL
     }
 

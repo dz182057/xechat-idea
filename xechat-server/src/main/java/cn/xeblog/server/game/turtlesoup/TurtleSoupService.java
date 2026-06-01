@@ -48,9 +48,6 @@ public final class TurtleSoupService {
 
     public static List<TurtleSoupStoryDTO> saveStories(List<TurtleSoupStoryDTO> stories) {
         List<TurtleSoupStoryDTO> normalized = normalizeStories(stories);
-        if (normalized.isEmpty()) {
-            throw new IllegalArgumentException("海龟汤题库不能为空");
-        }
 
         long now = System.currentTimeMillis();
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
@@ -62,6 +59,7 @@ public final class TurtleSoupService {
                         .title(dto.getTitle())
                         .surface(dto.getSurface())
                         .bottom(dto.getBottom())
+                        .keyClue(dto.getKeyClue())
                         .difficulty(dto.getDifficulty())
                         .tags(dto.getTags())
                         .sortOrder(i)
@@ -122,6 +120,7 @@ public final class TurtleSoupService {
         state.guessUsed = 0;
         state.bestResult = null;
         state.awaitingJudgment = false;
+        state.awaitingClueApproval = false;
         state.startedAt = 0;
         state.confirmed = false;
         state.finished = false;
@@ -161,6 +160,12 @@ public final class TurtleSoupService {
                 break;
             case JUDGE:
                 judge(user, room, state, dto);
+                break;
+            case CLUE_REQUEST:
+                requestClue(user, state);
+                break;
+            case CLUE_RESPONSE:
+                respondClue(user, room, state, dto);
                 break;
             default:
                 break;
@@ -304,6 +309,56 @@ public final class TurtleSoupService {
         }
     }
 
+    private static void requestClue(User user, RoomState state) {
+        if (!ensureConfirmed(user, state)) {
+            return;
+        }
+        if (!user.getId().equals(state.guesserId)) {
+            user.send(ResponseBuilder.system("只有猜题人可以申请查看关键线索"));
+            return;
+        }
+        if (state.awaitingClueApproval) {
+            user.send(ResponseBuilder.system("已申请查看关键线索，请等待主持人回应"));
+            return;
+        }
+        state.awaitingClueApproval = true;
+        User host = UserCache.get(state.hostId);
+        if (host == null) {
+            user.send(ResponseBuilder.system("主持人不在线，暂时无法查看关键线索"));
+            state.awaitingClueApproval = false;
+            return;
+        }
+        TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.CLUE_REQUEST);
+        event.setKeyClue(null);
+        host.send(ResponseBuilder.build(user, event, MessageType.GAME));
+    }
+
+    private static void respondClue(User user, GameRoom room, RoomState state, TurtleSoupDTO dto) {
+        if (!ensureConfirmed(user, state)) {
+            return;
+        }
+        if (!user.getId().equals(state.hostId)) {
+            user.send(ResponseBuilder.system("只有主持人可以回应关键线索申请"));
+            return;
+        }
+        if (!state.awaitingClueApproval) {
+            user.send(ResponseBuilder.system("当前没有待回应的关键线索申请"));
+            return;
+        }
+        state.awaitingClueApproval = false;
+        TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.CLUE_RESPONSE);
+        boolean approved = dto.isClueApproved() && StrUtil.isNotBlank(state.story.getKeyClue());
+        event.setClueApproved(approved);
+        if (approved) {
+            state.logs.add(new TurtleSoupLogItemDTO("CLUE", state.guesserId, state.guesserName,
+                    "查看关键线索", null, null, System.currentTimeMillis()));
+            event.setContent("查看关键线索");
+        } else {
+            event.setKeyClue(null);
+        }
+        sendToRoom(room, ResponseBuilder.build(user, event, MessageType.GAME));
+    }
+
     private static void finish(GameRoom room, RoomState state) {
         state.finished = true;
         TurtleSoupDTO.GuessResult finalResult = state.bestResult == null
@@ -366,6 +421,7 @@ public final class TurtleSoupService {
         if (!host) {
             dto.setTitle(null);
             dto.setSurface(null);
+            dto.setKeyClue(null);
             dto.setDifficulty(null);
             dto.setTags(null);
         }
@@ -375,6 +431,9 @@ public final class TurtleSoupService {
     private static void sendStart(RoomState state, User player, boolean host) {
         TurtleSoupDTO dto = baseEvent(state, TurtleSoupDTO.Event.START_ROUND);
         dto.setBottom(host ? state.story.getBottom() : null);
+        if (!host) {
+            dto.setKeyClue(null);
+        }
         player.send(ResponseBuilder.build(null, dto, MessageType.GAME));
     }
 
@@ -389,6 +448,7 @@ public final class TurtleSoupService {
         dto.setGuesserName(state.guesserName);
         dto.setTitle(state.story.getTitle());
         dto.setSurface(state.story.getSurface());
+        dto.setKeyClue(state.story.getKeyClue());
         dto.setDifficulty(state.story.getDifficulty());
         dto.setTags(state.story.getTags());
         dto.setGuessLimit(state.guessLimit);
@@ -446,7 +506,7 @@ public final class TurtleSoupService {
 
     private static TurtleSoupStoryDTO toStoryDTO(TurtleSoupStory row) {
         return new TurtleSoupStoryDTO(row.getId(), row.getTitle(), row.getSurface(), row.getBottom(),
-                row.getDifficulty(), row.getTags());
+                row.getKeyClue(), row.getDifficulty(), row.getTags());
     }
 
     private static List<TurtleSoupStoryDTO> normalizeStories(List<TurtleSoupStoryDTO> stories) {
@@ -464,9 +524,10 @@ public final class TurtleSoupService {
             }
             String title = StrUtil.isBlank(item.getTitle()) ? defaultTitle(surface) : item.getTitle().trim();
             String bottom = item.getBottom().trim();
+            String keyClue = StrUtil.isBlank(item.getKeyClue()) ? null : item.getKeyClue().trim();
             String difficulty = StrUtil.isBlank(item.getDifficulty()) ? null : item.getDifficulty().trim();
             String tags = StrUtil.isBlank(item.getTags()) ? null : item.getTags().trim();
-            map.put(surface, new TurtleSoupStoryDTO(0, title, surface, bottom, difficulty, tags));
+            map.put(surface, new TurtleSoupStoryDTO(0, title, surface, bottom, keyClue, difficulty, tags));
         }
         return new ArrayList<>(map.values());
     }
@@ -489,6 +550,7 @@ public final class TurtleSoupService {
                     row.getTitle(),
                     row.getSurface(),
                     row.getBottom(),
+                    row.getKeyClue(),
                     row.getDifficulty(),
                     row.getTags(),
                     row.getHostKey(),
@@ -523,6 +585,7 @@ public final class TurtleSoupService {
         private int guessUsed;
         private TurtleSoupDTO.GuessResult bestResult;
         private boolean awaitingJudgment;
+        private boolean awaitingClueApproval;
         private long startedAt;
         private boolean confirmed;
         private boolean finished;

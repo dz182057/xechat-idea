@@ -22,6 +22,8 @@ public class TurtleSoupStory {
 
     private String bottom;
 
+    private String keyClue;
+
     private String difficulty;
 
     private String tags;

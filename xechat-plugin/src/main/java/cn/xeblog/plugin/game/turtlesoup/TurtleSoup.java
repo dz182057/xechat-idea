@@ -29,17 +29,22 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
     private JLabel titleLabel;
     private JTextArea surfaceArea;
     private JTextArea bottomArea;
+    private JTextArea keyClueArea;
     private JTextArea logArea;
     private JTextArea inputArea;
     private JTextField customAnswerField;
     private JPanel questionPanel;
     private JPanel answerPanel;
+    private JPanel clueResponsePanel;
     private JPanel judgePanel;
     private JPanel storyControlPanel;
     private JPanel previewControlPanel;
     private final List<JButton> answerButtons = new ArrayList<>();
     private JButton questionButton;
     private JButton guessButton;
+    private JButton clueRequestButton;
+    private JButton clueApproveButton;
+    private JButton clueRejectButton;
     private JButton customAnswerButton;
     private JButton previewChangeButton;
     private JButton previewConfirmButton;
@@ -59,6 +64,9 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
     private String guesserName;
     private int guessUsed;
     private boolean lastGuessPending;
+    private boolean awaitingClueResponse;
+    private boolean clueRequestPending;
+    private boolean keyClueVisible;
     private boolean previewing;
     private boolean playing;
 
@@ -110,11 +118,32 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
                     appendLog(body.getHostName(), "判定", resultText(body.getGuessResult()));
                     refreshControls();
                     break;
+                case CLUE_REQUEST:
+                    clueRequestPending = true;
+                    appendLog(body.getGuesserName(), "申请", "查看关键线索");
+                    refreshControls();
+                    break;
+                case CLUE_RESPONSE:
+                    awaitingClueResponse = false;
+                    clueRequestPending = false;
+                    if (body.isClueApproved()) {
+                        keyClueVisible = true;
+                        keyClueArea.setText(body.getKeyClue() == null ? "" : body.getKeyClue());
+                        appendLog(body.getGuesserName(), "查看", "关键线索");
+                    } else {
+                        appendLog("系统", "提示", "主持人未同意查看关键线索");
+                    }
+                    refreshControls();
+                    break;
                 case REVEAL:
                     previewing = false;
                     playing = false;
                     lastGuessPending = false;
+                    awaitingClueResponse = false;
+                    clueRequestPending = false;
+                    keyClueVisible = body.getKeyClue() != null && !body.getKeyClue().isEmpty();
                     bottomArea.setText(body.getBottom() == null ? "" : body.getBottom());
+                    keyClueArea.setText(body.getKeyClue() == null ? "" : body.getKeyClue());
                     appendLog("系统", "揭底", "本轮结束：" + resultText(body.getGuessResult()));
                     refreshControls();
                     break;
@@ -213,11 +242,13 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         headerPanel.add(previewControlPanel, BorderLayout.SOUTH);
         mainPanel.add(headerPanel, BorderLayout.NORTH);
 
-        JPanel storyPanel = new JPanel(new GridLayout(1, 2, 8, 8));
+        JPanel storyPanel = new JPanel(new GridLayout(1, 3, 8, 8));
         surfaceArea = readonlyArea();
         bottomArea = readonlyArea();
+        keyClueArea = readonlyArea();
         storyPanel.add(wrap("汤面", surfaceArea));
         storyPanel.add(wrap("汤底", bottomArea));
+        storyPanel.add(wrap("关键线索", keyClueArea));
 
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.setMinimumSize(new Dimension(520, 220));
@@ -253,11 +284,14 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         questionButton.addActionListener(e -> sendQuestion());
         guessButton = new JButton("猜底");
         guessButton.addActionListener(e -> sendGuess());
+        clueRequestButton = new JButton("申请查看关键线索");
+        clueRequestButton.addActionListener(e -> requestClue());
         questionPanel.add(new JScrollPane(inputArea));
         JPanel questionButtons = new JPanel(new GridLayout(1, 2, 4, 0));
         questionButtons.add(questionButton);
         questionButtons.add(guessButton);
         questionPanel.add(questionButtons);
+        questionPanel.add(clueRequestButton);
         panel.add(questionPanel);
 
         answerPanel = new JPanel();
@@ -279,6 +313,16 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         answerPanel.add(customAnswerField);
         answerPanel.add(customAnswerButton);
         panel.add(answerPanel);
+
+        clueResponsePanel = new JPanel(new GridLayout(0, 1, 0, 4));
+        clueResponsePanel.setBorder(BorderFactory.createTitledBorder("关键线索申请"));
+        clueApproveButton = new JButton("同意查看关键线索");
+        clueApproveButton.addActionListener(e -> respondClue(true));
+        clueRejectButton = new JButton("不同意");
+        clueRejectButton.addActionListener(e -> respondClue(false));
+        clueResponsePanel.add(clueApproveButton);
+        clueResponsePanel.add(clueRejectButton);
+        panel.add(clueResponsePanel);
 
         judgePanel = new JPanel(new GridLayout(0, 1, 0, 4));
         judgePanel.setBorder(BorderFactory.createTitledBorder("正式猜底判定"));
@@ -333,6 +377,9 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
                 sb.append("\n");
                 sb.append("汤面：").append(record.getSurface()).append("\n");
                 sb.append("汤底：").append(record.getBottom()).append("\n");
+                if (record.getKeyClue() != null && !record.getKeyClue().isEmpty()) {
+                    sb.append("关键线索：").append(record.getKeyClue()).append("\n");
+                }
                 for (TurtleSoupLogItemDTO log : record.getLogs()) {
                     sb.append("  ").append(formatLog(log)).append("\n");
                 }
@@ -362,14 +409,20 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         guessLimit = body.getGuessLimit();
         guessUsed = 0;
         lastGuessPending = false;
+        awaitingClueResponse = false;
+        clueRequestPending = false;
         logArea.setText("");
         if (isCurrentHost() && body.getSurface() != null) {
+            keyClueVisible = body.getKeyClue() != null && !body.getKeyClue().isEmpty();
             surfaceArea.setText(formatStory(body));
             bottomArea.setText("确认题目后可见");
+            keyClueArea.setText(body.getKeyClue() == null || body.getKeyClue().isEmpty() ? "暂无关键线索" : body.getKeyClue());
             setTitle("主持人预览：可换题，确认后正式开始");
         } else {
+            keyClueVisible = false;
             surfaceArea.setText("主持人正在预览题面，确认后正式开始。");
             bottomArea.setText("");
+            keyClueArea.setText("");
             setTitle("等待主持人确认题目");
         }
         refreshControls();
@@ -385,8 +438,12 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         guessLimit = body.getGuessLimit();
         guessUsed = body.getGuessUsed();
         lastGuessPending = false;
+        awaitingClueResponse = false;
+        clueRequestPending = false;
+        keyClueVisible = body.getKeyClue() != null && !body.getKeyClue().isEmpty();
         surfaceArea.setText(formatStory(body));
         bottomArea.setText(body.getBottom() == null ? "猜题人不可见" : body.getBottom());
+        keyClueArea.setText(keyClueVisible ? body.getKeyClue() : "申请后可查看");
         logArea.setText("");
         setTitle("第 " + body.getRoundNo() + " 轮，主持人：" + hostName + "，猜题人：" + guesserName);
         refreshControls();
@@ -452,6 +509,27 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         sendMsg(dto);
     }
 
+    private void requestClue() {
+        if (!playing || !isCurrentGuesser() || keyClueVisible || awaitingClueResponse) {
+            return;
+        }
+        TurtleSoupDTO dto = new TurtleSoupDTO();
+        dto.setEvent(TurtleSoupDTO.Event.CLUE_REQUEST);
+        sendMsg(dto);
+        awaitingClueResponse = true;
+        refreshControls();
+    }
+
+    private void respondClue(boolean approved) {
+        if (!playing || !isCurrentHost() || !clueRequestPending) {
+            return;
+        }
+        TurtleSoupDTO dto = new TurtleSoupDTO();
+        dto.setEvent(TurtleSoupDTO.Event.CLUE_RESPONSE);
+        dto.setClueApproved(approved);
+        sendMsg(dto);
+    }
+
     private void requestStory() {
         if (getRoom() == null) {
             return;
@@ -476,16 +554,23 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         if (previewConfirmButton != null) previewConfirmButton.setEnabled(canPreview);
         if (questionPanel != null) questionPanel.setVisible(isGuesser);
         if (answerPanel != null) answerPanel.setVisible(canAnswerQuestion);
+        if (clueResponsePanel != null) clueResponsePanel.setVisible(isHost && clueRequestPending);
         if (judgePanel != null) judgePanel.setVisible(isHost && lastGuessPending);
         if (storyControlPanel != null) storyControlPanel.setVisible(canNext);
         if (questionButton != null) questionButton.setEnabled(isGuesser);
         if (guessButton != null) guessButton.setEnabled(isGuesser && guessUsed < guessLimit);
+        if (clueRequestButton != null) {
+            clueRequestButton.setEnabled(isGuesser && !keyClueVisible && !awaitingClueResponse);
+            clueRequestButton.setText(awaitingClueResponse ? "等待主持人回应" : "申请查看关键线索");
+        }
         if (inputArea != null) inputArea.setEnabled(isGuesser);
         for (JButton button : answerButtons) {
             button.setEnabled(canAnswerQuestion);
         }
         if (customAnswerField != null) customAnswerField.setEnabled(canAnswerQuestion);
         if (customAnswerButton != null) customAnswerButton.setEnabled(canAnswerQuestion);
+        if (clueApproveButton != null) clueApproveButton.setEnabled(isHost && clueRequestPending);
+        if (clueRejectButton != null) clueRejectButton.setEnabled(isHost && clueRequestPending);
         if (correctButton != null) correctButton.setEnabled(isHost && lastGuessPending);
         if (partialButton != null) partialButton.setEnabled(isHost && lastGuessPending);
         if (wrongButton != null) wrongButton.setEnabled(isHost && lastGuessPending);
@@ -519,6 +604,7 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         if ("ANSWER".equals(log.getType())) return "主持回答：" + log.getAnswer();
         if ("GUESS".equals(log.getType())) return log.getUsername() + " 猜底：" + log.getContent();
         if ("JUDGE".equals(log.getType())) return "主持判定：" + resultText(log.getResult());
+        if ("CLUE".equals(log.getType())) return log.getUsername() + " 查看了关键线索";
         return "";
     }
 
