@@ -107,7 +107,11 @@ public class ChannelAction {
         }
 
         UserCache.remove(id);
-        sendUserState(user, UserStateMsgDTO.State.OFFLINE);
+        if (user.getAccountId() > 0 && UserCache.isOnlineByAccount(user.getAccountId())) {
+            sendOnlineUsers();
+        } else {
+            sendUserState(user, UserStateMsgDTO.State.OFFLINE);
+        }
 
         return user;
     }
