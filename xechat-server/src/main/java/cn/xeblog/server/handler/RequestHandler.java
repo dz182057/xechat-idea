@@ -112,6 +112,8 @@ public class RequestHandler {
 
     private static boolean isNoBodyAction(Action action) {
         return action == Action.LIST_USERS
+                || action == Action.LIST_FRIENDS
+                || action == Action.LIST_FRIEND_REQUESTS
                 || action == Action.ADMIN_LIST_DRAW_GUESS_WORDS
                 || action == Action.DRAW_GUESS_RANDOM_WORD
                 || action == Action.ADMIN_LIST_QUICK_QUIZ_QUESTIONS
