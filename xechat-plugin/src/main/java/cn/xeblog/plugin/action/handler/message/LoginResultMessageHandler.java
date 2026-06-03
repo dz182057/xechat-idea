@@ -73,6 +73,9 @@ public class LoginResultMessageHandler extends AbstractMessageHandler<LoginResul
             pull.setSinceMs(System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000);
             pull.setLimit(50);
             MessageAction.send(pull, Action.PULL_HISTORY);
+            if (user != null && !user.isGuest()) {
+                MessageAction.send(null, Action.LIST_FRIENDS);
+            }
         } catch (Throwable t) {
             // 任何意外错误都进控制台,UI 已切到 MAIN 卡,用户至少能看到诊断信息
             t.printStackTrace();

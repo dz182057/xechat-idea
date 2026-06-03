@@ -1,6 +1,7 @@
 package cn.xeblog.plugin.cache;
 
 import cn.hutool.core.util.StrUtil;
+import cn.xeblog.commons.entity.FriendDTO;
 import cn.xeblog.commons.entity.OnlineServer;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.enums.UserStatus;
@@ -153,6 +154,11 @@ public class DataCache {
     public static Map<String, String> peerAccountByUsername = new ConcurrentHashMap<>();
 
     /**
+     * 好友昵称 -> 好友信息。插件端只消费服务端好友列表,用于离线好友私聊账号映射。
+     */
+    public static Map<String, FriendDTO> friendMap = new ConcurrentHashMap<>();
+
+    /**
      * 已被标记"公钥已变化"的 peer account 集合(展示给用户在 #fingerprint 时看到)。
      */
     public static Set<String> peerKeyChanged = new CopyOnWriteArraySet<>();
@@ -176,6 +182,13 @@ public class DataCache {
         }
 
         return userMap.get(username);
+    }
+
+    public static FriendDTO getFriend(String nickname) {
+        if (friendMap == null) {
+            return null;
+        }
+        return friendMap.get(nickname);
     }
 
     /**

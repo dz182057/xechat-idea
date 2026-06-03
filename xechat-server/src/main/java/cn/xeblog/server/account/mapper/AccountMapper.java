@@ -34,6 +34,9 @@ public interface AccountMapper {
     int updateRole(@Param("accountId") long accountId,
                    @Param("role") String role);
 
+    int updateStealth(@Param("accountId") long accountId,
+                      @Param("stealth") boolean stealth);
+
     int incrementAvatarVersion(@Param("accountId") long accountId);
 
     int softDelete(@Param("accountId") long accountId,

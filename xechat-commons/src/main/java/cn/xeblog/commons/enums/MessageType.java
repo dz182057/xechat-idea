@@ -131,5 +131,25 @@ public enum MessageType {
     /**
      * 消息已撤回
      */
-    MESSAGE_RECALLED;
+    MESSAGE_RECALLED,
+
+    /**
+     * 好友列表
+     */
+    FRIEND_LIST,
+
+    /**
+     * 待处理好友申请列表
+     */
+    FRIEND_REQUEST_LIST,
+
+    /**
+     * 新好友申请
+     */
+    FRIEND_REQUEST,
+
+    /**
+     * 好友关系变化
+     */
+    FRIEND_UPDATED;
 }

@@ -8,6 +8,7 @@ import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.factory.ObjectFactory;
+import cn.xeblog.server.friend.FriendService;
 import cn.xeblog.server.service.AbstractResponseHistoryService;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -57,19 +58,42 @@ public class ChannelAction {
     }
 
     public static void sendOnlineUsers() {
-        sendOnlineUsers(null);
+        for (User viewer : UserCache.listUser()) {
+            sendOnlineUsers(viewer);
+        }
     }
 
     public static void sendOnlineUsers(User user) {
         // 账号体系: 在线列表按 accountId 去重,每条带 platforms 集合
         Response response = ResponseBuilder.build(null,
-                new UserListMsgDTO(UserCache.listOnlineByAccount()),
+                new UserListMsgDTO(listOnlineByViewer(user)),
                 MessageType.ONLINE_USERS);
-        if (user == null) {
-            send(response);
-        } else {
+        if (user != null) {
             user.send(response);
         }
+    }
+
+    private static java.util.List<User> listOnlineByViewer(User viewer) {
+        java.util.List<User> visible = new java.util.ArrayList<>();
+        for (User target : UserCache.listOnlineByAccount()) {
+            if (canSeeOnline(viewer, target)) {
+                visible.add(target);
+            }
+        }
+        return visible;
+    }
+
+    private static boolean canSeeOnline(User viewer, User target) {
+        if (viewer == null) {
+            return !target.isStealth();
+        }
+        if (viewer.getId() != null && viewer.getId().equals(target.getId())) {
+            return true;
+        }
+        if (viewer.getAccountId() > 0 && viewer.getAccountId() == target.getAccountId()) {
+            return true;
+        }
+        return !target.isStealth();
     }
 
     public static void cleanUser(ChannelHandlerContext ctx) {
@@ -112,6 +136,9 @@ public class ChannelAction {
         } else {
             sendUserState(user, UserStateMsgDTO.State.OFFLINE);
         }
+        if (!user.isGuest() && user.getAccountId() > 0) {
+            FriendService.pushFriendListRefreshForAccount(user.getAccountId());
+        }
 
         return user;
     }
@@ -121,7 +148,12 @@ public class ChannelAction {
     }
 
     public static void sendUserState(User user, UserStateMsgDTO.State state) {
-        send(ResponseBuilder.build(null, new UserStateMsgDTO(user, state), MessageType.USER_STATE));
+        Response response = ResponseBuilder.build(null, new UserStateMsgDTO(user, state), MessageType.USER_STATE);
+        for (User viewer : UserCache.listUser()) {
+            if (canSeeOnline(viewer, user)) {
+                viewer.send(response);
+            }
+        }
     }
 
 }

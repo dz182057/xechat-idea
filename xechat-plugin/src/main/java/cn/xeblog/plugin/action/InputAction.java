@@ -7,6 +7,7 @@ import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.EncryptedEnvelopeDTO;
+import cn.xeblog.commons.entity.FriendDTO;
 import cn.xeblog.commons.entity.MessageQuoteDTO;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserMsgDTO;
@@ -521,6 +522,17 @@ public class InputAction implements MainWindowInitializedEventListener {
                 users.add(username);
             }
         });
+        DataCache.friendMap.values().forEach(friend -> {
+            String nickname = friend.getNickname();
+            if (StringUtils.isBlank(nickname) || nickname.equals(DataCache.username)) {
+                return;
+            }
+            if (StrUtil.isBlank(lowerKeyword) || nickname.toLowerCase().contains(lowerKeyword)) {
+                if (!users.contains(nickname)) {
+                    users.add(nickname);
+                }
+            }
+        });
         return users;
     }
 
@@ -571,9 +583,10 @@ public class InputAction implements MainWindowInitializedEventListener {
                     // 显式 @ 优先于 sticky:用户在 sticky 模式下又 @bob,按显式发给 bob,sticky 不变
                     if (toUsers == null && DataCache.stickyPrivateTarget != null) {
                         User stickyPeer = DataCache.getUser(DataCache.stickyPrivateTarget);
-                        if (stickyPeer == null) {
+                        FriendDTO stickyFriend = DataCache.getFriend(DataCache.stickyPrivateTarget);
+                        if (stickyPeer == null && stickyFriend == null) {
                             ConsoleAction.showSimpleMsg("锁定的私聊对象 @" + DataCache.stickyPrivateTarget
-                                    + " 已不在线,自动退出私聊模式");
+                                    + " 不在线，也不在好友列表中,自动退出私聊模式");
                             DataCache.stickyPrivateTarget = null;
                             hidePrivateBanner();
                             return;
@@ -634,16 +647,24 @@ public class InputAction implements MainWindowInitializedEventListener {
         String payload = buildPrivatePayload(content);
         for (String peerUsername : toUsers) {
             User peer = DataCache.getUser(peerUsername);
-            if (peer == null) {
-                ConsoleAction.showSimpleMsg("找不到用户: " + peerUsername);
-                continue;
-            }
-            String peerAccount = peer.getAccount();
-            if (StrUtil.isBlank(peerAccount)) {
+            String peerAccount = peer != null ? peer.getAccount() : null;
+            if (peer != null && StrUtil.isBlank(peerAccount)) {
                 ConsoleAction.showSimpleMsg(peerUsername + " 是游客,不能私聊");
                 continue;
             }
+            if (StrUtil.isBlank(peerAccount)) {
+                FriendDTO friend = DataCache.getFriend(peerUsername);
+                peerAccount = friend == null ? null : friend.getAccount();
+            }
+            if (StrUtil.isBlank(peerAccount)) {
+                peerAccount = DataCache.peerAccountByUsername.get(peerUsername);
+            }
+            if (StrUtil.isBlank(peerAccount)) {
+                ConsoleAction.showSimpleMsg("找不到对方账号，请先加为好友或等对方上线后再试");
+                continue;
+            }
             DataCache.peerAccountByUsername.put(peerUsername, peerAccount);
+            String finalPeerAccount = peerAccount;
             E2EESessionService.ensureSessionKey(peerAccount).whenComplete((entry, err) -> {
                 if (err != null) {
                     ConsoleAction.showSimpleMsg("E2EE 派生会话密钥失败(" + peerUsername + "): " + err.getMessage());
@@ -653,7 +674,7 @@ public class InputAction implements MainWindowInitializedEventListener {
                     E2EECrypto.EncryptedMessage enc = E2EECrypto.encryptMessage(entry.sessionKey, payload);
                     EncryptedEnvelopeDTO env = new EncryptedEnvelopeDTO();
                     env.setVersion("v1");
-                    env.setPeerAccount(peerAccount);
+                    env.setPeerAccount(finalPeerAccount);
                     env.setPeerAccountId(entry.accountId);
                     env.setIv(enc.iv);
                     env.setCiphertext(enc.ciphertext);

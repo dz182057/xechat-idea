@@ -214,5 +214,30 @@ public enum Action {
     /**
      * 撤回消息
      */
-    RECALL_MESSAGE;
+    RECALL_MESSAGE,
+
+    /**
+     * 发起好友申请
+     */
+    ADD_FRIEND,
+
+    /**
+     * 同意或拒绝好友申请
+     */
+    RESPOND_FRIEND_REQUEST,
+
+    /**
+     * 拉取好友列表
+     */
+    LIST_FRIENDS,
+
+    /**
+     * 拉取待处理好友申请
+     */
+    LIST_FRIEND_REQUESTS,
+
+    /**
+     * 设置隐身状态
+     */
+    SET_STEALTH;
 }

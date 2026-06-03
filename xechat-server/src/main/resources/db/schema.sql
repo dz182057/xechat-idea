@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     avatar_version    INTEGER NOT NULL DEFAULT 0, -- 头像版本,换头像 +1
     role              TEXT    NOT NULL DEFAULT 'USER',   -- ADMIN / USER
     permit            INTEGER NOT NULL DEFAULT 0,
+    stealth           INTEGER NOT NULL DEFAULT 0, -- 是否隐身
     status            TEXT    NOT NULL DEFAULT 'ACTIVE', -- ACTIVE / FROZEN / DELETED
     deleted_at        INTEGER,                    -- 软删时间
     created_at        INTEGER NOT NULL,
@@ -38,6 +39,28 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
+-- 好友关系(双向关系保存为两行)
+CREATE TABLE IF NOT EXISTS friends (
+    owner_account_id  INTEGER NOT NULL,
+    friend_account_id INTEGER NOT NULL,
+    created_at        INTEGER NOT NULL,
+    PRIMARY KEY (owner_account_id, friend_account_id)
+);
+CREATE INDEX IF NOT EXISTS idx_friends_friend ON friends(friend_account_id);
+
+-- 好友申请
+CREATE TABLE IF NOT EXISTS friend_requests (
+    id                 INTEGER PRIMARY KEY,
+    from_account_id    INTEGER NOT NULL,
+    to_account_id      INTEGER NOT NULL,
+    status             TEXT    NOT NULL DEFAULT 'PENDING',
+    created_at         INTEGER NOT NULL,
+    handled_at         INTEGER,
+    UNIQUE (from_account_id, to_account_id, status)
+);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_to_status
+ON friend_requests(to_account_id, status, created_at);
 
 -- 邀请码表
 CREATE TABLE IF NOT EXISTS invite_codes (

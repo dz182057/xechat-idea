@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.friend.mapper.FriendMapper">
+
+    <insert id="insertFriend">
+        INSERT OR IGNORE INTO friends (owner_account_id, friend_account_id, created_at)
+        VALUES (#{ownerAccountId}, #{friendAccountId}, #{createdAt})
+    </insert>
+
+    <select id="existsFriend" resultType="int">
+        SELECT COUNT(1) FROM friends
+        WHERE owner_account_id = #{ownerAccountId}
+          AND friend_account_id = #{friendAccountId}
+    </select>
+
+    <select id="listFriends" resultType="cn.xeblog.server.account.entity.Account">
+        SELECT a.account_id, a.account, a.nickname, a.password_hash, a.avatar_version,
+               a.role, a.permit, a.stealth, a.status, a.deleted_at, a.created_at, a.created_ip,
+               a.last_login_at, a.last_login_ip, a.e2ee_salt, a.identity_pub_key
+        FROM friends f
+        JOIN accounts a ON a.account_id = f.friend_account_id
+        WHERE f.owner_account_id = #{ownerAccountId}
+          AND a.status = 'ACTIVE'
+        ORDER BY a.nickname COLLATE NOCASE
+    </select>
+
+    <insert id="insertRequest">
+        INSERT INTO friend_requests (id, from_account_id, to_account_id, status, created_at)
+        VALUES (#{id}, #{fromAccountId}, #{toAccountId}, 'PENDING', #{createdAt})
+    </insert>
+
+    <select id="existsPendingRequest" resultType="int">
+        SELECT COUNT(1) FROM friend_requests
+        WHERE from_account_id = #{fromAccountId}
+          AND to_account_id = #{toAccountId}
+          AND status = 'PENDING'
+    </select>
+
+    <select id="findPendingRequest" resultType="cn.xeblog.server.friend.entity.FriendRequest">
+        SELECT id, from_account_id, to_account_id, status, created_at, handled_at
+        FROM friend_requests
+        WHERE id = #{requestId}
+          AND to_account_id = #{toAccountId}
+          AND status = 'PENDING'
+    </select>
+
+    <select id="listPendingRequests" resultType="cn.xeblog.server.friend.entity.FriendRequest">
+        SELECT id, from_account_id, to_account_id, status, created_at, handled_at
+        FROM friend_requests
+        WHERE to_account_id = #{toAccountId}
+          AND status = 'PENDING'
+        ORDER BY created_at DESC
+    </select>
+
+    <update id="markRequestHandled">
+        UPDATE friend_requests
+        SET status = #{status}, handled_at = #{handledAt}
+        WHERE id = #{requestId}
+          AND status = 'PENDING'
+    </update>
+
+</mapper>

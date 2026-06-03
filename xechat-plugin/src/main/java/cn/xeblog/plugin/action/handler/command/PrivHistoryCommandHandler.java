@@ -2,6 +2,7 @@ package cn.xeblog.plugin.action.handler.command;
 
 import cn.xeblog.commons.entity.PullPrivateHistoryDTO;
 import cn.xeblog.commons.entity.User;
+import cn.xeblog.commons.entity.FriendDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.plugin.action.ConsoleAction;
 import cn.xeblog.plugin.action.MessageAction;
@@ -44,8 +45,14 @@ public class PrivHistoryCommandHandler extends AbstractCommandHandler {
         if (peer != null && StringUtils.isNotBlank(peer.getAccount())) {
             peerAccount = peer.getAccount();
         } else {
+            FriendDTO friend = DataCache.getFriend(peerUsername);
+            if (friend != null) {
+                peerAccount = friend.getAccount();
+                DataCache.peerAccountByUsername.put(friend.getNickname(), friend.getAccount());
+            } else {
             // 用户离线时退一步查反查表(由历史 PEER_KEY/PRIVATE_USER 维护)
             peerAccount = DataCache.peerAccountByUsername.get(peerUsername);
+            }
             if (StringUtils.isBlank(peerAccount)) {
                 ConsoleAction.showSimpleMsg("找不到用户 " + peerUsername + " 的账号信息(对方可能未注册或未上线过)");
                 return;

@@ -16,6 +16,7 @@ import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.config.GlobalConfig;
 import cn.xeblog.server.e2ee.E2EEKeyService;
+import cn.xeblog.server.friend.FriendService;
 import cn.xeblog.server.util.IpUtil;
 import io.netty.channel.ChannelHandlerContext;
 
@@ -64,6 +65,7 @@ public final class AccountLoginHelper {
         }
         user.setPlatform(platform == null ? Platform.IDEA : platform);
         user.setToken(token);
+        user.setStealth(account.isStealth());
 
         // 注册用户:回读 envelope 一并下发,客户端拿 e2eeSalt+envelope 派生 masterKey 并解出私钥
         String identityEnvelope = E2EEKeyService.findIdentityEnvelope(account.getAccountId());
@@ -111,6 +113,9 @@ public final class AccountLoginHelper {
 
         // 3) 广播上线状态(同账号其他端已经在线时也广播一次,客户端按 accountId 合并)
         ChannelAction.sendUserState(user, UserStateMsgDTO.State.ONLINE);
+        if (!user.isGuest()) {
+            FriendService.pushFriendListRefreshForAccount(user.getAccountId());
+        }
     }
 
     /**
@@ -130,6 +135,7 @@ public final class AccountLoginHelper {
         dst.setRole(src.getRole());
         dst.setPermit(src.getPermit());
         dst.setPlatform(src.getPlatform());
+        dst.setStealth(src.isStealth());
         return dst;
     }
 

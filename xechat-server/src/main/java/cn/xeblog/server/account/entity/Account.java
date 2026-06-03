@@ -31,6 +31,7 @@ public class Account {
     private int avatarVersion;
     private String role;
     private int permit;
+    private boolean stealth;
     private String status;
     private Long deletedAt;
     private long createdAt;

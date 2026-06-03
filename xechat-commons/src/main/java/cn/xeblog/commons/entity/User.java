@@ -135,6 +135,13 @@ public class User implements Serializable {
     private Set<Platform> platforms;
 
     /**
+     * 是否隐身。隐身用户不会出现在其他用户的在线列表中。
+     */
+    @Getter
+    @Setter
+    private boolean stealth;
+
+    /**
      * 通道
      */
     @Getter

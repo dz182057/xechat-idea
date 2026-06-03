@@ -82,6 +82,7 @@ public enum Command {
             return "查看与某用户的端到端加密安全码，" + this.getCommand() + " {对方昵称}";
         }
     },
+    FRIENDS("friends", "查看好友列表"),
     LOGOUT("exit", "退出"),
     CLEAN("clean", "清屏"),
     HELP("help", "帮助");

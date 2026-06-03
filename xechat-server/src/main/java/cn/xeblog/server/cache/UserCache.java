@@ -215,6 +215,7 @@ public final class UserCache {
         dst.setRole(src.getRole());
         dst.setPermit(src.getPermit());
         dst.setPlatform(src.getPlatform());
+        dst.setStealth(src.isStealth());
         // 不复制 ip/region/channel(transient)
         return dst;
     }

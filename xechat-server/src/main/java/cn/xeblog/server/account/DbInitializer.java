@@ -77,6 +77,7 @@ public final class DbInitializer {
             ensureSchema();
             ensureLoginLogsTable();
             ensureMessageColumns();
+            ensureFriendTables();
             ensureDrawGuessWordTable();
             ensureQuickQuizTables();
             ensureTurtleSoupTables();
@@ -161,6 +162,35 @@ public final class DbInitializer {
             addColumnIfMissing(conn, st, "messages_public", "quote_json", "TEXT");
             addColumnIfMissing(conn, st, "messages_public", "recalled_at", "INTEGER");
             addColumnIfMissing(conn, st, "messages_private", "recalled_at", "INTEGER");
+        }
+    }
+
+    /**
+     * 给已有数据库补齐好友和隐身字段。
+     */
+    private static void ensureFriendTables() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true);
+             Connection conn = session.getConnection();
+             Statement st = conn.createStatement()) {
+            addColumnIfMissing(conn, st, "accounts", "stealth", "INTEGER NOT NULL DEFAULT 0");
+            st.execute("CREATE TABLE IF NOT EXISTS friends (" +
+                    "owner_account_id INTEGER NOT NULL," +
+                    "friend_account_id INTEGER NOT NULL," +
+                    "created_at INTEGER NOT NULL," +
+                    "PRIMARY KEY (owner_account_id, friend_account_id)" +
+                    ")");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_friends_friend ON friends(friend_account_id)");
+            st.execute("CREATE TABLE IF NOT EXISTS friend_requests (" +
+                    "id INTEGER PRIMARY KEY," +
+                    "from_account_id INTEGER NOT NULL," +
+                    "to_account_id INTEGER NOT NULL," +
+                    "status TEXT NOT NULL DEFAULT 'PENDING'," +
+                    "created_at INTEGER NOT NULL," +
+                    "handled_at INTEGER," +
+                    "UNIQUE (from_account_id, to_account_id, status)" +
+                    ")");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_friend_requests_to_status " +
+                    "ON friend_requests(to_account_id, status, created_at)");
         }
     }
 
