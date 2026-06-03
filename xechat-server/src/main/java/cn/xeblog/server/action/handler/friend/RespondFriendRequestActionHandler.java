@@ -38,6 +38,9 @@ public class RespondFriendRequestActionHandler extends AbstractActionHandler<Res
                     MessageType.FRIEND_REQUEST_LIST));
             user.send(ResponseBuilder.system(body.isAccepted() ? "已同意好友申请" : "已拒绝好友申请"));
         } catch (AccountException e) {
+            user.send(ResponseBuilder.build(null,
+                    FriendService.listPendingRequests(user.getAccountId()),
+                    MessageType.FRIEND_REQUEST_LIST));
             user.send(ResponseBuilder.system(e.getMessage()));
         } catch (Exception e) {
             log.error("处理好友申请异常 accountId={} requestId={}", user.getAccountId(), body.getRequestId(), e);
