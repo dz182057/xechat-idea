@@ -53,6 +53,11 @@ public class EncryptedEnvelopeDTO implements Serializable {
     private String ciphertext;
 
     /**
+     * 被引用消息 ID。只作为客户端定位元数据,聊天正文和引用摘要仍在 ciphertext 内。
+     */
+    private Long quoteMessageId;
+
+    /**
      * 服务端落库后回填的雪花消息 ID(客户端用作本地缓存去重)
      */
     private Long serverId;
@@ -83,6 +88,7 @@ public class EncryptedEnvelopeDTO implements Serializable {
         this.peerAccountId = peerAccountId;
         this.iv = iv;
         this.ciphertext = ciphertext;
+        this.quoteMessageId = null;
         this.serverId = serverId;
         this.serverCreatedAt = serverCreatedAt;
         this.senderAccountId = senderAccountId;

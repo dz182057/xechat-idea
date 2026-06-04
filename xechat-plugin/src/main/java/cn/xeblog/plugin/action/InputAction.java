@@ -645,6 +645,7 @@ public class InputAction implements MainWindowInitializedEventListener {
             return;
         }
         String payload = buildPrivatePayload(content);
+        Long quoteMessageId = quoteMessageRef == null ? null : quoteMessageRef.getMessageId();
         for (String peerUsername : toUsers) {
             User peer = DataCache.getUser(peerUsername);
             String peerAccount = peer != null ? peer.getAccount() : null;
@@ -678,6 +679,7 @@ public class InputAction implements MainWindowInitializedEventListener {
                     env.setPeerAccountId(entry.accountId);
                     env.setIv(enc.iv);
                     env.setCiphertext(enc.ciphertext);
+                    env.setQuoteMessageId(quoteMessageId);
                     MessageAction.send(env, Action.PRIVATE_CHAT);
                 } catch (Exception ex) {
                     ConsoleAction.showSimpleMsg("E2EE 加密失败(" + peerUsername + "): " + ex.getMessage());
@@ -808,8 +810,20 @@ public class InputAction implements MainWindowInitializedEventListener {
     private static String buildPrivatePayload(String content) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("content", content);
-        payload.put("quote", buildQuote());
+        payload.put("quote", buildPrivateQuote());
         return JSONUtil.toJsonStr(payload);
+    }
+
+    private static Map<String, Object> buildPrivateQuote() {
+        MessageQuoteDTO quote = buildQuote();
+        if (quote == null) {
+            return null;
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("sender", quote.getSender());
+        data.put("msgType", quote.getMsgType() == null ? null : quote.getMsgType().name());
+        data.put("content", quote.getContent());
+        return data;
     }
 
     public static boolean requestFocus() {

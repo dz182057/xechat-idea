@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS messages_private (
     conv_max              INTEGER NOT NULL,       -- max(sender, recipient)
     iv                    TEXT    NOT NULL,       -- AES-GCM IV(base64url 12B)
     ciphertext            TEXT    NOT NULL,       -- AES-256-GCM 密文(base64url,含 tag)
+    quote_message_id      INTEGER,                -- 被引用消息 ID(定位元数据,正文仍加密)
     version               TEXT    NOT NULL DEFAULT 'v1', -- 信封版本
     recalled_at           INTEGER
 );

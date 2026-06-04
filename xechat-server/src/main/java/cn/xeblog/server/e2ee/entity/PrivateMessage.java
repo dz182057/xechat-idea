@@ -30,6 +30,8 @@ public class PrivateMessage {
     private String iv;
     /** AES-256-GCM 密文(base64url,含 GCM tag) */
     private String ciphertext;
+    /** 被引用消息 ID,用于客户端定位 */
+    private Long quoteMessageId;
     /** 信封版本(默认 v1) */
     private String version;
     /** 撤回时间 epoch ms,未撤回为 null */

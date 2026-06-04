@@ -161,6 +161,7 @@ public final class DbInitializer {
              Statement st = conn.createStatement()) {
             addColumnIfMissing(conn, st, "messages_public", "quote_json", "TEXT");
             addColumnIfMissing(conn, st, "messages_public", "recalled_at", "INTEGER");
+            addColumnIfMissing(conn, st, "messages_private", "quote_message_id", "INTEGER");
             addColumnIfMissing(conn, st, "messages_private", "recalled_at", "INTEGER");
         }
     }

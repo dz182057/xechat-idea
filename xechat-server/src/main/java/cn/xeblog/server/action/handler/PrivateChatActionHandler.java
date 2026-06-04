@@ -60,7 +60,8 @@ public class PrivateChatActionHandler extends AbstractActionHandler<EncryptedEnv
 
             PrivateMessage saved = PrivateMessageService.save(
                     user.getAccountId(), peer.getAccountId(),
-                    body.getIv(), body.getCiphertext(), body.getVersion());
+                    body.getIv(), body.getCiphertext(), body.getVersion(),
+                    body.getQuoteMessageId());
 
             // 给接收方:peerAccount=发送方;senderAccountId 也填发送方(与 me 不等 → 客户端判 !isSelf)
             EncryptedEnvelopeDTO toRecipient = new EncryptedEnvelopeDTO(
@@ -69,6 +70,7 @@ public class PrivateChatActionHandler extends AbstractActionHandler<EncryptedEnv
                     saved.getIv(), saved.getCiphertext(),
                     saved.getId(), saved.getCreatedAt(),
                     user.getAccountId());
+            toRecipient.setQuoteMessageId(saved.getQuoteMessageId());
             Response respToPeer = ResponseBuilder.build(user, toRecipient, MessageType.PRIVATE_USER);
 
             // 给发送方(含其他端):peerAccount=接收方,senderAccountId=自己 → 客户端判 isSelf=true
@@ -78,6 +80,7 @@ public class PrivateChatActionHandler extends AbstractActionHandler<EncryptedEnv
                     saved.getIv(), saved.getCiphertext(),
                     saved.getId(), saved.getCreatedAt(),
                     user.getAccountId());
+            toSender.setQuoteMessageId(saved.getQuoteMessageId());
             Response respToSelf = ResponseBuilder.build(user, toSender, MessageType.PRIVATE_USER);
 
             List<User> peerConns = UserCache.getByAccount(peer.getAccountId());

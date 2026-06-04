@@ -173,6 +173,7 @@ public class UploadUtils {
                     env.setPeerAccountId(entry.accountId);
                     env.setIv(enc.iv);
                     env.setCiphertext(enc.ciphertext);
+                    env.setQuoteMessageId(quote == null ? null : quote.getMessageId());
                     MessageAction.send(env, Action.PRIVATE_CHAT);
                 } catch (Exception ex) {
                     ConsoleAction.showSimpleMsg("E2EE 加密失败(" + peerUsername + "): " + ex.getMessage());
@@ -186,7 +187,18 @@ public class UploadUtils {
         payload.put("content", fileName);
         payload.put("msgType", UserMsgDTO.MsgType.IMAGE.name());
         payload.put("originalFileName", null);
-        payload.put("quote", quote);
+        payload.put("quote", privateQuote(quote));
         return JSONUtil.toJsonStr(payload);
+    }
+
+    private static Map<String, Object> privateQuote(MessageQuoteDTO quote) {
+        if (quote == null || quote.getMessageId() == null) {
+            return null;
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("sender", quote.getSender());
+        data.put("msgType", quote.getMsgType() == null ? null : quote.getMsgType().name());
+        data.put("content", quote.getContent());
+        return data;
     }
 }

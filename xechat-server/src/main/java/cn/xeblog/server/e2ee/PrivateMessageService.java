@@ -43,7 +43,8 @@ public final class PrivateMessageService {
      * 持久化一条私聊密文。返回值带服务端雪花 id + createdAt,供 Handler 回填给客户端。
      */
     public static PrivateMessage save(long senderAccountId, long recipientAccountId,
-                                      String iv, String ciphertext, String version) {
+                                      String iv, String ciphertext, String version,
+                                      Long quoteMessageId) {
         long now = System.currentTimeMillis();
         long min = Math.min(senderAccountId, recipientAccountId);
         long max = Math.max(senderAccountId, recipientAccountId);
@@ -56,6 +57,7 @@ public final class PrivateMessageService {
                 .convMax(max)
                 .iv(iv)
                 .ciphertext(ciphertext)
+                .quoteMessageId(quoteMessageId)
                 .version(version == null || version.isEmpty() ? DEFAULT_VERSION : version)
                 .build();
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
@@ -113,7 +115,7 @@ public final class PrivateMessageService {
     private static EncryptedEnvelopeDTO toEnvelope(PrivateMessage m, long meAccountId) {
         long peerId = (m.getSenderAccountId() == meAccountId)
                 ? m.getRecipientAccountId() : m.getSenderAccountId();
-        return new EncryptedEnvelopeDTO(
+        EncryptedEnvelopeDTO env = new EncryptedEnvelopeDTO(
                 m.getVersion(),
                 null,
                 peerId,
@@ -121,8 +123,10 @@ public final class PrivateMessageService {
                 m.getCiphertext(),
                 m.getId(),
                 m.getCreatedAt(),
-                m.getSenderAccountId(),
-                m.getRecalledAt() != null);
+                m.getSenderAccountId());
+        env.setQuoteMessageId(m.getQuoteMessageId());
+        env.setRecalled(m.getRecalledAt() != null);
+        return env;
     }
 
     /**
