@@ -63,11 +63,11 @@ public final class LoginService {
             return;
         }
         if (!ACCOUNT_PATTERN.matcher(account == null ? "" : account).matches()) {
-            cb.onFailed("账号格式不合法(4-20 位字母数字下划线)");
+            failBeforeConnect(cb, "账号格式不合法(4-20 位字母数字下划线)");
             return;
         }
         if (password == null || password.length() < 8) {
-            cb.onFailed("密码至少 8 位");
+            failBeforeConnect(cb, "密码至少 8 位");
             return;
         }
         DataCache.account = account;
@@ -83,15 +83,15 @@ public final class LoginService {
             return;
         }
         if (StringUtils.isBlank(nickname)) {
-            cb.onFailed("请输入昵称");
+            failBeforeConnect(cb, "请输入昵称");
             return;
         }
         if (!CheckUtils.checkUsername(nickname)) {
-            cb.onFailed("名称不合法,请修改后重试");
+            failBeforeConnect(cb, "名称不合法,请修改后重试");
             return;
         }
         if (nickname.length() > 12) {
-            cb.onFailed("名称长度不能超过 12 个字符");
+            failBeforeConnect(cb, "名称长度不能超过 12 个字符");
             return;
         }
         DataCache.account = null;
@@ -113,7 +113,7 @@ public final class LoginService {
         String token = pd.getToken();
         String storedAccount = pd.getAccount();
         if (StringUtils.isBlank(token) || StringUtils.isBlank(storedAccount)) {
-            cb.onFailed("本地无可用 token,请用账号密码登录");
+            failBeforeConnect(cb, "本地无可用 token,请用账号密码登录");
             return;
         }
         DataCache.account = storedAccount;
@@ -171,6 +171,11 @@ public final class LoginService {
         }
         CONNECTING = true;
         return false;
+    }
+
+    private static void failBeforeConnect(Callback cb, String reason) {
+        CONNECTING = false;
+        cb.onFailed(reason);
     }
 
     /** DataCache.uuid 缺失时用网卡 MAC / UUID 兜底生成 */

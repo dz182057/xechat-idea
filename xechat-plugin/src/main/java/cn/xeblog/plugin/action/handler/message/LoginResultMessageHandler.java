@@ -40,6 +40,7 @@ public class LoginResultMessageHandler extends AbstractMessageHandler<LoginResul
             return;
         }
 
+        DataCache.isOnline = true;
         // 立即切到 MAIN 卡 — UI 不被后续 E2EE 派生(Argon2id ~0.5-1.5s)等步骤阻塞,
         // 同时确保中间任何步骤抛异常也不会让用户卡在登录页 loading
         MainWindow.getInstance().switchToMain();

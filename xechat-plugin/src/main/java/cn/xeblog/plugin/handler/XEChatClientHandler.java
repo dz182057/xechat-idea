@@ -28,7 +28,6 @@ public class XEChatClientHandler extends SimpleChannelInboundHandler<Response> {
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         DataCache.channel = ctx.channel();
-        DataCache.isOnline = true;
 
         boolean reconnected = DataCache.reconnected;
         if (!reconnected) {

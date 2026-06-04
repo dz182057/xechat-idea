@@ -4,8 +4,10 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.plugin.action.ConsoleAction;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.plugin.annotation.DoMessage;
+import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.ui.LoginPanel;
 import cn.xeblog.plugin.ui.MainWindow;
+import io.netty.channel.Channel;
 
 /**
  * @author anlingyi
@@ -22,6 +24,11 @@ public class SystemMessageHandler extends AbstractMessageHandler<String> {
         LoginPanel lp = MainWindow.getInstance().getLoginPanel();
         if (lp != null && lp.isAwaitingLogin()) {
             lp.showError(body);
+            // 登录失败时服务端只返回 SYSTEM,不一定主动关闭连接;客户端需清掉这条未认证连接。
+            Channel channel = DataCache.channel;
+            if (channel != null && channel.isActive()) {
+                channel.close();
+            }
         }
         ConsoleAction.showSystemMsg(response.getTime(), body);
     }
