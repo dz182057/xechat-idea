@@ -8,6 +8,7 @@ import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.plugin.action.ConsoleAction;
 import cn.xeblog.plugin.action.MessageAction;
+import cn.xeblog.plugin.action.ReconnectAction;
 import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.crypto.E2EECrypto;
@@ -41,6 +42,7 @@ public class LoginResultMessageHandler extends AbstractMessageHandler<LoginResul
         }
 
         DataCache.isOnline = true;
+        ReconnectAction.enable();
         // 立即切到 MAIN 卡 — UI 不被后续 E2EE 派生(Argon2id ~0.5-1.5s)等步骤阻塞,
         // 同时确保中间任何步骤抛异常也不会让用户卡在登录页 loading
         MainWindow.getInstance().switchToMain();
@@ -68,12 +70,14 @@ public class LoginResultMessageHandler extends AbstractMessageHandler<LoginResul
             // E2EE: 派生 master key + 解包身份私钥(仅"账号+密码"登录路径可解,token 路径密钥不可用)
             unlockE2EE(body);
 
-            // 登录成功后拉公共频道近 3 天历史(plugin 不持久化文件缓存,IDE 关闭即丢,
-            // 重新登录时再拉一次即可,符合 IDEA 插件的会话式特性)
-            PullHistoryDTO pull = new PullHistoryDTO();
-            pull.setSinceMs(System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000);
-            pull.setLimit(50);
-            MessageAction.send(pull, Action.PULL_HISTORY);
+            if (shouldPullHistory()) {
+                // 登录成功后拉公共频道近 3 天历史(plugin 不持久化文件缓存,IDE 关闭即丢,
+                // 重新登录时再拉一次即可,符合 IDEA 插件的会话式特性)
+                PullHistoryDTO pull = new PullHistoryDTO();
+                pull.setSinceMs(System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000);
+                pull.setLimit(50);
+                MessageAction.send(pull, Action.PULL_HISTORY);
+            }
             if (user != null && !user.isGuest()) {
                 MessageAction.send(null, Action.LIST_FRIENDS);
             }
@@ -81,7 +85,13 @@ public class LoginResultMessageHandler extends AbstractMessageHandler<LoginResul
             // 任何意外错误都进控制台,UI 已切到 MAIN 卡,用户至少能看到诊断信息
             t.printStackTrace();
             ConsoleAction.showSimpleMsg("登录后置流程异常: " + t.getMessage());
+        } finally {
+            DataCache.loginFromReconnect = false;
         }
+    }
+
+    static boolean shouldPullHistory() {
+        return !DataCache.loginFromReconnect;
     }
 
     /**

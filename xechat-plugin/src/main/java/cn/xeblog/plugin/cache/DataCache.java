@@ -74,6 +74,16 @@ public class DataCache {
     public static boolean reconnected;
 
     /**
+     * 是否允许自动重连。
+     */
+    public static boolean autoReconnectEnabled;
+
+    /**
+     * 本次登录请求是否由自动重连触发。
+     */
+    public static boolean loginFromReconnect;
+
+    /**
      * 用户状态设置缓存
      */
     public static UserStatus userStatus;

@@ -4,10 +4,10 @@ import cn.xeblog.commons.entity.LoginDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Platform;
 import cn.xeblog.commons.enums.UserStatus;
-import cn.xeblog.plugin.action.ConnectionAction;
 import cn.xeblog.plugin.action.ConsoleAction;
 import cn.xeblog.plugin.action.GameAction;
 import cn.xeblog.plugin.action.MessageAction;
+import cn.xeblog.plugin.action.ReconnectAction;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.plugin.persistence.PersistenceService;
@@ -30,6 +30,7 @@ public class XEChatClientHandler extends SimpleChannelInboundHandler<Response> {
         DataCache.channel = ctx.channel();
 
         boolean reconnected = DataCache.reconnected;
+        DataCache.loginFromReconnect = reconnected;
         if (!reconnected) {
             ConsoleAction.clean();
             ConsoleAction.showSimpleMsg("正在登录中...");
@@ -107,18 +108,11 @@ public class XEChatClientHandler extends SimpleChannelInboundHandler<Response> {
             GameAction.over();
         }
 
-        ConsoleAction.showSimpleMsg("已断开连接！");
-        ConsoleAction.setConsoleTitle("控制台");
-
-        if (DataCache.reconnected) {
-            ConnectionAction connectionAction = DataCache.connectionAction;
-            if (connectionAction == null) {
-                connectionAction = new ConnectionAction();
-            }
-
-            ConsoleAction.showSimpleMsg("正在重新连接服务器...");
-            connectionAction.exec(null);
+        if (ReconnectAction.shouldReconnect()) {
+            ReconnectAction.schedule();
         } else {
+            ConsoleAction.showSimpleMsg("已断开连接！");
+            ConsoleAction.setConsoleTitle("控制台");
             // 非重连场景的断开(显式登出、服务端踢、心跳超时无法恢复) → 兜底切回登录页
             MainWindow mw = MainWindow.getInstance();
             mw.switchToLogin();
@@ -143,6 +137,7 @@ public class XEChatClientHandler extends SimpleChannelInboundHandler<Response> {
                 case ALL_IDLE:
                     ctx.close();
                     DataCache.reconnected = true;
+                    ReconnectAction.schedule();
             }
         }
     }
