@@ -14,6 +14,7 @@ import org.apache.ibatis.session.SqlSession;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.regex.Pattern;
 
 /**
@@ -203,6 +204,15 @@ public final class AccountService {
         }
     }
 
+    public static List<Account> listForAdmin(String account, String nickname, String status) {
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            return session.getMapper(AccountMapper.class).listForAdmin(
+                    blankToNull(account),
+                    blankToNull(nickname),
+                    blankToNull(status));
+        }
+    }
+
     // ============ 改密码 ============
 
     public static void changePassword(long accountId, String oldPwd, String newPwd,
@@ -356,6 +366,71 @@ public final class AccountService {
             log.warn("软删账号 {} 时删头像文件失败: {}", accountId, e.getMessage());
         }
         log.info("账号 {} 已软删,所有 token 吊销", accountId);
+    }
+
+    /**
+     * 管理员彻底删除账号:保留 account_id 关联,但释放原 account/nickname 唯一占用。
+     */
+    public static Account deleteByAdmin(long accountId) {
+        long now = System.currentTimeMillis();
+        Account target;
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            AccountMapper mapper = session.getMapper(AccountMapper.class);
+            target = mapper.findById(accountId);
+            if (target == null) {
+                throw new AccountException("目标账号不存在");
+            }
+            if (Account.STATUS_DELETED.equals(target.getStatus())) {
+                throw new AccountException("目标账号已删除");
+            }
+            mapper.anonymizeSoftDelete(accountId, "deleted_" + accountId,
+                    "已删除用户_" + accountId, now);
+            session.getMapper(SessionMapper.class).revokeAllByAccount(accountId);
+            session.commit();
+        }
+        deleteAvatarQuietly(accountId);
+        log.info("管理员彻底删除账号 {},已释放 account/nickname 并吊销 token", accountId);
+        return target;
+    }
+
+    /**
+     * 管理员设置账号状态。只允许 ACTIVE/FROZEN,DELETED 不允许恢复。
+     */
+    public static Account setStatusByAdmin(long accountId, String status) {
+        if (!Account.STATUS_ACTIVE.equals(status) && !Account.STATUS_FROZEN.equals(status)) {
+            throw new AccountException("状态值不合法");
+        }
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            AccountMapper mapper = session.getMapper(AccountMapper.class);
+            Account target = mapper.findById(accountId);
+            if (target == null) {
+                throw new AccountException("目标账号不存在");
+            }
+            if (Account.STATUS_DELETED.equals(target.getStatus())) {
+                throw new AccountException("已删除账号不能变更状态");
+            }
+            mapper.updateStatus(accountId, status);
+            if (Account.STATUS_FROZEN.equals(status)) {
+                session.getMapper(SessionMapper.class).revokeAllByAccount(accountId);
+            }
+            session.commit();
+            target.setStatus(status);
+            log.info("管理员设置账号 {} 状态为 {}", accountId, status);
+            return target;
+        }
+    }
+
+    private static void deleteAvatarQuietly(long accountId) {
+        try {
+            Path avatar = Paths.get(cn.xeblog.server.config.GlobalConfig.AVATAR_DIR, accountId + ".png");
+            Files.deleteIfExists(avatar);
+        } catch (Exception e) {
+            log.warn("删除账号 {} 头像文件失败: {}", accountId, e.getMessage());
+        }
+    }
+
+    private static String blankToNull(String value) {
+        return StrUtil.isBlank(value) ? null : value.trim();
     }
 
     // ============ 内部 ============

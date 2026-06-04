@@ -112,6 +112,16 @@ public enum Action {
     ADMIN_RESET_PASSWORD,
 
     /**
+     * 管理员:查询账号列表
+     */
+    ADMIN_LIST_USERS,
+
+    /**
+     * 管理员:设置账号状态
+     */
+    ADMIN_SET_USER_STATUS,
+
+    /**
      * 管理员:查看你画我猜词库
      */
     ADMIN_LIST_DRAW_GUESS_WORDS,

@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * 管理员注销指定账号(ADMIN_DELETE_USER)。
  *
- * <p>软删 + 踢掉该账号所有在线连接。</p>
+ * <p>匿名化软删 + 踢掉该账号所有在线连接,释放原 account/nickname。</p>
  *
  * @author dz
  * @date 2026/5/22
@@ -41,23 +41,18 @@ public class AdminDeleteUserActionHandler extends AbstractActionHandler<AdminDel
             return;
         }
         try {
-            Account target = AccountService.findById(body.getAccountId());
-            if (target == null) {
-                user.send(ResponseBuilder.system("目标账号不存在"));
-                return;
-            }
-            AccountService.softDelete(body.getAccountId());
+            Account target = AccountService.deleteByAdmin(body.getAccountId());
 
             // 踢掉该账号所有在线 channel
             List<User> online = UserCache.getByAccount(body.getAccountId());
             for (User u : online) {
                 if (u.getChannel() != null) {
-                    u.send(ResponseBuilder.system("账号已被管理员注销"));
+                    u.send(ResponseBuilder.system("账号已被管理员删除"));
                     u.getChannel().close();
                 }
             }
-            user.send(ResponseBuilder.system("账号 " + target.getNickname() + " 已被注销"));
-            log.info("管理员 {} 注销账号 {}", user.getAccountId(), body.getAccountId());
+            user.send(ResponseBuilder.system("账号 " + target.getNickname() + " 已彻底删除"));
+            log.info("管理员 {} 彻底删除账号 {}", user.getAccountId(), body.getAccountId());
         } catch (AccountException e) {
             user.send(ResponseBuilder.system(e.getMessage()));
         } catch (Exception e) {

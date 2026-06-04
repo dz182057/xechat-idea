@@ -76,6 +76,10 @@ public enum MessageType {
      */
     INVITE_CREATED,
     /**
+     * 管理员账号列表响应
+     */
+    ADMIN_USER_LIST,
+    /**
      * 你画我猜词库列表响应
      */
     DRAW_GUESS_WORD_BANK,

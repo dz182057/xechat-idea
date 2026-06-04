@@ -42,6 +42,14 @@ public interface AccountMapper {
     int softDelete(@Param("accountId") long accountId,
                    @Param("deletedAt") long deletedAt);
 
+    int anonymizeSoftDelete(@Param("accountId") long accountId,
+                            @Param("account") String account,
+                            @Param("nickname") String nickname,
+                            @Param("deletedAt") long deletedAt);
+
+    int updateStatus(@Param("accountId") long accountId,
+                     @Param("status") String status);
+
     int updateLastLogin(@Param("accountId") long accountId,
                         @Param("lastLoginAt") long lastLoginAt,
                         @Param("lastLoginIp") String lastLoginIp);
@@ -49,5 +57,9 @@ public interface AccountMapper {
     long countAll();
 
     List<Account> findByIdIn(@Param("ids") Collection<Long> ids);
+
+    List<Account> listForAdmin(@Param("account") String account,
+                               @Param("nickname") String nickname,
+                               @Param("status") String status);
 
 }
