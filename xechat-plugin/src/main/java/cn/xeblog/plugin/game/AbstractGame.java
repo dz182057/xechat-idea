@@ -509,12 +509,7 @@ public abstract class AbstractGame<T extends GameDTO> extends AbstractPanelCompo
     @Override
     public void roomClosed() {
         gameRoomHandler.roomClosed();
-        if (isHomeowner()) {
-            GameAction.setRoomId(null);
-            invoke(() -> init());
-        } else {
-            GameAction.over();
-        }
+        GameAction.over();
     }
 
     @Override

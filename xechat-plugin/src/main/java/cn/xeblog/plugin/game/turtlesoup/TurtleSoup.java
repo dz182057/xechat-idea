@@ -25,6 +25,9 @@ import java.util.List;
 @DoGame(Game.TURTLE_SOUP)
 public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
 
+    private static final int DEFAULT_GUESS_LIMIT = 3;
+    private static final String DEFAULT_HOST_MODE = "OWNER";
+
     private JPanel mainPanel;
     private JLabel titleLabel;
     private JTextArea surfaceArea;
@@ -56,8 +59,8 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
     private JButton nextButton;
     private JTextArea recordArea;
 
-    private int guessLimit = 3;
-    private String hostMode = "OWNER";
+    private int guessLimit = DEFAULT_GUESS_LIMIT;
+    private String hostMode = DEFAULT_HOST_MODE;
     private String hostId;
     private String hostName;
     private String guesserId;
@@ -184,6 +187,8 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         panel.add(Box.createVerticalStrut(10));
 
         if (DataCache.isOnline) {
+            guessLimit = guessLimit <= 0 ? DEFAULT_GUESS_LIMIT : guessLimit;
+            hostMode = hostMode == null ? DEFAULT_HOST_MODE : hostMode;
             JPanel limitPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
             limitPanel.add(new JLabel("猜底机会："));
             JSpinner limitSpinner = new JSpinner(new SpinnerNumberModel(guessLimit, 1, 10, 1));

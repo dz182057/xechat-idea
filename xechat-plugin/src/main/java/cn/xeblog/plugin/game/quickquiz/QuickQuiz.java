@@ -22,6 +22,8 @@ import java.util.List;
 @DoGame(Game.QUICK_QUIZ)
 public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
 
+    private static final int DEFAULT_QUESTION_COUNT = 5;
+
     private JPanel mainPanel;
     private JLabel titleLabel;
     private JLabel timerLabel;
@@ -32,7 +34,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
     private QuickQuizQuestionDTO currentQuestion;
     private boolean submitted;
     private Timer timer;
-    private int selectedQuestionCount = 5;
+    private int selectedQuestionCount = DEFAULT_QUESTION_COUNT;
 
     @Override
     protected void init() {
@@ -82,6 +84,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
         panel.add(Box.createVerticalStrut(12));
 
         if (DataCache.isOnline) {
+            selectedQuestionCount = selectedQuestionCount <= 0 ? DEFAULT_QUESTION_COUNT : selectedQuestionCount;
             JPanel countPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
             countPanel.add(new JLabel("本局题数："));
             JSpinner countSpinner = new JSpinner(new SpinnerNumberModel(selectedQuestionCount, 1, 50, 1));
