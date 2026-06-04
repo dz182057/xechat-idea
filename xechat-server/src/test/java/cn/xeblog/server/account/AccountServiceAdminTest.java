@@ -46,6 +46,51 @@ public class AccountServiceAdminTest {
     }
 
     @Test
+    public void selfSoftDeleteShouldReleaseOriginalAccountAndNickname() {
+        String suffix = uniqueSuffix();
+        String account = "self_" + suffix;
+        String nickname = "自_" + suffix;
+        Account original = AccountService.register(account, PASSWORD, nickname,
+                Account.ROLE_USER, "127.0.0.1", null, null, null);
+
+        AccountService.softDelete(original.getAccountId());
+
+        Account deleted = AccountService.findById(original.getAccountId());
+        assertNotNull(deleted);
+        assertEquals(Account.STATUS_DELETED, deleted.getStatus());
+        assertEquals("deleted_" + original.getAccountId(), deleted.getAccount());
+        assertEquals("已删除用户_" + original.getAccountId(), deleted.getNickname());
+
+        Account reused = AccountService.register(account, PASSWORD, nickname,
+                Account.ROLE_USER, "127.0.0.1", null, null, null);
+        assertNotNull(reused);
+        assertEquals(account, reused.getAccount());
+        assertEquals(nickname, reused.getNickname());
+    }
+
+    @Test
+    public void adminDeleteShouldReleaseLegacyDeletedAccount() {
+        String suffix = uniqueSuffix();
+        String account = "old_" + suffix;
+        String nickname = "旧_" + suffix;
+        Account original = AccountService.register(account, PASSWORD, nickname,
+                Account.ROLE_USER, "127.0.0.1", null, null, null);
+        legacySoftDelete(original.getAccountId());
+
+        AccountService.deleteByAdmin(original.getAccountId());
+
+        Account deleted = AccountService.findById(original.getAccountId());
+        assertNotNull(deleted);
+        assertEquals(Account.STATUS_DELETED, deleted.getStatus());
+        assertEquals("deleted_" + original.getAccountId(), deleted.getAccount());
+        assertEquals("已删除用户_" + original.getAccountId(), deleted.getNickname());
+
+        Account reused = AccountService.register(account, PASSWORD, nickname,
+                Account.ROLE_USER, "127.0.0.1", null, null, null);
+        assertNotNull(reused);
+    }
+
+    @Test
     public void frozenAccountShouldRejectLoginAndRevokeSessions() {
         String suffix = uniqueSuffix();
         String account = "fro_" + suffix;
@@ -102,5 +147,12 @@ public class AccountServiceAdminTest {
 
     private static String uniqueSuffix() {
         return Long.toString(System.nanoTime(), 36);
+    }
+
+    private static void legacySoftDelete(long accountId) {
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true)) {
+            session.getMapper(cn.xeblog.server.account.mapper.AccountMapper.class)
+                    .softDelete(accountId, System.currentTimeMillis());
+        }
     }
 }

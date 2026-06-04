@@ -350,22 +350,18 @@ public final class AccountService {
     // ============ 软删 ============
 
     /**
-     * 软删账号: status=DELETED + deleted_at + 删头像文件 + 吊销全部 session。
+     * 软删账号:匿名化 account/nickname 释放占用,status=DELETED + deleted_at + 删头像文件 + 吊销全部 session。
      */
     public static void softDelete(long accountId) {
         long now = System.currentTimeMillis();
-        try (SqlSession session = DbInitializer.factory().openSession(true)) {
-            session.getMapper(AccountMapper.class).softDelete(accountId, now);
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            session.getMapper(AccountMapper.class).anonymizeSoftDelete(accountId,
+                    "deleted_" + accountId, "已删除用户_" + accountId, now);
             session.getMapper(SessionMapper.class).revokeAllByAccount(accountId);
+            session.commit();
         }
-        // 删头像文件(失败不影响数据库已经软删的事实)
-        try {
-            Path avatar = Paths.get(cn.xeblog.server.config.GlobalConfig.AVATAR_DIR, accountId + ".png");
-            Files.deleteIfExists(avatar);
-        } catch (Exception e) {
-            log.warn("软删账号 {} 时删头像文件失败: {}", accountId, e.getMessage());
-        }
-        log.info("账号 {} 已软删,所有 token 吊销", accountId);
+        deleteAvatarQuietly(accountId);
+        log.info("账号 {} 已软删并释放 account/nickname,所有 token 吊销", accountId);
     }
 
     /**
@@ -379,9 +375,6 @@ public final class AccountService {
             target = mapper.findById(accountId);
             if (target == null) {
                 throw new AccountException("目标账号不存在");
-            }
-            if (Account.STATUS_DELETED.equals(target.getStatus())) {
-                throw new AccountException("目标账号已删除");
             }
             mapper.anonymizeSoftDelete(accountId, "deleted_" + accountId,
                     "已删除用户_" + accountId, now);
