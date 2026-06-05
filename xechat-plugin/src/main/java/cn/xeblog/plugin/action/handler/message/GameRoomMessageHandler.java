@@ -13,6 +13,7 @@ import cn.xeblog.plugin.action.GameAction;
 import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.cache.DataCache;
+import cn.xeblog.plugin.util.AppIconReminder;
 
 import java.util.Timer;
 import java.util.TimerTask;
@@ -128,6 +129,7 @@ public class GameRoomMessageHandler extends AbstractGameMessageHandler<GameRoomM
 
         ConsoleAction.showSystemMsg(response.getTime(),
                 user.getUsername() + "邀请你加入游戏-《" + GameAction.getName() + "》！");
+        AppIconReminder.remind();
     }
 
     private void scheduleInviteTimeout(String roomId) {

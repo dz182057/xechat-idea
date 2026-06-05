@@ -23,6 +23,7 @@ import cn.xeblog.plugin.crypto.E2EECrypto;
 import cn.xeblog.plugin.crypto.E2EESessionService;
 import cn.xeblog.plugin.entity.ChatMessageRef;
 import cn.xeblog.plugin.enums.Style;
+import cn.xeblog.plugin.util.AppIconReminder;
 import cn.xeblog.plugin.util.NotifyUtils;
 import com.intellij.ide.actions.OpenFileAction;
 import com.intellij.openapi.application.ApplicationManager;
@@ -139,6 +140,7 @@ public class PrivateUserMessageHandler extends AbstractMessageHandler<EncryptedE
 
             // 收到的私聊触发通知(自己发的不通知)
             if (!isSelf && DataCache.msgNotify != 3) {
+                AppIconReminder.remind();
                 NotifyUtils.info(peerDisplay,
                         "[私聊] " + (payload.msgType == UserMsgDTO.MsgType.IMAGE ? "[图片]" : content),
                         true);

@@ -22,6 +22,7 @@ import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.entity.ChatMessageRef;
 import cn.xeblog.plugin.enums.Style;
+import cn.xeblog.plugin.util.AppIconReminder;
 import cn.xeblog.plugin.util.NotifyUtils;
 import com.intellij.ide.actions.OpenFileAction;
 import com.intellij.openapi.application.ApplicationManager;
@@ -49,9 +50,11 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
     protected void process(Response<UserMsgDTO> response) {
         User user = response.getUser();
         UserMsgDTO body = response.getBody();
-        if (isPrivate(body) && !isPrivateVisibleToMe(user, body)) {
+        boolean privateMessage = isPrivate(body);
+        if (privateMessage && !isPrivateVisibleToMe(user, body)) {
             return;
         }
+        remindPrivateMessage(user, privateMessage);
         boolean isImage = body.getMsgType() == UserMsgDTO.MsgType.IMAGE && !Boolean.TRUE.equals(body.getRecalled());
         if (isImage) {
             renderImage(response);
@@ -235,6 +238,14 @@ public class UserMessageHandler extends AbstractMessageHandler<UserMsgDTO> {
 
     private RecallMessageDTO.ConversationType conversationType(UserMsgDTO body) {
         return isPrivate(body) ? RecallMessageDTO.ConversationType.PRIVATE : RecallMessageDTO.ConversationType.PUBLIC;
+    }
+
+    private void remindPrivateMessage(User user, boolean privateMessage) {
+        if (!privateMessage || user == null || user.getUsername() == null || user.getUsername().equals(DataCache.username)) {
+            return;
+        }
+
+        AppIconReminder.remind();
     }
 
     private String imageFileName(UserMsgDTO body) {

@@ -9,6 +9,7 @@ import cn.xeblog.plugin.persistence.PersistenceData;
 import cn.xeblog.plugin.persistence.PersistenceService;
 import cn.xeblog.plugin.ui.LoginPanel;
 import cn.xeblog.plugin.ui.MainWindow;
+import cn.xeblog.plugin.util.AppIconReminder;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowFactory;
@@ -42,6 +43,7 @@ public class MainWindowFactory implements ToolWindowFactory {
         mainPanel.addAncestorListener(new AncestorListenerAdapter() {
             @Override
             public void ancestorAdded(AncestorEvent event) {
+                AppIconReminder.clear();
                 GlobalThreadPool.execute(() -> {
                     ThreadUtils.spinMoment(800);
                     InputAction.restCursor();
