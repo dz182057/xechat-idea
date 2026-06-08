@@ -690,6 +690,7 @@ public class InputAction implements MainWindowInitializedEventListener {
 
     public static void clean() {
         contentArea.setText("");
+        clearCompletion();
     }
 
     /**
