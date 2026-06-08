@@ -145,22 +145,21 @@ public final class FriendService {
     }
 
     private static FriendDTO toFriendDTO(Account account) {
-        Set<Platform> platforms = null;
-        boolean online = false;
-        if (!account.isStealth()) {
-            for (User conn : UserCache.getByAccount(account.getAccountId())) {
-                if (conn.getPlatform() == null) {
-                    continue;
-                }
-                if (platforms == null) {
-                    platforms = EnumSet.noneOf(Platform.class);
-                }
-                platforms.add(conn.getPlatform());
-            }
-            online = platforms != null && !platforms.isEmpty();
-        }
+        Set<Platform> platforms = collectVisiblePlatforms(account.getAccountId());
+        boolean online = !platforms.isEmpty();
         return new FriendDTO(account.getAccountId(), account.getAccount(), account.getNickname(),
-                account.getAvatarVersion(), online, platforms);
+                account.getAvatarVersion(), online, online ? platforms : null);
+    }
+
+    static Set<Platform> collectVisiblePlatforms(long accountId) {
+        Set<Platform> platforms = EnumSet.noneOf(Platform.class);
+        for (User conn : UserCache.getByAccount(accountId)) {
+            if (conn.isStealth() || conn.getPlatform() == null) {
+                continue;
+            }
+            platforms.add(conn.getPlatform());
+        }
+        return platforms;
     }
 
     private static void pushToAccount(long accountId, Object body, MessageType type) {

@@ -41,6 +41,13 @@ public class LoginDTO implements Serializable {
     private UserStatus status;
 
     /**
+     * 本次登录会话的隐身初始值。
+     *
+     * <p>隐身不再作为账号永久设置保存；客户端登录时默认传 false。</p>
+     */
+    private boolean stealth;
+
+    /**
      * 是否是重连
      */
     private boolean reconnected;

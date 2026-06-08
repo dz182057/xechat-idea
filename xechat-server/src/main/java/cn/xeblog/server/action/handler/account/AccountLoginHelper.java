@@ -65,7 +65,7 @@ public final class AccountLoginHelper {
         }
         user.setPlatform(platform == null ? Platform.IDEA : platform);
         user.setToken(token);
-        user.setStealth(account.isStealth());
+        user.setStealth(initialSessionStealth());
 
         // 注册用户:回读 envelope 一并下发,客户端拿 e2eeSalt+envelope 派生 masterKey 并解出私钥
         String identityEnvelope = E2EEKeyService.findIdentityEnvelope(account.getAccountId());
@@ -116,6 +116,13 @@ public final class AccountLoginHelper {
         if (!user.isGuest()) {
             FriendService.pushFriendListRefreshForAccount(user.getAccountId());
         }
+    }
+
+    /**
+     * 隐身只针对当前在线会话，每次重新登录默认恢复可见。
+     */
+    static boolean initialSessionStealth() {
+        return false;
     }
 
     /**

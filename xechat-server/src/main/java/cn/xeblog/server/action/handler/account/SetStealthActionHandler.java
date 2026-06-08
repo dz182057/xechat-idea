@@ -3,8 +3,6 @@ package cn.xeblog.server.action.handler.account;
 import cn.xeblog.commons.entity.SetStealthDTO;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.enums.Action;
-import cn.xeblog.server.account.DbInitializer;
-import cn.xeblog.server.account.mapper.AccountMapper;
 import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.action.handler.AbstractActionHandler;
 import cn.xeblog.server.annotation.DoAction;
@@ -12,10 +10,9 @@ import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.friend.FriendService;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.ibatis.session.SqlSession;
 
 /**
- * 设置隐身状态。
+ * 设置当前在线会话的隐身状态。
  *
  * @author dz
  * @date 2026/6/3
@@ -32,13 +29,6 @@ public class SetStealthActionHandler extends AbstractActionHandler<SetStealthDTO
         }
         if (body == null) {
             user.send(ResponseBuilder.system("隐身设置不能为空"));
-            return;
-        }
-        try (SqlSession session = DbInitializer.factory().openSession(true)) {
-            session.getMapper(AccountMapper.class).updateStealth(user.getAccountId(), body.isStealth());
-        } catch (Exception e) {
-            log.error("设置隐身失败 accountId={}", user.getAccountId(), e);
-            user.send(ResponseBuilder.system("设置隐身失败,请稍后重试"));
             return;
         }
 
