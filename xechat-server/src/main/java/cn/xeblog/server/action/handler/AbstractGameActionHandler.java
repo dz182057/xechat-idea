@@ -23,6 +23,10 @@ public abstract class AbstractGameActionHandler<T extends GameDTO> extends Abstr
 
     @Override
     protected void process(User user, GameDTO body) {
+        if (user.isGuest() || user.getAccountId() <= 0L) {
+            user.send(ResponseBuilder.build(null, new GameRoomMsgDTO(GameRoomMsgDTO.MsgType.GAME_ERROR, "游客不支持玩游戏，请登录账号后再进入房间"), MessageType.GAME_ROOM));
+            return;
+        }
         String msg = "游戏房间不存在！";
         GameRoom gameRoom = null;
         if (StrUtil.isNotBlank(body.getRoomId())) {

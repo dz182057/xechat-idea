@@ -24,6 +24,10 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
 
     @Override
     protected void process(User user, CreateGameRoomDTO body) {
+        if (user.isGuest() || user.getAccountId() <= 0L) {
+            user.send(ResponseBuilder.system("游客不支持玩游戏，请登录账号后再创建房间"));
+            return;
+        }
         String roomId = generateRoomId();
         GameRoom gameRoom = GameRoomCache.seize(roomId);
         Response<GameRoom> response = ResponseBuilder.build(null, gameRoom, MessageType.GAME_ROOM_CREATED);

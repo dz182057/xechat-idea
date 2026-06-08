@@ -466,7 +466,7 @@ public abstract class AbstractGame<T extends GameDTO> extends AbstractPanelCompo
             String username = null;
             if (player != null) {
                 username = player.getUsername();
-                if (gameRoom.isHomeowner(player.getUsername())) {
+                if (gameRoom.getHomeowner() != null && gameRoom.getHomeowner().getIdentityKey().equals(player.getId())) {
                     username += " [房主]";
                 }
                 if (player.isReadied()) {

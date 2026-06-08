@@ -72,11 +72,11 @@ public abstract class GameRoomHandler implements GameRoomEventHandler {
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
         msg.setRoomId(gameRoom.getId());
         msg.setMsgType(GameRoomMsgDTO.MsgType.PLAYER_INVITE);
-        msg.setContent(new GameInviteDTO(player.getId()));
+        msg.setContent(new GameInviteDTO(player.getIdentityKey()));
         MessageAction.send(msg, Action.GAME_ROOM);
 
         Timer timer = new Timer();
-        timeoutTask.put(player.getId(), timer);
+        timeoutTask.put(player.getIdentityKey(), timer);
         timer.schedule(new TimerTask() {
             int time = 30;
 
@@ -95,7 +95,7 @@ public abstract class GameRoomHandler implements GameRoomEventHandler {
                     GameRoomMsgDTO msg = new GameRoomMsgDTO();
                     msg.setRoomId(gameRoom.getId());
                     msg.setMsgType(GameRoomMsgDTO.MsgType.PLAYER_INVITE_RESULT);
-                    msg.setContent(new GameInviteResultDTO(InviteStatus.TIMEOUT, null, player.getId()));
+                    msg.setContent(new GameInviteResultDTO(InviteStatus.TIMEOUT, null, player.getIdentityKey()));
                     MessageAction.send(msg, Action.GAME_ROOM);
                 }
             }
@@ -252,7 +252,7 @@ public abstract class GameRoomHandler implements GameRoomEventHandler {
     protected abstract void allPlayersGameStarted();
 
     private void cleanTask(User player) {
-        Timer timer = timeoutTask.get(player.getId());
+        Timer timer = timeoutTask.get(player.getIdentityKey());
         if (timer != null) {
             timer.cancel();
         }

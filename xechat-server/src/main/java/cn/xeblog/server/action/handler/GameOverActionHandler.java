@@ -21,10 +21,7 @@ public class GameOverActionHandler extends AbstractGameActionHandler<GameDTO> {
     protected void process(User user, GameRoom gameRoom, GameDTO body) {
         Response resp = ResponseBuilder.build(user, body, MessageType.GAME_OVER);
         gameRoom.getUsers().forEach((k, v) -> {
-            User player = UserCache.get(v.getId());
-            if (player != null) {
-                player.send(resp);
-            }
+            UserCache.getByIdentityKey(v.getId()).forEach(player -> player.send(resp));
         });
     }
 

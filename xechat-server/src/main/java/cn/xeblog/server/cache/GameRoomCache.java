@@ -6,9 +6,7 @@ import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.action.ChannelAction;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -24,7 +22,7 @@ public class GameRoomCache {
     private static final Map<String, GameRoom> GAME_ROOM_MAP = new ConcurrentHashMap<>(32);
 
     /**
-     * 玩家当前所在游戏房间缓存，key -> username
+     * 玩家当前所在游戏房间缓存，key -> user.identityKey
      */
     private static final Map<String, GameRoom> USER_ROOM_MAP = new ConcurrentHashMap<>(32);
 
@@ -68,16 +66,14 @@ public class GameRoomCache {
             });
         }
 
-        Set<User> userSet = new HashSet<>(gameRoom.getInviteUsers());
+        java.util.Set<User> userSet = ConcurrentHashMap.newKeySet();
+        gameRoom.getInviteUsers().forEach(key -> userSet.addAll(UserCache.getByIdentityKey(key)));
         gameRoom.getUsers().forEach((k, v) -> {
-            User user = UserCache.get(v.getId());
-            if (user != null) {
-                userSet.add(user);
-            }
+            userSet.addAll(UserCache.getByIdentityKey(v.getId()));
         });
         if (userSet.size() > 0) {
             userSet.forEach(player -> {
-                if (gameRoom.isHomeowner(player.getUsername())) {
+                if (gameRoom.isHomeowner(player)) {
                     return;
                 }
 
@@ -110,12 +106,13 @@ public class GameRoomCache {
             return false;
         }
 
-        if (USER_ROOM_MAP.containsKey(user.getId())) {
+        String identityKey = user.getIdentityKey();
+        if (USER_ROOM_MAP.containsKey(identityKey)) {
             return false;
         }
 
         if (gameRoom.addUser(user)) {
-            USER_ROOM_MAP.put(user.getId(), gameRoom);
+            USER_ROOM_MAP.put(identityKey, gameRoom);
             return true;
         }
 
@@ -136,8 +133,8 @@ public class GameRoomCache {
         }
 
         if (gameRoom.removeUser(user)) {
-            USER_ROOM_MAP.remove(user.getId());
-            if (gameRoom.getCurrentNums() == 0 || gameRoom.isHomeowner(user.getUsername())) {
+            USER_ROOM_MAP.remove(user.getIdentityKey());
+            if (gameRoom.getCurrentNums() == 0 || gameRoom.isHomeowner(user)) {
                 removeRoom(gameRoom.getId());
             }
             return true;

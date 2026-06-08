@@ -81,10 +81,10 @@ public final class TurtleSoupService {
 
         RoomState old = ROOM_STATES.get(room.getId());
         boolean changingPreview = old != null && !old.confirmed && !old.finished;
-        if (!changingPreview && !room.isHomeowner(user.getUsername())) {
+        if (!changingPreview && !room.isHomeowner(user)) {
             throw new IllegalArgumentException("仅房主可以开始下一轮海龟汤");
         }
-        if (changingPreview && !user.getId().equals(old.hostId)) {
+        if (changingPreview && !user.getIdentityKey().equals(old.hostId)) {
             throw new IllegalArgumentException("只有本轮主持人可以换题");
         }
 
@@ -92,7 +92,7 @@ public final class TurtleSoupService {
         if (host == null) {
             throw new IllegalArgumentException("主持人不在房间内");
         }
-        User guesser = players.get(0).getId().equals(host.getId()) ? players.get(1) : players.get(0);
+        User guesser = players.get(0).getIdentityKey().equals(host.getIdentityKey()) ? players.get(1) : players.get(0);
         List<Long> excludedStoryIds = changingPreview ? new ArrayList<>(old.previewedStoryIds) : new ArrayList<>();
         TurtleSoupStory story;
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
@@ -110,10 +110,10 @@ public final class TurtleSoupService {
         state.roomId = room.getId();
         state.story = story;
         state.roundNo = changingPreview ? old.roundNo : old == null ? 1 : old.roundNo + 1;
-        state.hostId = host.getId();
+        state.hostId = host.getIdentityKey();
         state.hostKey = playerKey(host);
         state.hostName = host.getUsername();
-        state.guesserId = guesser.getId();
+        state.guesserId = guesser.getIdentityKey();
         state.guesserKey = playerKey(guesser);
         state.guesserName = guesser.getUsername();
         state.guessLimit = guessLimit;
@@ -189,11 +189,11 @@ public final class TurtleSoupService {
     }
 
     public static String playerKey(User user) {
-        return user.getAccountId() > 0 ? String.valueOf(user.getAccountId()) : user.getId();
+        return user.getIdentityKey();
     }
 
     private static void confirmStory(User user, GameRoom room, RoomState state) {
-        if (!user.getId().equals(state.hostId)) {
+        if (!user.getIdentityKey().equals(state.hostId)) {
             user.send(ResponseBuilder.system("只有主持人可以确认题目"));
             return;
         }
@@ -202,8 +202,8 @@ public final class TurtleSoupService {
         }
         state.confirmed = true;
         state.startedAt = System.currentTimeMillis();
-        User host = UserCache.get(state.hostId);
-        User guesser = UserCache.get(state.guesserId);
+        User host = UserCache.getPrimaryByIdentityKey(state.hostId);
+        User guesser = UserCache.getPrimaryByIdentityKey(state.guesserId);
         if (host != null) {
             sendStart(state, host, true);
         }
@@ -216,7 +216,7 @@ public final class TurtleSoupService {
         if (!ensureConfirmed(user, state)) {
             return;
         }
-        if (!user.getId().equals(state.guesserId)) {
+        if (!user.getIdentityKey().equals(state.guesserId)) {
             user.send(ResponseBuilder.system("只有猜题人可以提问"));
             return;
         }
@@ -224,7 +224,7 @@ public final class TurtleSoupService {
         if (StrUtil.isBlank(content)) {
             return;
         }
-        state.logs.add(new TurtleSoupLogItemDTO("QUESTION", user.getId(), user.getUsername(),
+        state.logs.add(new TurtleSoupLogItemDTO("QUESTION", user.getIdentityKey(), user.getUsername(),
                 content, null, null, System.currentTimeMillis()));
         TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.QUESTION);
         event.setContent(content);
@@ -235,7 +235,7 @@ public final class TurtleSoupService {
         if (!ensureConfirmed(user, state)) {
             return;
         }
-        if (!user.getId().equals(state.hostId)) {
+        if (!user.getIdentityKey().equals(state.hostId)) {
             user.send(ResponseBuilder.system("只有主持人可以回答问题"));
             return;
         }
@@ -243,7 +243,7 @@ public final class TurtleSoupService {
         if (StrUtil.isBlank(answer)) {
             return;
         }
-        state.logs.add(new TurtleSoupLogItemDTO("ANSWER", user.getId(), user.getUsername(),
+        state.logs.add(new TurtleSoupLogItemDTO("ANSWER", user.getIdentityKey(), user.getUsername(),
                 null, answer, null, System.currentTimeMillis()));
         TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.ANSWER);
         event.setAnswer(answer);
@@ -254,7 +254,7 @@ public final class TurtleSoupService {
         if (!ensureConfirmed(user, state)) {
             return;
         }
-        if (!user.getId().equals(state.guesserId)) {
+        if (!user.getIdentityKey().equals(state.guesserId)) {
             user.send(ResponseBuilder.system("只有猜题人可以猜底"));
             return;
         }
@@ -272,7 +272,7 @@ public final class TurtleSoupService {
         }
         state.guessUsed++;
         state.awaitingJudgment = true;
-        state.logs.add(new TurtleSoupLogItemDTO("GUESS", user.getId(), user.getUsername(),
+        state.logs.add(new TurtleSoupLogItemDTO("GUESS", user.getIdentityKey(), user.getUsername(),
                 content, null, null, System.currentTimeMillis()));
         TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.GUESS);
         event.setContent(content);
@@ -283,7 +283,7 @@ public final class TurtleSoupService {
         if (!ensureConfirmed(user, state)) {
             return;
         }
-        if (!user.getId().equals(state.hostId)) {
+        if (!user.getIdentityKey().equals(state.hostId)) {
             user.send(ResponseBuilder.system("只有主持人可以判定猜底"));
             return;
         }
@@ -297,7 +297,7 @@ public final class TurtleSoupService {
         }
         state.awaitingJudgment = false;
         state.bestResult = better(state.bestResult, result);
-        state.logs.add(new TurtleSoupLogItemDTO("JUDGE", user.getId(), user.getUsername(),
+        state.logs.add(new TurtleSoupLogItemDTO("JUDGE", user.getIdentityKey(), user.getUsername(),
                 null, null, result.name(), System.currentTimeMillis()));
 
         TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.JUDGE);
@@ -313,7 +313,7 @@ public final class TurtleSoupService {
         if (!ensureConfirmed(user, state)) {
             return;
         }
-        if (!user.getId().equals(state.guesserId)) {
+        if (!user.getIdentityKey().equals(state.guesserId)) {
             user.send(ResponseBuilder.system("只有猜题人可以申请查看关键线索"));
             return;
         }
@@ -322,22 +322,23 @@ public final class TurtleSoupService {
             return;
         }
         state.awaitingClueApproval = true;
-        User host = UserCache.get(state.hostId);
-        if (host == null) {
+        List<User> hosts = UserCache.getByIdentityKey(state.hostId);
+        if (hosts.isEmpty()) {
             user.send(ResponseBuilder.system("主持人不在线，暂时无法查看关键线索"));
             state.awaitingClueApproval = false;
             return;
         }
         TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.CLUE_REQUEST);
         event.setKeyClue(null);
-        host.send(ResponseBuilder.build(user, event, MessageType.GAME));
+        Response response = ResponseBuilder.build(user, event, MessageType.GAME);
+        hosts.forEach(host -> host.send(response));
     }
 
     private static void respondClue(User user, GameRoom room, RoomState state, TurtleSoupDTO dto) {
         if (!ensureConfirmed(user, state)) {
             return;
         }
-        if (!user.getId().equals(state.hostId)) {
+        if (!user.getIdentityKey().equals(state.hostId)) {
             user.send(ResponseBuilder.system("只有主持人可以回应关键线索申请"));
             return;
         }
@@ -403,11 +404,11 @@ public final class TurtleSoupService {
 
     private static User chooseHost(GameRoom room, List<User> players, RoomState old) {
         if (old != null) {
-            return players.get(0).getId().equals(old.hostId) ? players.get(1) : players.get(0);
+            return players.get(0).getIdentityKey().equals(old.hostId) ? players.get(1) : players.get(0);
         }
         String mode = room.getTurtleSoupHostMode();
         if ("GUEST".equalsIgnoreCase(mode)) {
-            return players.get(0).getId().equals(room.getHomeowner().getId()) ? players.get(1) : players.get(0);
+            return players.get(0).getIdentityKey().equals(room.getHomeowner().getIdentityKey()) ? players.get(1) : players.get(0);
         }
         if ("RANDOM".equalsIgnoreCase(mode)) {
             return players.get((int) (Math.random() * players.size()));
@@ -425,7 +426,8 @@ public final class TurtleSoupService {
             dto.setDifficulty(null);
             dto.setTags(null);
         }
-        player.send(ResponseBuilder.build(null, dto, MessageType.GAME));
+        Response response = ResponseBuilder.build(null, dto, MessageType.GAME);
+        UserCache.getByIdentityKey(player.getIdentityKey()).forEach(online -> online.send(response));
     }
 
     private static void sendStart(RoomState state, User player, boolean host) {
@@ -434,7 +436,8 @@ public final class TurtleSoupService {
         if (!host) {
             dto.setKeyClue(null);
         }
-        player.send(ResponseBuilder.build(null, dto, MessageType.GAME));
+        Response response = ResponseBuilder.build(null, dto, MessageType.GAME);
+        UserCache.getByIdentityKey(player.getIdentityKey()).forEach(online -> online.send(response));
     }
 
     private static TurtleSoupDTO baseEvent(RoomState state, TurtleSoupDTO.Event event) {
@@ -459,10 +462,7 @@ public final class TurtleSoupService {
 
     private static void sendToRoom(GameRoom room, Response response) {
         room.getUsers().forEach((k, v) -> {
-            User player = UserCache.get(v.getId());
-            if (player != null) {
-                player.send(response);
-            }
+            UserCache.getByIdentityKey(v.getId()).forEach(player -> player.send(response));
         });
     }
 
@@ -487,7 +487,7 @@ public final class TurtleSoupService {
     private static List<User> getRoomUsers(GameRoom room) {
         List<User> players = new ArrayList<>();
         room.getUsers().forEach((k, v) -> {
-            User user = UserCache.get(v.getId());
+            User user = UserCache.getPrimaryByIdentityKey(v.getId());
             if (user != null) {
                 players.add(user);
             }
@@ -497,7 +497,7 @@ public final class TurtleSoupService {
 
     private static User findPlayer(List<User> players, String userId) {
         for (User player : players) {
-            if (player.getId().equals(userId)) {
+            if (player.getIdentityKey().equals(userId)) {
                 return player;
             }
         }

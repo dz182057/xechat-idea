@@ -206,6 +206,20 @@ public class User implements Serializable {
         this.username = nickname;
     }
 
+    /**
+     * 用户身份键：注册账号跨桌面端 / 插件端 / 重连保持一致；游客用客户端 uuid 兜底。
+     * <p>{@link #id} 是连接级 ID，只能用于服务端通道路由，业务身份判断必须使用本方法。</p>
+     */
+    public String getIdentityKey() {
+        if (accountId > 0L) {
+            return "account:" + accountId;
+        }
+        if (uuid != null && !uuid.trim().isEmpty()) {
+            return "guest:" + uuid;
+        }
+        return "channel:" + id;
+    }
+
     public void send(Response response) {
         if (channel == null) {
             return;

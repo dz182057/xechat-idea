@@ -126,6 +126,35 @@ public final class UserCache {
         return result;
     }
 
+    /**
+     * 按业务身份键查当前所有在线连接。注册用户会返回该账号的所有在线端。
+     */
+    public static List<User> getByIdentityKey(String identityKey) {
+        if (identityKey == null) {
+            return Collections.emptyList();
+        }
+        if (identityKey.startsWith("account:")) {
+            try {
+                return getByAccount(Long.parseLong(identityKey.substring("account:".length())));
+            } catch (NumberFormatException e) {
+                return Collections.emptyList();
+            }
+        }
+
+        List<User> result = new ArrayList<>(1);
+        for (User user : ID_TO_USER.values()) {
+            if (identityKey.equals(user.getIdentityKey())) {
+                result.add(user);
+            }
+        }
+        return result;
+    }
+
+    public static User getPrimaryByIdentityKey(String identityKey) {
+        List<User> users = getByIdentityKey(identityKey);
+        return users.isEmpty() ? null : users.get(0);
+    }
+
     public static boolean isOnlineByAccount(long accountId) {
         Set<String> ids = ACCOUNT_TO_IDS.get(accountId);
         return ids != null && !ids.isEmpty();

@@ -18,6 +18,8 @@ import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
 
+import java.util.List;
+
 /**
  * @author anlingyi
  * @date 2022/5/25 3:26 下午
@@ -63,13 +65,11 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             case REGRET_RESPONSE:
                 // 悔棋协商：服务端不参与决策，只把消息原样转发给房间内其他玩家
                 gameRoom.getUsers().forEach((k, v) -> {
-                    if (v.getId().equals(user.getId())) {
+                    if (v.getId().equals(user.getIdentityKey())) {
                         return;
                     }
-                    User player = UserCache.get(v.getId());
-                    if (player != null) {
-                        player.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
-                    }
+                    UserCache.getByIdentityKey(v.getId())
+                            .forEach(player -> player.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM)));
                 });
                 break;
         }
@@ -86,7 +86,8 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
         Response resp = ResponseBuilder.build(user, msg, MessageType.GAME_ROOM);
         // 通知已收到游戏邀请但还未进入游戏房间的用户
-        gameRoom.getInviteUsers().forEach(player -> player.send(resp));
+        gameRoom.getInviteUsers()
+                .forEach(playerKey -> UserCache.getByIdentityKey(playerKey).forEach(player -> player.send(resp)));
         // 通知房间内的用户
         sendMsg(gameRoom, resp);
     }
@@ -98,8 +99,8 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         // 转换后的 dto 与 body.content 解耦，后续 setGameRoom 等需要回写
         body.setContent(dto);
         User player = user;
-        if (dto.getPlayerId() != null) {
-            player = UserCache.get(dto.getPlayerId());
+        if (dto.getPlayerKey() != null) {
+            player = UserCache.getPrimaryByIdentityKey(dto.getPlayerKey());
             if (player == null) {
                 return;
             }
@@ -134,7 +135,8 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
     private void playerInvite(User user, GameRoom gameRoom, GameRoomMsgDTO body) {
         GameInviteDTO dto = castContent(body, GameInviteDTO.class);
-        User player = UserCache.get(dto.getPlayerId());
+        List<User> players = UserCache.getByIdentityKey(dto.getPlayerKey());
+        User player = players.isEmpty() ? null : players.get(0);
         if (player == null) {
             user.send(ResponseBuilder.system("该邀请用户不存在！"));
             return;
@@ -143,21 +145,21 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
         msg.setGame(gameRoom.getGame());
         msg.setRoomId(gameRoom.getId());
-        if (player.getStatus() != UserStatus.FISHING) {
+        if (players.stream().anyMatch(conn -> conn.getStatus() != UserStatus.FISHING)) {
             msg.setMsgType(GameRoomMsgDTO.MsgType.PLAYER_INVITE_RESULT);
             msg.setContent(new GameInviteResultDTO(InviteStatus.REJECT, null, null));
             user.send(ResponseBuilder.build(player, msg, MessageType.GAME_ROOM));
             user.send(ResponseBuilder.system("人家正在" + player.getStatus().alias() + "呢！就你天天摸鱼？"));
             return;
         }
-        if (gameRoom.getInviteUsers().contains(player)) {
+        if (gameRoom.getInviteUsers().contains(player.getIdentityKey())) {
             user.send(ResponseBuilder.system("已向" + player.getUsername() + "发送过邀请，请等待对方响应"));
             return;
         }
 
         gameRoom.addInviteUser(player);
         msg.setMsgType(GameRoomMsgDTO.MsgType.PLAYER_INVITE);
-        player.send(ResponseBuilder.build(user, msg, MessageType.GAME_ROOM));
+        players.forEach(conn -> conn.send(ResponseBuilder.build(user, msg, MessageType.GAME_ROOM)));
         user.send(ResponseBuilder.system("已向" + player.getUsername() + "发送《" + gameRoom.getGame().getName() + "》游戏邀请！"));
     }
 
@@ -170,7 +172,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             TurtleSoupService.clearRoom(gameRoom.getId());
             Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);
             sendMsg(gameRoom, resp);
-            if (gameRoom.isHomeowner(user.getUsername())) {
+            if (gameRoom.isHomeowner(user)) {
                 roomClose(user, gameRoom);
             }
         }
@@ -195,10 +197,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
     private void sendMsg(GameRoom gameRoom, Response response) {
         gameRoom.getUsers().forEach((k, v) -> {
-            User player = UserCache.get(v.getId());
-            if (player != null) {
-                player.send(response);
-            }
+            UserCache.getByIdentityKey(v.getId()).forEach(player -> player.send(response));
         });
     }
 

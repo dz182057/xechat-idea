@@ -592,11 +592,22 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
     }
 
     private boolean isCurrentHost() {
-        return GameAction.getNickname() != null && GameAction.getNickname().equals(hostName);
+        return currentIdentityKey().equals(hostId);
     }
 
     private boolean isCurrentGuesser() {
-        return GameAction.getNickname() != null && GameAction.getNickname().equals(guesserName);
+        return currentIdentityKey().equals(guesserId);
+    }
+
+    private String currentIdentityKey() {
+        if (DataCache.accountId > 0) {
+            return "account:" + DataCache.accountId;
+        }
+        User user = DataCache.getCurrentUser();
+        if (user != null) {
+            return user.getIdentityKey();
+        }
+        return "";
     }
 
     private void appendLog(String username, String action, String text) {

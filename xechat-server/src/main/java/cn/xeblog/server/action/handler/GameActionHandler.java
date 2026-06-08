@@ -26,16 +26,12 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
         }
 
         gameRoom.getUsers().forEach((k, v) -> {
-            if (v.getId().equals(user.getId())) {
+            if (v.getId().equals(user.getIdentityKey())) {
                 return;
             }
 
-            User player = UserCache.get(v.getId());
-            if (player == null) {
-                return;
-            }
-
-            player.send(ResponseBuilder.build(user, body, MessageType.GAME));
+            UserCache.getByIdentityKey(v.getId())
+                    .forEach(player -> player.send(ResponseBuilder.build(user, body, MessageType.GAME)));
         });
     }
 

@@ -14,8 +14,8 @@ import lombok.NoArgsConstructor;
 public class GameInviteDTO {
 
     /**
-     * 被邀请玩家
+     * 被邀请玩家身份键。注册用户为 account:{accountId}。
      */
-    private String playerId;
+    private String playerKey;
 
 }

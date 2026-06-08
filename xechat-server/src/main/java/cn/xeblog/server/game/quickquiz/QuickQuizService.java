@@ -84,7 +84,7 @@ public final class QuickQuizService {
     }
 
     public static QuickQuizQuestionDTO nextQuestion(User user, GameRoom room) {
-        if (!room.isHomeowner(user.getUsername())) {
+        if (!room.isHomeowner(user)) {
             throw new IllegalArgumentException("仅房主可以开始下一题");
         }
         List<User> players = getRoomUsers(room);
@@ -162,7 +162,7 @@ public final class QuickQuizService {
     }
 
     public static String playerKey(User user) {
-        return user.getAccountId() > 0 ? String.valueOf(user.getAccountId()) : user.getId();
+        return user.getIdentityKey();
     }
 
     private static void revealIfNeeded(GameRoom room, RoomState state) {
@@ -216,10 +216,7 @@ public final class QuickQuizService {
 
     private static void sendToRoom(GameRoom room, Response response) {
         room.getUsers().forEach((k, v) -> {
-            User player = UserCache.get(v.getId());
-            if (player != null) {
-                player.send(response);
-            }
+            UserCache.getByIdentityKey(v.getId()).forEach(player -> player.send(response));
         });
     }
 
@@ -230,7 +227,7 @@ public final class QuickQuizService {
     private static List<User> getRoomUsers(GameRoom room) {
         List<User> players = new ArrayList<>();
         room.getUsers().forEach((k, v) -> {
-            User user = UserCache.get(v.getId());
+            User user = UserCache.getPrimaryByIdentityKey(v.getId());
             if (user != null) {
                 players.add(user);
             }

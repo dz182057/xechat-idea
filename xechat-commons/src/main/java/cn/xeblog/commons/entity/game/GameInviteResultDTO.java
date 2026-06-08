@@ -18,7 +18,7 @@ public class GameInviteResultDTO {
 
     private GameRoom gameRoom;
 
-    private String playerId;
+    private String playerKey;
 
     public GameInviteResultDTO(InviteStatus status) {
         this.status = status;
