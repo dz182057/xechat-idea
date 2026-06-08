@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.enums.Permissions;
 
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -14,24 +15,53 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GlobalConfig {
 
     /**
+     * 数据根目录系统属性名。
+     */
+    public static final String DATA_PATH_PROPERTY = "xechat.data.path";
+
+    /**
+     * 数据根目录。
+     */
+    public static String DATA_PATH;
+
+    /**
      * 上传的文件路径
      */
-    public static final String UPLOAD_FILE_PATH = System.getProperty("user.home") + "/xechat/upload";
+    public static String UPLOAD_FILE_PATH;
 
     /**
      * 账号体系数据目录(SQLite db + 头像)
      */
-    public static final String DATA_DIR = System.getProperty("user.home") + "/xechat/data";
+    public static String DATA_DIR;
 
     /**
      * SQLite 数据库文件路径
      */
-    public static final String DB_PATH = DATA_DIR + "/xechat.db";
+    public static String DB_PATH;
 
     /**
      * 头像目录
      */
-    public static final String AVATAR_DIR = DATA_DIR + "/avatars";
+    public static String AVATAR_DIR;
+
+    static {
+        initDataPath(null);
+    }
+
+    /**
+     * 初始化数据根目录。未配置时保持原有 user.home/xechat 行为。
+     *
+     * @param configuredDataPath 配置文件或命令行指定的数据根目录
+     */
+    public static synchronized void initDataPath(String configuredDataPath) {
+        String dataPath = StrUtil.blankToDefault(configuredDataPath, System.getProperty(DATA_PATH_PROPERTY));
+        dataPath = StrUtil.blankToDefault(dataPath, System.getProperty("user.home") + "/xechat");
+        DATA_PATH = Paths.get(dataPath).normalize().toString();
+        UPLOAD_FILE_PATH = Paths.get(DATA_PATH, "upload").toString();
+        DATA_DIR = Paths.get(DATA_PATH, "data").toString();
+        DB_PATH = Paths.get(DATA_DIR, "xechat.db").toString();
+        AVATAR_DIR = Paths.get(DATA_DIR, "avatars").toString();
+    }
 
     /**
      * 上传的文件大小最大值，单位：KB

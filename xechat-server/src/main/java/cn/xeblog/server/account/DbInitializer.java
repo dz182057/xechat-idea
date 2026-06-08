@@ -92,8 +92,8 @@ public final class DbInitializer {
      * 检测 accounts 表是否存在,不存在则执行 schema.sql
      */
     private static void ensureSchema() throws Exception {
-        try (SqlSession session = FACTORY.openSession(true);
-             Connection conn = session.getConnection()) {
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
 
             if (tableExists(conn, "accounts")) {
                 return;
@@ -131,23 +131,24 @@ public final class DbInitializer {
      * 给已有数据库补齐登录记录表。
      */
     private static void ensureLoginLogsTable() throws Exception {
-        try (SqlSession session = FACTORY.openSession(true);
-             Connection conn = session.getConnection();
-             Statement st = conn.createStatement()) {
-            if (tableExists(conn, "login_logs")) {
-                return;
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                if (tableExists(conn, "login_logs")) {
+                    return;
+                }
+                st.execute("CREATE TABLE login_logs (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "account_id INTEGER," +
+                        "ip TEXT," +
+                        "region TEXT," +
+                        "platform TEXT," +
+                        "success INTEGER NOT NULL," +
+                        "fail_reason TEXT," +
+                        "created_at INTEGER NOT NULL" +
+                        ")");
+                log.info("数据库迁移: 创建 login_logs 表");
             }
-            st.execute("CREATE TABLE login_logs (" +
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "account_id INTEGER," +
-                    "ip TEXT," +
-                    "region TEXT," +
-                    "platform TEXT," +
-                    "success INTEGER NOT NULL," +
-                    "fail_reason TEXT," +
-                    "created_at INTEGER NOT NULL" +
-                    ")");
-            log.info("数据库迁移: 创建 login_logs 表");
         }
     }
 
@@ -156,13 +157,14 @@ public final class DbInitializer {
      * 因此这里做轻量迁移。
      */
     private static void ensureMessageColumns() throws Exception {
-        try (SqlSession session = FACTORY.openSession(true);
-             Connection conn = session.getConnection();
-             Statement st = conn.createStatement()) {
-            addColumnIfMissing(conn, st, "messages_public", "quote_json", "TEXT");
-            addColumnIfMissing(conn, st, "messages_public", "recalled_at", "INTEGER");
-            addColumnIfMissing(conn, st, "messages_private", "quote_message_id", "INTEGER");
-            addColumnIfMissing(conn, st, "messages_private", "recalled_at", "INTEGER");
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                addColumnIfMissing(conn, st, "messages_public", "quote_json", "TEXT");
+                addColumnIfMissing(conn, st, "messages_public", "recalled_at", "INTEGER");
+                addColumnIfMissing(conn, st, "messages_private", "quote_message_id", "INTEGER");
+                addColumnIfMissing(conn, st, "messages_private", "recalled_at", "INTEGER");
+            }
         }
     }
 
@@ -170,28 +172,29 @@ public final class DbInitializer {
      * 给已有数据库补齐好友和隐身字段。
      */
     private static void ensureFriendTables() throws Exception {
-        try (SqlSession session = FACTORY.openSession(true);
-             Connection conn = session.getConnection();
-             Statement st = conn.createStatement()) {
-            addColumnIfMissing(conn, st, "accounts", "stealth", "INTEGER NOT NULL DEFAULT 0");
-            st.execute("CREATE TABLE IF NOT EXISTS friends (" +
-                    "owner_account_id INTEGER NOT NULL," +
-                    "friend_account_id INTEGER NOT NULL," +
-                    "created_at INTEGER NOT NULL," +
-                    "PRIMARY KEY (owner_account_id, friend_account_id)" +
-                    ")");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_friends_friend ON friends(friend_account_id)");
-            st.execute("CREATE TABLE IF NOT EXISTS friend_requests (" +
-                    "id INTEGER PRIMARY KEY," +
-                    "from_account_id INTEGER NOT NULL," +
-                    "to_account_id INTEGER NOT NULL," +
-                    "status TEXT NOT NULL DEFAULT 'PENDING'," +
-                    "created_at INTEGER NOT NULL," +
-                    "handled_at INTEGER," +
-                    "UNIQUE (from_account_id, to_account_id, status)" +
-                    ")");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_friend_requests_to_status " +
-                    "ON friend_requests(to_account_id, status, created_at)");
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                addColumnIfMissing(conn, st, "accounts", "stealth", "INTEGER NOT NULL DEFAULT 0");
+                st.execute("CREATE TABLE IF NOT EXISTS friends (" +
+                        "owner_account_id INTEGER NOT NULL," +
+                        "friend_account_id INTEGER NOT NULL," +
+                        "created_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (owner_account_id, friend_account_id)" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_friends_friend ON friends(friend_account_id)");
+                st.execute("CREATE TABLE IF NOT EXISTS friend_requests (" +
+                        "id INTEGER PRIMARY KEY," +
+                        "from_account_id INTEGER NOT NULL," +
+                        "to_account_id INTEGER NOT NULL," +
+                        "status TEXT NOT NULL DEFAULT 'PENDING'," +
+                        "created_at INTEGER NOT NULL," +
+                        "handled_at INTEGER," +
+                        "UNIQUE (from_account_id, to_account_id, status)" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_friend_requests_to_status " +
+                        "ON friend_requests(to_account_id, status, created_at)");
+            }
         }
     }
 
@@ -199,21 +202,22 @@ public final class DbInitializer {
      * 给已有数据库补齐你画我猜词库表。
      */
     private static void ensureDrawGuessWordTable() throws Exception {
-        try (SqlSession session = FACTORY.openSession(true);
-             Connection conn = session.getConnection();
-             Statement st = conn.createStatement()) {
-            if (tableExists(conn, "draw_guess_words")) {
-                return;
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                if (tableExists(conn, "draw_guess_words")) {
+                    return;
+                }
+                st.execute("CREATE TABLE draw_guess_words (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "word TEXT NOT NULL UNIQUE," +
+                        "hint TEXT," +
+                        "sort_order INTEGER NOT NULL DEFAULT 0," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                log.info("数据库迁移: 创建 draw_guess_words 表");
             }
-            st.execute("CREATE TABLE draw_guess_words (" +
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "word TEXT NOT NULL UNIQUE," +
-                    "hint TEXT," +
-                    "sort_order INTEGER NOT NULL DEFAULT 0," +
-                    "created_at INTEGER NOT NULL," +
-                    "updated_at INTEGER NOT NULL" +
-                    ")");
-            log.info("数据库迁移: 创建 draw_guess_words 表");
         }
     }
 
@@ -221,37 +225,38 @@ public final class DbInitializer {
      * 给已有数据库补齐快问快答题库和答题记录表。
      */
     private static void ensureQuickQuizTables() throws Exception {
-        try (SqlSession session = FACTORY.openSession(true);
-             Connection conn = session.getConnection();
-             Statement st = conn.createStatement()) {
-            if (!tableExists(conn, "quick_quiz_questions")) {
-                st.execute("CREATE TABLE quick_quiz_questions (" +
-                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                        "question TEXT NOT NULL UNIQUE," +
-                        "options_json TEXT NOT NULL," +
-                        "sort_order INTEGER NOT NULL DEFAULT 0," +
-                        "active INTEGER NOT NULL DEFAULT 1," +
-                        "created_at INTEGER NOT NULL," +
-                        "updated_at INTEGER NOT NULL" +
-                        ")");
-                log.info("数据库迁移: 创建 quick_quiz_questions 表");
-            }
-            if (!tableExists(conn, "quick_quiz_records")) {
-                st.execute("CREATE TABLE quick_quiz_records (" +
-                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                        "room_id TEXT NOT NULL," +
-                        "question_id INTEGER NOT NULL," +
-                        "player_key TEXT NOT NULL," +
-                        "username TEXT NOT NULL," +
-                        "choice_index INTEGER NOT NULL," +
-                        "choice_text TEXT NOT NULL," +
-                        "created_at INTEGER NOT NULL" +
-                        ")");
-                st.execute("CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_player " +
-                        "ON quick_quiz_records(player_key, question_id)");
-                st.execute("CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question " +
-                        "ON quick_quiz_records(room_id, question_id)");
-                log.info("数据库迁移: 创建 quick_quiz_records 表");
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                if (!tableExists(conn, "quick_quiz_questions")) {
+                    st.execute("CREATE TABLE quick_quiz_questions (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                            "question TEXT NOT NULL UNIQUE," +
+                            "options_json TEXT NOT NULL," +
+                            "sort_order INTEGER NOT NULL DEFAULT 0," +
+                            "active INTEGER NOT NULL DEFAULT 1," +
+                            "created_at INTEGER NOT NULL," +
+                            "updated_at INTEGER NOT NULL" +
+                            ")");
+                    log.info("数据库迁移: 创建 quick_quiz_questions 表");
+                }
+                if (!tableExists(conn, "quick_quiz_records")) {
+                    st.execute("CREATE TABLE quick_quiz_records (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                            "room_id TEXT NOT NULL," +
+                            "question_id INTEGER NOT NULL," +
+                            "player_key TEXT NOT NULL," +
+                            "username TEXT NOT NULL," +
+                            "choice_index INTEGER NOT NULL," +
+                            "choice_text TEXT NOT NULL," +
+                            "created_at INTEGER NOT NULL" +
+                            ")");
+                    st.execute("CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_player " +
+                            "ON quick_quiz_records(player_key, question_id)");
+                    st.execute("CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question " +
+                            "ON quick_quiz_records(room_id, question_id)");
+                    log.info("数据库迁移: 创建 quick_quiz_records 表");
+                }
             }
         }
     }
@@ -260,53 +265,54 @@ public final class DbInitializer {
      * 给已有数据库补齐海龟汤题库和历史记录表。
      */
     private static void ensureTurtleSoupTables() throws Exception {
-        try (SqlSession session = FACTORY.openSession(true);
-             Connection conn = session.getConnection();
-             Statement st = conn.createStatement()) {
-            if (!tableExists(conn, "turtle_soup_stories")) {
-                st.execute("CREATE TABLE turtle_soup_stories (" +
-                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                        "title TEXT," +
-                        "surface TEXT NOT NULL UNIQUE," +
-                        "bottom TEXT NOT NULL," +
-                        "key_clue TEXT," +
-                        "difficulty TEXT," +
-                        "tags TEXT," +
-                        "sort_order INTEGER NOT NULL DEFAULT 0," +
-                        "active INTEGER NOT NULL DEFAULT 1," +
-                        "created_at INTEGER NOT NULL," +
-                        "updated_at INTEGER NOT NULL" +
-                        ")");
-                log.info("数据库迁移: 创建 turtle_soup_stories 表");
-            } else {
-                addColumnIfMissing(conn, st, "turtle_soup_stories", "title", "TEXT");
-                addColumnIfMissing(conn, st, "turtle_soup_stories", "key_clue", "TEXT");
-                addColumnIfMissing(conn, st, "turtle_soup_stories", "difficulty", "TEXT");
-            }
-            if (!tableExists(conn, "turtle_soup_records")) {
-                st.execute("CREATE TABLE turtle_soup_records (" +
-                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                        "room_id TEXT NOT NULL," +
-                        "story_id INTEGER NOT NULL," +
-                        "round_no INTEGER NOT NULL," +
-                        "host_key TEXT NOT NULL," +
-                        "host_name TEXT NOT NULL," +
-                        "guesser_key TEXT NOT NULL," +
-                        "guesser_name TEXT NOT NULL," +
-                        "guess_limit INTEGER NOT NULL," +
-                        "guess_used INTEGER NOT NULL," +
-                        "result TEXT NOT NULL," +
-                        "qa_json TEXT NOT NULL," +
-                        "started_at INTEGER NOT NULL," +
-                        "ended_at INTEGER NOT NULL" +
-                        ")");
-                st.execute("CREATE INDEX IF NOT EXISTS idx_turtle_soup_records_host " +
-                        "ON turtle_soup_records(host_key, story_id)");
-                st.execute("CREATE INDEX IF NOT EXISTS idx_turtle_soup_records_guesser " +
-                        "ON turtle_soup_records(guesser_key, story_id)");
-                st.execute("CREATE INDEX IF NOT EXISTS idx_turtle_soup_records_room " +
-                        "ON turtle_soup_records(room_id, round_no)");
-                log.info("数据库迁移: 创建 turtle_soup_records 表");
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                if (!tableExists(conn, "turtle_soup_stories")) {
+                    st.execute("CREATE TABLE turtle_soup_stories (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                            "title TEXT," +
+                            "surface TEXT NOT NULL UNIQUE," +
+                            "bottom TEXT NOT NULL," +
+                            "key_clue TEXT," +
+                            "difficulty TEXT," +
+                            "tags TEXT," +
+                            "sort_order INTEGER NOT NULL DEFAULT 0," +
+                            "active INTEGER NOT NULL DEFAULT 1," +
+                            "created_at INTEGER NOT NULL," +
+                            "updated_at INTEGER NOT NULL" +
+                            ")");
+                    log.info("数据库迁移: 创建 turtle_soup_stories 表");
+                } else {
+                    addColumnIfMissing(conn, st, "turtle_soup_stories", "title", "TEXT");
+                    addColumnIfMissing(conn, st, "turtle_soup_stories", "key_clue", "TEXT");
+                    addColumnIfMissing(conn, st, "turtle_soup_stories", "difficulty", "TEXT");
+                }
+                if (!tableExists(conn, "turtle_soup_records")) {
+                    st.execute("CREATE TABLE turtle_soup_records (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                            "room_id TEXT NOT NULL," +
+                            "story_id INTEGER NOT NULL," +
+                            "round_no INTEGER NOT NULL," +
+                            "host_key TEXT NOT NULL," +
+                            "host_name TEXT NOT NULL," +
+                            "guesser_key TEXT NOT NULL," +
+                            "guesser_name TEXT NOT NULL," +
+                            "guess_limit INTEGER NOT NULL," +
+                            "guess_used INTEGER NOT NULL," +
+                            "result TEXT NOT NULL," +
+                            "qa_json TEXT NOT NULL," +
+                            "started_at INTEGER NOT NULL," +
+                            "ended_at INTEGER NOT NULL" +
+                            ")");
+                    st.execute("CREATE INDEX IF NOT EXISTS idx_turtle_soup_records_host " +
+                            "ON turtle_soup_records(host_key, story_id)");
+                    st.execute("CREATE INDEX IF NOT EXISTS idx_turtle_soup_records_guesser " +
+                            "ON turtle_soup_records(guesser_key, story_id)");
+                    st.execute("CREATE INDEX IF NOT EXISTS idx_turtle_soup_records_room " +
+                            "ON turtle_soup_records(room_id, round_no)");
+                    log.info("数据库迁移: 创建 turtle_soup_records 表");
+                }
             }
         }
     }

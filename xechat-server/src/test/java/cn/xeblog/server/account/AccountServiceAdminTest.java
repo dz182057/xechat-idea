@@ -2,6 +2,7 @@ package cn.xeblog.server.account;
 
 import cn.xeblog.server.account.entity.Account;
 import cn.xeblog.server.account.entity.SessionEntity;
+import cn.xeblog.server.config.GlobalConfig;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -20,6 +21,7 @@ public class AccountServiceAdminTest {
     public static void setUpDataDir() throws Exception {
         Path home = Files.createTempDirectory("xechat-account-admin-test");
         System.setProperty("user.home", home.toString());
+        GlobalConfig.initDataPath(null);
     }
 
     @Test

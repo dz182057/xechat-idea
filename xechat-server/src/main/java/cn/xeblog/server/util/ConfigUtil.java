@@ -35,6 +35,7 @@ public class ConfigUtil {
         final String configPath = ParamsUtils.getValue(args, "-path");
         final String token = ParamsUtils.getValue(args, "-token");
         final String enableWS = ParamsUtils.getValue(args, "-enableWS");
+        final String dataPath = ParamsUtils.getValue(args, "-dataPath");
 
         final Setting configSetting = new Setting(StrUtil.blankToDefault(configPath, "config.setting"), StandardCharsets.UTF_8, Boolean.TRUE);
         final String fileConfigPort = configSetting.getByGroup(ConfigConstants.SERVER_PORT, ConfigConstants.SERVER);
@@ -45,6 +46,7 @@ public class ConfigUtil {
         final String fileIp2regionPath = configSetting.getByGroup(ConfigConstants.IP2REGION_PATH, ConfigConstants.IP_SEARCH);
         final String fileToken = configSetting.getByGroup(ConfigConstants.ADMIN_TOKEN, ConfigConstants.ADMIN);
         final String fileEnableWS = configSetting.getByGroup(ConfigConstants.SERVER_ENABLE_WS, ConfigConstants.SERVER);
+        final String fileDataPath = configSetting.getByGroup(ConfigConstants.DATA_PATH, ConfigConstants.DATA);
 
         return ServerConfig.builder()
                 .port(Convert.toInt(StrUtil.blankToDefault(configPort, fileConfigPort), 1024))
@@ -55,6 +57,7 @@ public class ConfigUtil {
                 .ip2RegionPath(StrUtil.blankToDefault(ip2regionPath, fileIp2regionPath))
                 .token(StrUtil.blankToDefault(token, fileToken))
                 .enableWS(BooleanUtil.toBoolean(StrUtil.blankToDefault(enableWS, fileEnableWS)))
+                .dataPath(StrUtil.blankToDefault(dataPath, fileDataPath))
                 .build();
     }
 

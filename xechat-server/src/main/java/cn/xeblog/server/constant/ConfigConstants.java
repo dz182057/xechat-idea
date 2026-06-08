@@ -26,6 +26,20 @@ public interface ConfigConstants {
 
     // endregion
 
+    // region ============================== 数据路径 配置 ==============================
+
+    /**
+     * 分组 - 数据路径
+     */
+    String DATA = "DATA";
+
+    /**
+     * 数据根目录
+     */
+    String DATA_PATH = "path";
+
+    // endregion
+
     // region ============================== 敏感词 配置 ==============================
 
     /**

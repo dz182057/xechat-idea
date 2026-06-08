@@ -53,6 +53,11 @@ public class ServerConfig {
      */
     private String token;
 
+    /**
+     * 数据根目录
+     */
+    private String dataPath;
+
     private static ServerConfig serverConfig;
 
     public static ServerConfig getConfig() {
@@ -93,6 +98,10 @@ public class ServerConfig {
 
     public String getToken() {
         return StrUtil.equals("${TOKEN}", token) ? null : token;
+    }
+
+    public String getDataPath() {
+        return StrUtil.equals("${DATA_PATH}", dataPath) ? null : dataPath;
     }
 
     public boolean getEnableWS() {
