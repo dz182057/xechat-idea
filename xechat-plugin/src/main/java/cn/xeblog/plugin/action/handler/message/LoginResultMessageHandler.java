@@ -6,6 +6,7 @@ import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.MessageType;
+import cn.xeblog.plugin.action.ConnectionAction;
 import cn.xeblog.plugin.action.ConsoleAction;
 import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.action.ReconnectAction;
@@ -57,6 +58,12 @@ public class LoginResultMessageHandler extends AbstractMessageHandler<LoginResul
                 DataCache.accountId = user.getAccountId();
             }
 
+            String serverKey = currentServerKey();
+            if (shouldResetPublicConsole(serverKey)) {
+                ConsoleAction.clean();
+            }
+            DataCache.publicHistoryServerKey = serverKey;
+
             // 账号体系登录:持久化 token + account(IDEA PersistentStateComponent 关闭时自动落盘)
             if (StringUtils.isNotBlank(body.getToken()) && user != null && !user.isGuest()) {
                 PersistenceData pd = PersistenceService.getData();
@@ -92,6 +99,20 @@ public class LoginResultMessageHandler extends AbstractMessageHandler<LoginResul
 
     static boolean shouldPullHistory() {
         return !DataCache.loginFromReconnect;
+    }
+
+    static String currentServerKey() {
+        ConnectionAction connection = DataCache.connectionAction;
+        if (connection == null) {
+            return "unknown:0";
+        }
+        String host = StringUtils.defaultIfBlank(connection.getHost(), "unknown").trim().toLowerCase();
+        return host + ":" + connection.getPort();
+    }
+
+    static boolean shouldResetPublicConsole(String serverKey) {
+        return StringUtils.isNotBlank(DataCache.publicHistoryServerKey)
+                && !DataCache.publicHistoryServerKey.equals(serverKey);
     }
 
     /**

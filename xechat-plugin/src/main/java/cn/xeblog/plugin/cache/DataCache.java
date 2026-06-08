@@ -84,6 +84,11 @@ public class DataCache {
     public static boolean loginFromReconnect;
 
     /**
+     * 当前主聊天区公共历史对应的服务器 key,用于切换服务器登录时避免公共内容串服。
+     */
+    public static String publicHistoryServerKey;
+
+    /**
      * 用户状态设置缓存
      */
     public static UserStatus userStatus;
