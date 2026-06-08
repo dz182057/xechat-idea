@@ -418,16 +418,20 @@ public final class TurtleSoupService {
 
     private static void sendPreview(RoomState state, User player, boolean host) {
         TurtleSoupDTO dto = baseEvent(state, TurtleSoupDTO.Event.PREVIEW_STORY);
+        sanitizePreview(dto, host);
+        Response response = ResponseBuilder.build(null, dto, MessageType.GAME);
+        UserCache.getByIdentityKey(player.getIdentityKey()).forEach(online -> online.send(response));
+    }
+
+    static void sanitizePreview(TurtleSoupDTO dto, boolean host) {
         dto.setBottom(null);
+        dto.setKeyClue(null);
         if (!host) {
             dto.setTitle(null);
             dto.setSurface(null);
-            dto.setKeyClue(null);
             dto.setDifficulty(null);
             dto.setTags(null);
         }
-        Response response = ResponseBuilder.build(null, dto, MessageType.GAME);
-        UserCache.getByIdentityKey(player.getIdentityKey()).forEach(online -> online.send(response));
     }
 
     private static void sendStart(RoomState state, User player, boolean host) {

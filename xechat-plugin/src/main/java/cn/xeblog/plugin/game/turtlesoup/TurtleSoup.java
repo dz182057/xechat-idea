@@ -418,19 +418,23 @@ public class TurtleSoup extends AbstractGame<TurtleSoupDTO> {
         clueRequestPending = false;
         logArea.setText("");
         if (isCurrentHost() && body.getSurface() != null) {
-            keyClueVisible = body.getKeyClue() != null && !body.getKeyClue().isEmpty();
+            keyClueVisible = false;
             surfaceArea.setText(formatStory(body));
             bottomArea.setText("确认题目后可见");
-            keyClueArea.setText(body.getKeyClue() == null || body.getKeyClue().isEmpty() ? "暂无关键线索" : body.getKeyClue());
+            keyClueArea.setText(previewKeyClueText(body, true));
             setTitle("主持人预览：可换题，确认后正式开始");
         } else {
             keyClueVisible = false;
             surfaceArea.setText("主持人正在预览题面，确认后正式开始。");
             bottomArea.setText("");
-            keyClueArea.setText("");
+            keyClueArea.setText(previewKeyClueText(body, false));
             setTitle("等待主持人确认题目");
         }
         refreshControls();
+    }
+
+    static String previewKeyClueText(TurtleSoupDTO body, boolean currentHost) {
+        return currentHost ? "正式开始后按规则申请查看" : "";
     }
 
     private void onStartRound(TurtleSoupDTO body) {
