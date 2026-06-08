@@ -2,7 +2,6 @@ package cn.xeblog.plugin.ui;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.xeblog.commons.util.ClassUtils;
-import cn.xeblog.plugin.enums.Command;
 import cn.xeblog.plugin.listener.MainWindowInitializedEventListener;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.util.PathUtil;
@@ -68,8 +67,6 @@ public class MainWindow {
                 e.printStackTrace();
             }
         }
-
-        Command.HELP.exec();
     }
 
     public static MainWindow getInstance() {

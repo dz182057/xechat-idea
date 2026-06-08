@@ -84,6 +84,11 @@ public class DataCache {
     public static boolean loginFromReconnect;
 
     /**
+     * 当前插件进程是否已经显示过欢迎公告。
+     */
+    public static boolean welcomeNoticeShown;
+
+    /**
      * 当前主聊天区公共历史对应的服务器 key,用于切换服务器登录时避免公共内容串服。
      */
     public static String publicHistoryServerKey;
