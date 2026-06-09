@@ -78,6 +78,8 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
 
     private JPanel coopRestartResponsePanel;
 
+    private JLabel coopRestartResponseLabel;
+
     private JButton coopRestartApproveButton;
 
     private JButton coopRestartRejectButton;
@@ -110,6 +112,14 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
 
     private String coopPendingRestartFromName;
 
+    private boolean coopAwaitingConfigResponse;
+
+    private String coopPendingConfigFromKey;
+
+    private String coopPendingConfigFromName;
+
+    private BoardConfig coopPendingConfig;
+
     private long coopStartedAt;
 
     private javax.swing.Timer coopTimer;
@@ -122,20 +132,64 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
             startCoop();
             return;
         }
+        startSingle();
+    }
+
+    private void startSingle() {
+        stopCoopTimer();
         initPanel();
         mainPanel.setLayout(new BorderLayout());
-        mainPanel.add(Box.createVerticalStrut(10), BorderLayout.NORTH);
-        mainPanel.add(Box.createHorizontalStrut(10), BorderLayout.EAST);
 
-        minesweeperUI = new MinesweeperUI(level);
-        mainPanel.add(minesweeperUI, BorderLayout.CENTER);
-        mainPanel.add(getBottomPanel(), BorderLayout.SOUTH);
+        coopPanel = new JPanel(new BorderLayout());
+        coopConcealedMode = true;
+        coopSharedMarkMode = false;
+        coopRoundActive = false;
+        coopBoardGenerated = false;
+        coopPhase = MinesweeperDTO.Phase.playing;
+        coopStartedAt = System.currentTimeMillis();
 
-        mainPanel.setMinimumSize(
-            new Dimension(minesweeperUI.getTheWidth() + 40, minesweeperUI.getTheHeight() + 50));
+        JPanel topPanel = new JPanel();
+        coopTitleLabel = new JLabel(createConcealedToolbarLabels(false).title);
+        coopStatusLabel = new JLabel("Ready");
+        coopMineLabel = new JLabel(formatMineLabel(coopMines));
+        coopMineLabel.setToolTipText("剩余雷数");
+        coopTimeLabel = new JLabel(formatTimeLabel(0));
+        coopTimeLabel.setToolTipText("计时");
+        topPanel.add(coopTitleLabel);
+        topPanel.add(coopStatusLabel);
+        topPanel.add(coopMineLabel);
+
+        coopRestartButton = new JButton(createConcealedToolbarLabels(false).restart);
+        coopRestartButton.setToolTipText("重开本局");
+        coopRestartButton.addActionListener(e -> restartCoopRound());
+        topPanel.add(coopRestartButton);
+        topPanel.add(coopTimeLabel);
+
+        coopModeButton = new JButton(createConcealedToolbarLabels(false).mode);
+        coopModeButton.addActionListener(e -> {
+            coopConcealedMode = !coopConcealedMode;
+            renderCoopGrid();
+            updateCoopStatus(coopPhase, false, false);
+        });
+        topPanel.add(coopModeButton);
+
+        coopHelpButton = new JButton("?");
+        coopHelpButton.setFocusable(false);
+        coopHelpButton.setToolTipText(getCoopHelpText());
+        topPanel.add(coopHelpButton);
+
+        initCoopSizeControls(topPanel);
+
+        coopGridPanel = new JPanel();
+        coopPanel.add(topPanel, BorderLayout.NORTH);
+        coopPanel.add(createCoopGridScrollPane(coopGridPanel), BorderLayout.CENTER);
+        mainPanel.add(coopPanel, BorderLayout.CENTER);
+        coopCells = null;
+        ensureCoopCells(coopRows, coopCols, coopMines);
+        renderCoopGrid();
+        startCoopTimer();
+        mainPanel.setMinimumSize(new Dimension(420, 360));
         mainPanel.updateUI();
-
-        minesweeperUI.requestFocusInWindow();
         init = false;
     }
 
@@ -187,11 +241,12 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         initCoopSizeControls(topPanel);
 
         coopRestartResponsePanel = new JPanel();
-        coopRestartResponsePanel.add(new JLabel("对方申请重开"));
+        coopRestartResponseLabel = new JLabel("对方申请重开");
+        coopRestartResponsePanel.add(coopRestartResponseLabel);
         coopRestartApproveButton = new JButton("同意");
-        coopRestartApproveButton.addActionListener(e -> respondCoopRestart(true));
+        coopRestartApproveButton.addActionListener(e -> respondPendingCoopRequest(true));
         coopRestartRejectButton = new JButton("不同意");
-        coopRestartRejectButton.addActionListener(e -> respondCoopRestart(false));
+        coopRestartRejectButton.addActionListener(e -> respondPendingCoopRequest(false));
         coopRestartResponsePanel.add(coopRestartApproveButton);
         coopRestartResponsePanel.add(coopRestartRejectButton);
         coopRestartResponsePanel.setVisible(false);
@@ -199,7 +254,7 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         coopGridPanel = new JPanel();
         coopPanel.add(topPanel, BorderLayout.NORTH);
         coopPanel.add(coopRestartResponsePanel, BorderLayout.SOUTH);
-        coopPanel.add(coopGridPanel, BorderLayout.CENTER);
+        coopPanel.add(createCoopGridScrollPane(coopGridPanel), BorderLayout.CENTER);
         mainPanel.add(coopPanel, BorderLayout.CENTER);
         ensureCoopCells(coopRows, coopCols, coopMines);
         renderCoopGrid();
@@ -359,9 +414,17 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
             } else if (body.getEvent() == MinesweeperDTO.Event.SYNC_REQUEST) {
                 sendCoopSnapshot();
             } else if (body.getEvent() == MinesweeperDTO.Event.RESTART_REQUEST) {
-                handleCoopRestartRequest(body);
+                if (body.getRows() != null && body.getCols() != null && body.getMines() != null) {
+                    handleCoopConfigRequest(body);
+                } else {
+                    handleCoopRestartRequest(body);
+                }
             } else if (body.getEvent() == MinesweeperDTO.Event.RESTART_RESPONSE) {
-                handleCoopRestartResponse(body);
+                if (body.getRows() != null && body.getCols() != null && body.getMines() != null) {
+                    handleCoopConfigResponse(body);
+                } else {
+                    handleCoopRestartResponse(body);
+                }
             } else {
                 applyCoopMessage(body);
             }
@@ -400,6 +463,10 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
             coopAwaitingRestartResponse = false;
             coopPendingRestartFromKey = null;
             coopPendingRestartFromName = null;
+            coopAwaitingConfigResponse = false;
+            coopPendingConfigFromKey = null;
+            coopPendingConfigFromName = null;
+            coopPendingConfig = null;
             coopBoardGenerated = false;
             coopRoundActive = false;
             coopPhase = MinesweeperDTO.Phase.playing;
@@ -464,6 +531,14 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         coopGridPanel.repaint();
     }
 
+    private JScrollPane createCoopGridScrollPane(JPanel gridPanel) {
+        JScrollPane scrollPane = new JScrollPane(gridPanel);
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setBorder(null);
+        return scrollPane;
+    }
+
     private JButton createCoopButton(int x, int y) {
         CoopCell cell = coopCells[y][x];
         JButton button = new JButton(renderCellText(cell));
@@ -497,6 +572,15 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
     }
 
     private void submitCoopAction(MinesweeperDTO.ActionType action, int x, int y) {
+        if (!isCoopRoom()) {
+            ensureAuthorityBoard(x, y);
+            OpenResult result = action == MinesweeperDTO.ActionType.OPEN_AROUND
+                    ? openAround(x, y)
+                    : openCell(x, y);
+            updateCoopStatus(result.phase, result.hitMine, result.won);
+            renderCoopGrid();
+            return;
+        }
         if (isHomeowner()) {
             MinesweeperDTO request = new MinesweeperDTO();
             request.setAction(action);
@@ -526,6 +610,10 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
     }
 
     private void toggleSharedMark(int x, int y) {
+        if (!isCoopRoom()) {
+            togglePersonalMark(x, y);
+            return;
+        }
         CoopCell cell = coopCells[y][x];
         if (cell.opened) {
             return;
@@ -551,6 +639,26 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         coopAwaitingRestartResponse = false;
         updateCoopStatus(null, false, false);
         refreshCoopControls();
+    }
+
+    private void handleCoopConfigRequest(MinesweeperDTO body) {
+        if (body.getRows() == null || body.getCols() == null || body.getMines() == null) {
+            return;
+        }
+        coopPendingConfigFromKey = body.getActorKey();
+        coopPendingConfigFromName = body.getActorName() == null ? "对方" : body.getActorName();
+        coopPendingConfig = normalizeBoardConfig(body.getRows(), body.getCols(), body.getMines());
+        coopAwaitingConfigResponse = false;
+        updateCoopStatus(null, false, false);
+        refreshCoopControls();
+    }
+
+    private void respondPendingCoopRequest(boolean approved) {
+        if (coopPendingConfigFromKey != null) {
+            respondCoopConfig(approved);
+            return;
+        }
+        respondCoopRestart(approved);
     }
 
     private void respondCoopRestart(boolean approved) {
@@ -584,8 +692,45 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         }
     }
 
+    private void respondCoopConfig(boolean approved) {
+        if (getRoom() == null || coopPendingConfigFromKey == null || coopPendingConfig == null) {
+            return;
+        }
+        MinesweeperDTO dto = new MinesweeperDTO();
+        dto.setGame(Game.MINESWEEPER);
+        dto.setEvent(MinesweeperDTO.Event.RESTART_RESPONSE);
+        dto.setRows(coopPendingConfig.rows);
+        dto.setCols(coopPendingConfig.cols);
+        dto.setMines(coopPendingConfig.mines);
+        dto.setActorKey(getMyPlayerKey());
+        dto.setActorName(GameAction.getNickname());
+        dto.setRestartApproved(approved);
+        sendMsg(dto);
+        coopPendingConfigFromKey = null;
+        coopPendingConfigFromName = null;
+        coopPendingConfig = null;
+        updateCoopStatus(null, false, false);
+        refreshCoopControls();
+    }
+
+    private void handleCoopConfigResponse(MinesweeperDTO body) {
+        boolean approved = Boolean.TRUE.equals(body.getRestartApproved());
+        coopAwaitingConfigResponse = false;
+        if (approved && isHomeowner() && body.getRows() != null && body.getCols() != null && body.getMines() != null) {
+            applyCoopBoardConfig(normalizeBoardConfig(body.getRows(), body.getCols(), body.getMines()), true);
+        } else {
+            updateCoopStatus(null, false, false);
+            refreshCoopControls();
+        }
+    }
+
     private void restartCoopRound() {
-        if (getRoom() == null || coopAwaitingRestartResponse || coopPendingRestartFromKey != null) {
+        if (!isCoopRoom()) {
+            restartLocalRound();
+            return;
+        }
+        if (getRoom() == null || coopAwaitingRestartResponse || coopAwaitingConfigResponse
+                || coopPendingRestartFromKey != null || coopPendingConfigFromKey != null) {
             return;
         }
         MinesweeperDTO dto = new MinesweeperDTO();
@@ -597,6 +742,19 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         coopAwaitingRestartResponse = true;
         updateCoopStatus(null, false, false);
         refreshCoopControls();
+    }
+
+    private void restartLocalRound() {
+        stopCoopTimer();
+        coopCells = null;
+        coopBoardGenerated = false;
+        coopRoundActive = false;
+        coopPhase = MinesweeperDTO.Phase.playing;
+        coopStartedAt = System.currentTimeMillis();
+        ensureCoopCells(coopRows, coopCols, coopMines);
+        renderCoopGrid();
+        updateCoopStatus(coopPhase, false, false);
+        startCoopTimer();
     }
 
     private void sendCoopGameStart() {
@@ -785,8 +943,16 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
             setCoopStatusText(coopPendingRestartFromName + "申请重开", "Phase WAIT");
             return;
         }
+        if (coopPendingConfigFromKey != null && coopPendingConfig != null) {
+            setCoopStatusText(coopPendingConfigFromName + "申请改配置", "Phase WAIT");
+            return;
+        }
         if (coopAwaitingRestartResponse) {
             setCoopStatusText("等待对方同意重开", "Phase WAIT");
+            return;
+        }
+        if (coopAwaitingConfigResponse) {
+            setCoopStatusText("等待对方同意改配置", "Phase WAIT");
             return;
         }
         MinesweeperDTO.Phase currentPhase = phase == null ? coopPhase : phase;
@@ -876,10 +1042,21 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
     private void refreshCoopControls() {
         refreshCoopModeTexts();
         if (coopRestartButton != null) {
-            coopRestartButton.setEnabled(!coopAwaitingRestartResponse && coopPendingRestartFromKey == null);
+            coopRestartButton.setEnabled(!coopAwaitingRestartResponse && !coopAwaitingConfigResponse
+                    && coopPendingRestartFromKey == null && coopPendingConfigFromKey == null);
         }
         if (coopRestartResponsePanel != null) {
-            coopRestartResponsePanel.setVisible(coopPendingRestartFromKey != null);
+            boolean hasRestartRequest = coopPendingRestartFromKey != null;
+            boolean hasConfigRequest = coopPendingConfigFromKey != null && coopPendingConfig != null;
+            coopRestartResponsePanel.setVisible(hasRestartRequest || hasConfigRequest);
+            if (coopRestartResponseLabel != null) {
+                if (hasConfigRequest) {
+                    coopRestartResponseLabel.setText(coopPendingConfigFromName + "申请改为 "
+                            + coopPendingConfig.rows + "x" + coopPendingConfig.cols + "/" + coopPendingConfig.mines);
+                } else {
+                    coopRestartResponseLabel.setText("对方申请重开");
+                }
+            }
         }
         refreshCoopSizeControls();
         updateCoopTimeLabel();
@@ -922,7 +1099,7 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
 
     private void refreshCoopModeTexts() {
         if (coopTitleLabel != null) {
-            coopTitleLabel.setText(coopConcealedMode ? createConcealedToolbarLabels(coopSharedMarkMode).title : "合作排雷");
+            coopTitleLabel.setText(coopConcealedMode ? createConcealedToolbarLabels(coopSharedMarkMode).title : getMinesweeperTitle());
         }
         if (coopRestartButton != null) {
             coopRestartButton.setText(coopConcealedMode ? createConcealedToolbarLabels(coopSharedMarkMode).restart : "☺");
@@ -1029,8 +1206,8 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
     }
 
     private void initCoopSizeControls(JPanel topPanel) {
-        coopSizePresetBox = new JComboBox<>(new String[]{"P1", "P2", "P3"});
-        coopSizePresetBox.setToolTipText("P1=9x9/10，P2=16x16/40，P3=16x30/99");
+        coopSizePresetBox = new JComboBox<>(new String[]{"简单", "中等", "困难"});
+        coopSizePresetBox.setToolTipText("简单=9x9/10，中等=16x16/40，困难=16x30/99");
         coopSizePresetBox.addActionListener(e -> applyCoopPreset());
         topPanel.add(coopSizePresetBox);
 
@@ -1056,15 +1233,7 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
             return;
         }
         int index = coopSizePresetBox == null ? 0 : coopSizePresetBox.getSelectedIndex();
-        BoardConfig config;
-        if (index == 1) {
-            config = new BoardConfig(16, 16, 40);
-        } else if (index == 2) {
-            config = new BoardConfig(16, 30, 99);
-        } else {
-            config = new BoardConfig(9, 9, 10);
-        }
-        setCoopBoardConfig(config);
+        setCoopBoardConfig(presetBoardConfig(index));
     }
 
     private void applyCustomCoopBoardConfig() {
@@ -1072,13 +1241,36 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
             return;
         }
         BoardConfig config = normalizeBoardConfig(
-                (Integer) coopRowsSpinner.getValue(),
-                (Integer) coopColsSpinner.getValue(),
-                (Integer) coopMinesSpinner.getValue());
+                readSpinnerInt(coopRowsSpinner, coopRows),
+                readSpinnerInt(coopColsSpinner, coopCols),
+                readSpinnerInt(coopMinesSpinner, coopMines));
         setCoopBoardConfig(config);
     }
 
+    private int readSpinnerInt(JSpinner spinner, int fallback) {
+        if (spinner == null) {
+            return fallback;
+        }
+        if (spinner.getEditor() instanceof JSpinner.DefaultEditor) {
+            String text = ((JSpinner.DefaultEditor) spinner.getEditor()).getTextField().getText();
+            try {
+                return Integer.parseInt(text.trim());
+            } catch (Exception ignored) {
+            }
+        }
+        Object value = spinner.getValue();
+        return value instanceof Number ? ((Number) value).intValue() : fallback;
+    }
+
     private void setCoopBoardConfig(BoardConfig config) {
+        if (isCoopRoom()) {
+            requestCoopBoardConfig(config);
+            return;
+        }
+        applyCoopBoardConfig(config, false);
+    }
+
+    private void applyCoopBoardConfig(BoardConfig config, boolean broadcast) {
         coopRows = config.rows;
         coopCols = config.cols;
         coopMines = config.mines;
@@ -1086,7 +1278,28 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         ensureCoopCells(coopRows, coopCols, coopMines);
         syncCoopSizeInputs();
         renderCoopGrid();
-        broadcastCoopInit();
+        if (broadcast) {
+            broadcastCoopInit();
+        }
+    }
+
+    private void requestCoopBoardConfig(BoardConfig config) {
+        if (!isHomeowner() || getRoom() == null || coopAwaitingConfigResponse) {
+            return;
+        }
+        BoardConfig normalized = normalizeBoardConfig(config.rows, config.cols, config.mines);
+        MinesweeperDTO dto = new MinesweeperDTO();
+        dto.setGame(Game.MINESWEEPER);
+        dto.setEvent(MinesweeperDTO.Event.RESTART_REQUEST);
+        dto.setRows(normalized.rows);
+        dto.setCols(normalized.cols);
+        dto.setMines(normalized.mines);
+        dto.setActorKey(getMyPlayerKey());
+        dto.setActorName(GameAction.getNickname());
+        sendMsg(dto);
+        coopAwaitingConfigResponse = true;
+        updateCoopStatus(null, false, false);
+        refreshCoopControls();
     }
 
     private void broadcastCoopInit() {
@@ -1143,16 +1356,34 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
     }
 
     private boolean canConfigureCoopBoard() {
-        return isHomeowner() && !coopRoundActive;
+        return (!isCoopRoom() || isHomeowner()) && !coopRoundActive
+                && !coopAwaitingConfigResponse && coopPendingConfigFromKey == null;
     }
 
     private boolean canOperate() {
+        if (!isCoopRoom()) {
+            return coopPhase == MinesweeperDTO.Phase.playing;
+        }
         String myKey = getMyPlayerKey();
         return myKey != null && myKey.equals(coopTurnPlayerKey);
     }
 
     private boolean isCoopRoom() {
         return getRoom() != null && COOP_GAME_MODE.equals(getRoom().getGameMode());
+    }
+
+    private String getMinesweeperTitle() {
+        return isCoopRoom() ? "合作排雷" : "扫雷";
+    }
+
+    static BoardConfig presetBoardConfig(int index) {
+        if (index == 1) {
+            return new BoardConfig(16, 16, 40);
+        }
+        if (index == 2) {
+            return new BoardConfig(16, 30, 99);
+        }
+        return new BoardConfig(9, 9, 10);
     }
 
     private String getMyPlayerKey() {

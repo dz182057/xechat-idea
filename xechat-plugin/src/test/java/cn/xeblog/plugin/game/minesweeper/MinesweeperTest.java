@@ -37,4 +37,21 @@ public class MinesweeperTest {
         Assert.assertEquals("M", labels.sharedMark);
         Assert.assertEquals("V", labels.mode);
     }
+
+    @Test
+    public void presetBoardConfigShouldMatchClassicDifficulty() {
+        Minesweeper.BoardConfig easy = Minesweeper.presetBoardConfig(0);
+        Minesweeper.BoardConfig medium = Minesweeper.presetBoardConfig(1);
+        Minesweeper.BoardConfig hard = Minesweeper.presetBoardConfig(2);
+
+        Assert.assertEquals(9, easy.rows);
+        Assert.assertEquals(9, easy.cols);
+        Assert.assertEquals(10, easy.mines);
+        Assert.assertEquals(16, medium.rows);
+        Assert.assertEquals(16, medium.cols);
+        Assert.assertEquals(40, medium.mines);
+        Assert.assertEquals(16, hard.rows);
+        Assert.assertEquals(30, hard.cols);
+        Assert.assertEquals(99, hard.mines);
+    }
 }
