@@ -10,6 +10,7 @@ import cn.xeblog.commons.entity.game.chess.ChessDTO;
 import cn.xeblog.commons.entity.game.drawguess.DrawGuessDTO;
 import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.entity.game.landlords.LandlordsGameDTO;
+import cn.xeblog.commons.entity.game.minesweeper.MinesweeperDTO;
 import cn.xeblog.commons.entity.game.turtlesoup.TurtleSoupDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Game;
@@ -101,6 +102,8 @@ public class RequestHandler {
                 return DrawGuessDTO.class;
             case TURTLE_SOUP:
                 return TurtleSoupDTO.class;
+            case MINESWEEPER:
+                return MinesweeperDTO.class;
             case CHINESE_CHESS:
                 return ChessDTO.class;
             case LANDLORDS:
