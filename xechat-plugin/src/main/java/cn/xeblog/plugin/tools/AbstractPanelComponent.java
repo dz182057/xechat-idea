@@ -344,12 +344,14 @@ public abstract class AbstractPanelComponent {
         mainPanel.setPreferredSize(null);
         mainPanel.setEnabled(true);
         mainPanel.setVisible(true);
+        MainWindow.getInstance().setRightPanelAvailable(true);
     }
 
     private void closeMainPanel() {
         mainPanel.setVisible(false);
         mainPanel.removeAll();
         mainPanel.updateUI();
+        MainWindow.getInstance().setRightPanelAvailable(false);
     }
 
     private void closeWindow() {

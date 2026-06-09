@@ -1,6 +1,6 @@
 <idea-plugin>
     <id>cn.xeblog.xechat.plugin</id>
-    <name>XEChat</name>
+    <name>XE</name>
     <vendor email="1090172196@qq.com" url="https://xeblog.cn">AnLingYi</vendor>
 
     <description><![CDATA[
@@ -19,13 +19,13 @@
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="XEChat" anchor="bottom" secondary="true" doNotActivateOnStart="true"
+        <toolWindow id="XE" anchor="bottom" secondary="true" doNotActivateOnStart="true"
                     factoryClass="cn.xeblog.plugin.factory.MainWindowFactory" icon="/images/logo.svg"/>
         <notificationGroup id="cn.xeblog.xechat.notify"
                            displayType="BALLOON"
                            key="xechat-idea"/>
         <applicationConfigurable parentId="tools" instance="cn.xeblog.plugin.setting.PluginConfigSetting"
-                                 id="cn.xeblog.xechat.setting" displayName="XEChat"/>
+                                 id="cn.xeblog.xechat.setting" displayName="XE"/>
         <postStartupActivity implementation="cn.xeblog.plugin.listener.DevFileLogStartupActivity"/>
     </extensions>
 

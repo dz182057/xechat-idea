@@ -38,6 +38,7 @@ public class MainWindowFactory implements ToolWindowFactory {
         DataCache.project = project;
 
         MainWindow mw = MainWindow.getInstance();
+        mw.configureToolWindow(toolWindow);
         JPanel wrapper = mw.getWrapperPanel();
         JPanel mainPanel = mw.getMainPanel();
         mainPanel.addAncestorListener(new AncestorListenerAdapter() {
