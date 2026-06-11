@@ -32,7 +32,7 @@ import io.netty.channel.ChannelHandlerContext;
  */
 public final class AccountLoginHelper {
 
-    private static final String DUPLICATE_CLIENT_LOGIN_MESSAGE = "该账号已在当前客户端登录,请勿重复打开客户端登录";
+    private static final String DUPLICATE_CLIENT_LOGIN_MESSAGE = "该账号已在当前端登录,请勿重复登录";
 
     private AccountLoginHelper() {
     }
