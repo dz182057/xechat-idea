@@ -207,6 +207,11 @@ public enum Action {
     PULL_HISTORY,
 
     /**
+     * 查询当前会话历史总数
+     */
+    COUNT_HISTORY,
+
+    /**
      * 查询对端账号的身份公钥(E2EE 私聊建立会话密钥前的公钥发现)
      */
     GET_PEER_KEY,

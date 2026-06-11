@@ -31,6 +31,12 @@
         WHERE id = #{id} AND recalled_at IS NULL
     </update>
 
+    <select id="countByConversation" resultType="long">
+        SELECT COUNT(*)
+        FROM messages_private
+        WHERE conv_min = #{convMin} AND conv_max = #{convMax}
+    </select>
+
     <select id="query" resultType="cn.xeblog.server.e2ee.entity.PrivateMessage">
         SELECT <include refid="cols"/>
         FROM messages_private

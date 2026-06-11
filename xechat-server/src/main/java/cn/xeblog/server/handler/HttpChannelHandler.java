@@ -12,6 +12,8 @@ import cn.xeblog.server.account.entity.Account;
 import cn.xeblog.server.account.entity.SessionEntity;
 import cn.xeblog.server.action.handler.react.UploadReactHandler;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.push.PushSubscriptionService;
+import cn.xeblog.server.push.WebPushService;
 import cn.xeblog.server.util.FileUtil;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -60,6 +62,14 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
             handleAdminPushDesktopUpdate(fullHttpRequest, response);
         } else if (path.equals("/api/admin/desktop-updates/disable") && fullHttpRequest.method() == HttpMethod.POST) {
             handleAdminDisableDesktopUpdate(fullHttpRequest, response);
+        } else if (path.equals("/api/push/vapid-public-key") && fullHttpRequest.method() == HttpMethod.GET) {
+            Map<String, Object> body = new HashMap<>();
+            body.put("publicKey", WebPushService.publicKey());
+            writeOk(response, body);
+        } else if (path.equals("/api/push/subscribe") && fullHttpRequest.method() == HttpMethod.POST) {
+            handlePushSubscribe(fullHttpRequest, response);
+        } else if (path.equals("/api/push/unsubscribe") && fullHttpRequest.method() == HttpMethod.POST) {
+            handlePushUnsubscribe(fullHttpRequest, response);
         } else if (path.startsWith("/updates/desktop/")) {
             handleDesktopUpdateDownload(ctx, fullHttpRequest, path, response);
         } else if (path.equals("/upload") && fullHttpRequest.method() == HttpMethod.POST) {
@@ -288,6 +298,42 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
                     changed ? HttpResponseStatus.OK : HttpResponseStatus.NOT_FOUND);
         } catch (Exception e) {
             writeResult(response, false, "禁用桌面端更新失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private void handlePushSubscribe(FullHttpRequest request, FullHttpResponse response) {
+        User user = resolveHttpUser(request);
+        if (user == null || user.getAccountId() <= 0 || user.isGuest()) {
+            writeResult(response, false, "请先登录账号", null, HttpResponseStatus.UNAUTHORIZED);
+            return;
+        }
+        try {
+            cn.hutool.json.JSONObject json = JSONUtil.parseObj(request.content().toString(CharsetUtil.UTF_8));
+            cn.hutool.json.JSONObject keys = json.getJSONObject("keys");
+            String endpoint = json.getStr("endpoint");
+            String p256dh = keys == null ? null : keys.getStr("p256dh");
+            String auth = keys == null ? null : keys.getStr("auth");
+            PushSubscriptionService.upsert(user.getAccountId(), endpoint, p256dh, auth);
+            writeOk(response, null);
+        } catch (IllegalArgumentException e) {
+            writeResult(response, false, e.getMessage(), null, HttpResponseStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            writeResult(response, false, "保存推送订阅失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private void handlePushUnsubscribe(FullHttpRequest request, FullHttpResponse response) {
+        User user = resolveHttpUser(request);
+        if (user == null || user.getAccountId() <= 0 || user.isGuest()) {
+            writeResult(response, false, "请先登录账号", null, HttpResponseStatus.UNAUTHORIZED);
+            return;
+        }
+        try {
+            cn.hutool.json.JSONObject json = JSONUtil.parseObj(request.content().toString(CharsetUtil.UTF_8));
+            PushSubscriptionService.delete(user.getAccountId(), json.getStr("endpoint"));
+            writeOk(response, null);
+        } catch (Exception e) {
+            writeResult(response, false, "删除推送订阅失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

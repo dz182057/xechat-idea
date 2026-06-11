@@ -19,6 +19,9 @@ public interface PrivateMessageMapper {
 
     int markRecalled(@Param("id") long id, @Param("recalledAt") long recalledAt);
 
+    long countByConversation(@Param("convMin") long convMin,
+                             @Param("convMax") long convMax);
+
     /**
      * 按会话对(convMin, convMax)查密文历史;过滤 sinceMs / beforeId,id DESC,limit+1 用于判 hasMore。
      */

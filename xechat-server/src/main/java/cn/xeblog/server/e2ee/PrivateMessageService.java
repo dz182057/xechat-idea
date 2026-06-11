@@ -78,6 +78,14 @@ public final class PrivateMessageService {
         }
     }
 
+    public static long countConversation(long meAccountId, long peerAccountId) {
+        long min = Math.min(meAccountId, peerAccountId);
+        long max = Math.max(meAccountId, peerAccountId);
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            return session.getMapper(PrivateMessageMapper.class).countByConversation(min, max);
+        }
+    }
+
     /**
      * 查与某 peer 的私聊密文历史。返回 (envelopes 按 id 升序, hasMore)。
      */

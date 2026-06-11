@@ -105,6 +105,12 @@ public final class MessageHistoryService {
         }
     }
 
+    public static long countPublic() {
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            return session.getMapper(MessageMapper.class).countAll();
+        }
+    }
+
     /**
      * 拉取公共频道历史。返回的 HistoryMsgDTO.msgList 按 id 升序(老→新)。
      *

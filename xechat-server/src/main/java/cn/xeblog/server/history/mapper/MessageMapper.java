@@ -19,6 +19,8 @@ public interface MessageMapper {
 
     int markRecalled(@Param("id") long id, @Param("recalledAt") long recalledAt);
 
+    long countAll();
+
     /**
      * 按条件分页查询。
      * <ul>

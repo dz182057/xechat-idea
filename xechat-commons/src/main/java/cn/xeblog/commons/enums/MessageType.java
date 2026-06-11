@@ -32,6 +32,10 @@ public enum MessageType {
      */
     HISTORY_MSG,
     /**
+     * 当前会话历史总数
+     */
+    HISTORY_COUNT,
+    /**
      * 游戏房间消息
      */
     GAME_ROOM,

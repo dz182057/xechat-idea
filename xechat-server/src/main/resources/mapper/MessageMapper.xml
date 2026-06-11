@@ -31,6 +31,11 @@
         WHERE id = #{id} AND recalled_at IS NULL
     </update>
 
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*)
+        FROM messages_public
+    </select>
+
     <select id="query" resultType="cn.xeblog.server.history.entity.Message">
         SELECT <include refid="cols"/>
         FROM messages_public

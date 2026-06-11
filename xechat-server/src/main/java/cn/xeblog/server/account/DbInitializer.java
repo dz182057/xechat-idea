@@ -81,6 +81,7 @@ public final class DbInitializer {
             ensureDrawGuessWordTable();
             ensureQuickQuizTables();
             ensureTurtleSoupTables();
+            ensurePushSubscriptionTable();
 
             log.info("账号体系数据库就绪: {}", GlobalConfig.DB_PATH);
         } catch (Exception e) {
@@ -313,6 +314,27 @@ public final class DbInitializer {
                             "ON turtle_soup_records(room_id, round_no)");
                     log.info("数据库迁移: 创建 turtle_soup_records 表");
                 }
+            }
+        }
+    }
+
+    /**
+     * 给已有数据库补齐 Web Push 订阅表。
+     */
+    private static void ensurePushSubscriptionTable() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE IF NOT EXISTS push_subscriptions (" +
+                        "endpoint TEXT PRIMARY KEY," +
+                        "account_id INTEGER NOT NULL," +
+                        "p256dh TEXT NOT NULL," +
+                        "auth TEXT NOT NULL," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_push_subscriptions_account " +
+                        "ON push_subscriptions(account_id)");
             }
         }
     }

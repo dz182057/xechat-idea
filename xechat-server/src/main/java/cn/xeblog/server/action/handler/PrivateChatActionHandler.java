@@ -14,6 +14,7 @@ import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.e2ee.E2EEKeyService;
 import cn.xeblog.server.e2ee.PrivateMessageService;
 import cn.xeblog.server.e2ee.entity.PrivateMessage;
+import cn.xeblog.server.push.WebPushService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -91,6 +92,7 @@ public class PrivateChatActionHandler extends AbstractActionHandler<EncryptedEnv
             for (User u : selfConns) {
                 u.send(respToSelf);
             }
+            WebPushService.pushPrivateMessage(peer.getAccountId(), user.getNickname());
         } catch (AccountException e) {
             user.send(ResponseBuilder.system(e.getMessage()));
         } catch (Exception e) {
