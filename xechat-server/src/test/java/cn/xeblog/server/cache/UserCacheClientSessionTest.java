@@ -19,13 +19,26 @@ public class UserCacheClientSessionTest {
     public void sameAccountAndUuidCanOnlyBeOnlineOnce() {
         User first = user("channel-1", 1001L, "client-uuid-1", Platform.DESKTOP);
         User duplicate = user("channel-2", 1001L, "client-uuid-1", Platform.DESKTOP);
-        User otherClient = user("channel-3", 1001L, "client-uuid-2", Platform.DESKTOP);
+        User otherPlatform = user("channel-3", 1001L, "client-uuid-2", Platform.IDEA);
 
         assertTrue(UserCache.tryAcquireAccountClient(first));
         UserCache.add(first.getId(), first);
 
         assertFalse(UserCache.tryAcquireAccountClient(duplicate));
-        assertTrue(UserCache.tryAcquireAccountClient(otherClient));
+        assertTrue(UserCache.tryAcquireAccountClient(otherPlatform));
+    }
+
+    @Test
+    public void sameAccountAndDesktopPlatformCanOnlyBeOnlineOnce() {
+        User first = user("channel-1", 1001L, "client-uuid-1", Platform.DESKTOP);
+        User duplicateDesktop = user("channel-2", 1001L, "client-uuid-2", Platform.DESKTOP);
+        User otherAccount = user("channel-3", 1002L, "client-uuid-2", Platform.DESKTOP);
+
+        assertTrue(UserCache.tryAcquireAccountClient(first));
+        UserCache.add(first.getId(), first);
+
+        assertFalse(UserCache.tryAcquireAccountClient(duplicateDesktop));
+        assertTrue(UserCache.tryAcquireAccountClient(otherAccount));
     }
 
     @Test

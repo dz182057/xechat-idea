@@ -73,13 +73,18 @@ public final class UserCache {
     }
 
     /**
-     * 注册账号同一个客户端 uuid 只能保留一条在线连接,避免同一桌面端多进程重复登录。
+     * 注册账号同一个客户端只能保留一条在线连接。
+     * <p>桌面端按 accountId + DESKTOP 限制,避免同一账号多开桌面客户端;
+     * 其他端按 accountId + uuid 限制,保留跨端同时在线能力。</p>
      */
     public static boolean tryAcquireAccountClient(User user) {
-        if (user == null || user.getAccountId() <= 0L || isBlank(user.getUuid())) {
+        if (user == null || user.getAccountId() <= 0L) {
             return true;
         }
-        String key = accountClientKey(user.getAccountId(), user.getUuid());
+        String key = accountClientKey(user);
+        if (key == null) {
+            return true;
+        }
         String existing = ACCOUNT_CLIENT_TO_ID.putIfAbsent(key, user.getId());
         return existing == null || existing.equals(user.getId());
     }
@@ -271,11 +276,20 @@ public final class UserCache {
         if (user == null || user.getAccountId() <= 0L || isBlank(user.getUuid())) {
             return;
         }
-        ACCOUNT_CLIENT_TO_ID.remove(accountClientKey(user.getAccountId(), user.getUuid()), user.getId());
+        String key = accountClientKey(user);
+        if (key != null) {
+            ACCOUNT_CLIENT_TO_ID.remove(key, user.getId());
+        }
     }
 
-    private static String accountClientKey(long accountId, String uuid) {
-        return accountId + "\n" + uuid.trim();
+    private static String accountClientKey(User user) {
+        if (user.getPlatform() == Platform.DESKTOP) {
+            return user.getAccountId() + "\nplatform:" + Platform.DESKTOP.name();
+        }
+        if (isBlank(user.getUuid())) {
+            return null;
+        }
+        return user.getAccountId() + "\nuuid:" + user.getUuid().trim();
     }
 
     private static boolean isBlank(String value) {
