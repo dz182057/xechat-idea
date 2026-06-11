@@ -50,6 +50,12 @@ public class LoginWithTokenActionHandler implements ActionHandler<LoginDTO> {
                 ctx.writeAndFlush(ResponseBuilder.system("登录已过期,请重新登录"));
                 return;
             }
+            String uuid = StrUtil.isBlank(body.getUuid()) ? sess.getClientUuid() : body.getUuid();
+            if (StrUtil.isBlank(uuid)) {
+                LoginLogService.record(sess.getAccountId(), ip, platform, false, "未获取到 UUID,请重新登录");
+                ctx.writeAndFlush(ResponseBuilder.system("未获取到 UUID,请重新登录"));
+                return;
+            }
             Account account = AccountService.findById(sess.getAccountId());
             if (account == null || !Account.STATUS_ACTIVE.equals(account.getStatus())) {
                 // 账号被注销或冻结
@@ -59,9 +65,10 @@ public class LoginWithTokenActionHandler implements ActionHandler<LoginDTO> {
                 return;
             }
 
-            AccountLoginHelper.onLoginSuccess(ctx, account, sess.getToken(),
-                    sess.getExpiresAt(), body.getUuid(), platform);
-            log.info("账号 {} 上线(token 登录,滑动续期)", account.getAccount());
+            if (AccountLoginHelper.onLoginSuccess(ctx, account, sess.getToken(),
+                    sess.getExpiresAt(), uuid, platform)) {
+                log.info("账号 {} 上线(token 登录,滑动续期)", account.getAccount());
+            }
         } catch (Exception e) {
             log.error("token 登录异常", e);
             LoginLogService.record(null, ip, platform, false, "token 登录失败,请重新登录");

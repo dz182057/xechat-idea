@@ -35,6 +35,7 @@ public final class UserCache {
 
     private static final Map<String, User> ID_TO_USER = new ConcurrentHashMap<>(32);
     private static final Map<Long, Set<String>> ACCOUNT_TO_IDS = new ConcurrentHashMap<>(32);
+    private static final Map<String, String> ACCOUNT_CLIENT_TO_ID = new ConcurrentHashMap<>(32);
 
     /**
      * 游客在线池: nickname → uuid。
@@ -71,7 +72,22 @@ public final class UserCache {
         GUEST_NICKNAME_TO_UUID.remove(nickname, uuid);
     }
 
+    /**
+     * 注册账号同一个客户端 uuid 只能保留一条在线连接,避免同一桌面端多进程重复登录。
+     */
+    public static boolean tryAcquireAccountClient(User user) {
+        if (user == null || user.getAccountId() <= 0L || isBlank(user.getUuid())) {
+            return true;
+        }
+        String key = accountClientKey(user.getAccountId(), user.getUuid());
+        String existing = ACCOUNT_CLIENT_TO_ID.putIfAbsent(key, user.getId());
+        return existing == null || existing.equals(user.getId());
+    }
+
     public static void add(String channelId, User user) {
+        if (!tryAcquireAccountClient(user)) {
+            throw new IllegalStateException("该账号已在当前客户端登录,请勿重复打开客户端登录");
+        }
         ID_TO_USER.put(channelId, user);
         long accountId = user.getAccountId();
         if (accountId != 0L) {
@@ -95,6 +111,7 @@ public final class UserCache {
             releaseGuestNickname(user.getNickname(), user.getUuid());
             return;
         }
+        releaseAccountClient(user);
         long accountId = user.getAccountId();
         if (accountId == 0L) {
             return;
@@ -167,6 +184,7 @@ public final class UserCache {
     public static void clear() {
         ID_TO_USER.clear();
         ACCOUNT_TO_IDS.clear();
+        ACCOUNT_CLIENT_TO_ID.clear();
     }
 
     /**
@@ -247,6 +265,21 @@ public final class UserCache {
         dst.setStealth(src.isStealth());
         // 不复制 ip/region/channel(transient)
         return dst;
+    }
+
+    private static void releaseAccountClient(User user) {
+        if (user == null || user.getAccountId() <= 0L || isBlank(user.getUuid())) {
+            return;
+        }
+        ACCOUNT_CLIENT_TO_ID.remove(accountClientKey(user.getAccountId(), user.getUuid()), user.getId());
+    }
+
+    private static String accountClientKey(long accountId, String uuid) {
+        return accountId + "\n" + uuid.trim();
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
 }

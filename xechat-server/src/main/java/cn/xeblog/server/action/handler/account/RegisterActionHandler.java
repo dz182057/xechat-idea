@@ -81,11 +81,11 @@ public class RegisterActionHandler implements ActionHandler<RegisterDTO> {
                     platform.name(), body.getUuid(), ip);
 
             // 4. 上线
-            AccountLoginHelper.onLoginSuccess(ctx, account, sess.getToken(),
-                    sess.getExpiresAt(), body.getUuid(), platform);
-
-            log.info("注册并上线 accountId={} nickname={} role={}",
-                    account.getAccountId(), account.getNickname(), account.getRole());
+            if (AccountLoginHelper.onLoginSuccess(ctx, account, sess.getToken(),
+                    sess.getExpiresAt(), body.getUuid(), platform)) {
+                log.info("注册并上线 accountId={} nickname={} role={}",
+                        account.getAccountId(), account.getNickname(), account.getRole());
+            }
         } catch (AccountException e) {
             ctx.writeAndFlush(ResponseBuilder.system(e.getMessage()));
         } catch (Exception e) {

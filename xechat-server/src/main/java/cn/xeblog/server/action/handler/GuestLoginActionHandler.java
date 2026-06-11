@@ -90,8 +90,9 @@ public class GuestLoginActionHandler implements ActionHandler<GuestLoginDTO> {
                 user.setShortRegion(region.getProvince() == null ? region.getCountry() : region.getProvince());
             }
 
-            AccountLoginHelper.notifyOnline(user, null, 0L);
-            log.info("游客 {} 上线 platform={}", nickname, user.getPlatform());
+            if (AccountLoginHelper.notifyOnline(user, null, 0L)) {
+                log.info("游客 {} 上线 platform={}", nickname, user.getPlatform());
+            }
         } catch (Exception e) {
             // 上线失败要回滚游客池占用,避免昵称被永远锁住
             UserCache.releaseGuestNickname(nickname, body.getUuid());

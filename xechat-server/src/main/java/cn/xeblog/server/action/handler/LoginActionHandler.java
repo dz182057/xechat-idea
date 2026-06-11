@@ -66,9 +66,10 @@ public class LoginActionHandler implements ActionHandler<LoginDTO> {
             Account account = AccountService.login(body.getAccount(), body.getPassword(), ip);
             SessionEntity sess = SessionService.createToken(account.getAccountId(),
                     platform.name(), body.getUuid(), ip);
-            AccountLoginHelper.onLoginSuccess(ctx, account, sess.getToken(),
-                    sess.getExpiresAt(), body.getUuid(), platform);
-            log.info("账号 {} 上线(密码登录)", account.getAccount());
+            if (AccountLoginHelper.onLoginSuccess(ctx, account, sess.getToken(),
+                    sess.getExpiresAt(), body.getUuid(), platform)) {
+                log.info("账号 {} 上线(密码登录)", account.getAccount());
+            }
         } catch (AccountException e) {
             LoginLogService.record(null, ip, platform, false, e.getMessage());
             ctx.writeAndFlush(ResponseBuilder.system(e.getMessage()));

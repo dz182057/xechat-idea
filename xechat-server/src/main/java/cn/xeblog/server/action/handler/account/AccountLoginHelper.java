@@ -32,6 +32,8 @@ import io.netty.channel.ChannelHandlerContext;
  */
 public final class AccountLoginHelper {
 
+    private static final String DUPLICATE_CLIENT_LOGIN_MESSAGE = "该账号已在当前客户端登录,请勿重复打开客户端登录";
+
     private AccountLoginHelper() {
     }
 
@@ -45,9 +47,9 @@ public final class AccountLoginHelper {
      * @param uuid       客户端 uuid
      * @param platform   客户端平台(为 null 时默认 IDEA)
      */
-    public static void onLoginSuccess(ChannelHandlerContext ctx, Account account,
-                                      String token, long expiresAt,
-                                      String uuid, Platform platform) {
+    public static boolean onLoginSuccess(ChannelHandlerContext ctx, Account account,
+                                         String token, long expiresAt,
+                                         String uuid, Platform platform) {
         String id = ChannelAction.getId(ctx);
         String ip = IpUtil.getIpByCtx(ctx);
         IpRegion region = IpUtil.getRegionByIp(ip);
@@ -69,15 +71,15 @@ public final class AccountLoginHelper {
 
         // 注册用户:回读 envelope 一并下发,客户端拿 e2eeSalt+envelope 派生 masterKey 并解出私钥
         String identityEnvelope = E2EEKeyService.findIdentityEnvelope(account.getAccountId());
-        notifyOnline(user, token, expiresAt,
+        return notifyOnline(user, token, expiresAt,
                 account.getE2eeSalt(), account.getIdentityPubKey(), identityEnvelope);
     }
 
     /**
      * 游客版"上线":无 token / 无 E2EE 字段。
      */
-    public static void notifyOnline(User user, String token, long expiresAt) {
-        notifyOnline(user, token, expiresAt, null, null, null);
+    public static boolean notifyOnline(User user, String token, long expiresAt) {
+        return notifyOnline(user, token, expiresAt, null, null, null);
     }
 
     /**
@@ -92,9 +94,16 @@ public final class AccountLoginHelper {
      * @param identityPubKey          注册用户的 X25519 公钥,游客/老账号 null
      * @param identityPrivKeyEnvelope 注册用户的身份私钥信封,游客/老账号 null
      */
-    public static void notifyOnline(User user, String token, long expiresAt,
-                                    String e2eeSalt, String identityPubKey,
-                                    String identityPrivKeyEnvelope) {
+    public static boolean notifyOnline(User user, String token, long expiresAt,
+                                       String e2eeSalt, String identityPubKey,
+                                       String identityPrivKeyEnvelope) {
+        if (!UserCache.tryAcquireAccountClient(user)) {
+            Long accountId = user.getAccountId() > 0 ? user.getAccountId() : null;
+            LoginLogService.record(accountId, user.getIp(), user.getPlatform(), false,
+                    DUPLICATE_CLIENT_LOGIN_MESSAGE);
+            user.send(ResponseBuilder.system(DUPLICATE_CLIENT_LOGIN_MESSAGE));
+            return false;
+        }
         UserCache.add(user.getId(), user);
         ChannelAction.add(user.getChannel());
         Long accountId = user.getAccountId() > 0 ? user.getAccountId() : null;
@@ -116,6 +125,7 @@ public final class AccountLoginHelper {
         if (!user.isGuest()) {
             FriendService.pushFriendListRefreshForAccount(user.getAccountId());
         }
+        return true;
     }
 
     /**
