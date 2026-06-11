@@ -26,6 +26,7 @@ public class HttpAndWebSocketChannelInitializer extends ChannelInitializer<Socke
                 .addLast(new HttpServerCodec())
                 .addLast(new HttpObjectAggregator(MAX_HTTP_CONTENT_BYTES))
                 .addLast(new ChunkedWriteHandler())
+                .addLast(new ForwardedIpHandler())
                 .addLast(new WebSocketMessageEncoder())
                 .addLast(new WebSocketServerCompressionHandler())
                 .addLast(new WebSocketServerProtocolHandler("/xechat", null, true, MAX_WEBSOCKET_FRAME_BYTES))

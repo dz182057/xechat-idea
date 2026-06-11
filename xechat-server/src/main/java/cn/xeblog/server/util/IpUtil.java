@@ -5,7 +5,10 @@ import cn.hutool.core.util.ObjectUtil;
 import cn.xeblog.commons.constants.IpConstants;
 import cn.xeblog.commons.entity.IpRegion;
 import cn.xeblog.server.service.IpRegionService;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.util.AttributeKey;
 
 import java.net.InetSocketAddress;
 
@@ -16,6 +19,9 @@ import java.net.InetSocketAddress;
  * @date 2022-01-10 11:32:24
  */
 public class IpUtil {
+
+    public static final AttributeKey<String> CLIENT_IP_ATTRIBUTE =
+            AttributeKey.valueOf("xechat.clientIp");
 
     private static IpRegionService ipRegionService;
 
@@ -56,9 +62,44 @@ public class IpUtil {
      * @author nn200433
      */
     public static String getIpByCtx(ChannelHandlerContext ctx) {
+        String clientIp = ctx.channel().attr(CLIENT_IP_ATTRIBUTE).get();
+        if (isNotBlank(clientIp)) {
+            return clientIp;
+        }
+
         InetSocketAddress ipSocket = (InetSocketAddress) ctx.channel().remoteAddress();
         String hostAddress = ipSocket.getAddress().getHostAddress();
         return hostAddress;
+    }
+
+    public static void rememberForwardedIp(Channel channel, HttpHeaders headers) {
+        String forwardedFor = firstForwardedIp(headers.get("X-Forwarded-For"));
+        if (isNotBlank(forwardedFor)) {
+            channel.attr(CLIENT_IP_ATTRIBUTE).set(forwardedFor);
+            return;
+        }
+
+        String realIp = headers.get("X-Real-IP");
+        if (isNotBlank(realIp)) {
+            channel.attr(CLIENT_IP_ATTRIBUTE).set(realIp.trim());
+        }
+    }
+
+    private static String firstForwardedIp(String header) {
+        if (!isNotBlank(header)) {
+            return null;
+        }
+        String[] parts = header.split(",");
+        for (String part : parts) {
+            if (isNotBlank(part)) {
+                return part.trim();
+            }
+        }
+        return null;
+    }
+
+    private static boolean isNotBlank(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 
     /**
