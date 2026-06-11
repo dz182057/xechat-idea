@@ -62,6 +62,10 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
             handleAdminPushDesktopUpdate(fullHttpRequest, response);
         } else if (path.equals("/api/admin/desktop-updates/disable") && fullHttpRequest.method() == HttpMethod.POST) {
             handleAdminDisableDesktopUpdate(fullHttpRequest, response);
+        } else if (path.equals("/api/admin/desktop-updates/enable") && fullHttpRequest.method() == HttpMethod.POST) {
+            handleAdminEnableDesktopUpdate(fullHttpRequest, response);
+        } else if (path.equals("/api/admin/desktop-updates/delete") && fullHttpRequest.method() == HttpMethod.POST) {
+            handleAdminDeleteDesktopUpdate(fullHttpRequest, response);
         } else if (path.equals("/api/push/vapid-public-key") && fullHttpRequest.method() == HttpMethod.GET) {
             Map<String, Object> body = new HashMap<>();
             body.put("publicKey", WebPushService.publicKey());
@@ -298,6 +302,42 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
                     changed ? HttpResponseStatus.OK : HttpResponseStatus.NOT_FOUND);
         } catch (Exception e) {
             writeResult(response, false, "禁用桌面端更新失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private void handleAdminEnableDesktopUpdate(FullHttpRequest request, FullHttpResponse response) {
+        if (requireAdmin(request, response) == null) {
+            return;
+        }
+        try {
+            String version = readVersion(request);
+            if (version == null || version.trim().isEmpty()) {
+                writeResult(response, false, "版本号不能为空", null, HttpResponseStatus.BAD_REQUEST);
+                return;
+            }
+            boolean changed = DesktopUpdateService.enable(version);
+            writeResult(response, changed, changed ? "已恢复该版本" : "未找到可恢复的版本", null,
+                    changed ? HttpResponseStatus.OK : HttpResponseStatus.NOT_FOUND);
+        } catch (Exception e) {
+            writeResult(response, false, "恢复桌面端更新失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private void handleAdminDeleteDesktopUpdate(FullHttpRequest request, FullHttpResponse response) {
+        if (requireAdmin(request, response) == null) {
+            return;
+        }
+        try {
+            String version = readVersion(request);
+            if (version == null || version.trim().isEmpty()) {
+                writeResult(response, false, "版本号不能为空", null, HttpResponseStatus.BAD_REQUEST);
+                return;
+            }
+            boolean changed = DesktopUpdateService.delete(version);
+            writeResult(response, changed, changed ? "已彻底删除该版本" : "未找到可删除的版本", null,
+                    changed ? HttpResponseStatus.OK : HttpResponseStatus.NOT_FOUND);
+        } catch (Exception e) {
+            writeResult(response, false, "彻底删除桌面端更新失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

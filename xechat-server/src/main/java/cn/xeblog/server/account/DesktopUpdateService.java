@@ -136,6 +136,44 @@ public final class DesktopUpdateService {
         return changed;
     }
 
+    public static synchronized boolean enable(String version) throws IOException {
+        String normalizedVersion = normalizeVersion(version);
+        List<DesktopUpdateInfoDTO> list = readAll();
+        boolean changed = false;
+        for (DesktopUpdateInfoDTO item : list) {
+            if (normalizedVersion.equals(item.getVersion()) && !item.isEnabled()) {
+                item.setEnabled(true);
+                changed = true;
+            }
+        }
+        if (changed) {
+            writeAll(list);
+            writeElectronLatest(list);
+        }
+        return changed;
+    }
+
+    public static synchronized boolean delete(String version) throws IOException {
+        String normalizedVersion = normalizeVersion(version);
+        List<DesktopUpdateInfoDTO> list = readAll();
+        boolean removed = false;
+        List<DesktopUpdateInfoDTO> kept = new ArrayList<>();
+        for (DesktopUpdateInfoDTO item : list) {
+            if (normalizedVersion.equals(item.getVersion())) {
+                removed = true;
+            } else {
+                kept.add(item);
+            }
+        }
+        if (!removed) {
+            return false;
+        }
+        deleteDirectory(versionDir(normalizedVersion));
+        writeAll(kept);
+        writeElectronLatest(kept);
+        return true;
+    }
+
     public static int pushToDesktopClients() {
         DesktopUpdateInfoDTO latest = latest(null);
         if (latest == null) {
@@ -257,6 +295,30 @@ public final class DesktopUpdateService {
 
     private static File versionDir(String version) {
         return new File(storageDir(), version);
+    }
+
+    private static void deleteDirectory(File dir) throws IOException {
+        if (!dir.exists()) {
+            return;
+        }
+        String root = storageDir().getCanonicalPath();
+        String target = dir.getCanonicalPath();
+        if (!target.equals(root) && !target.startsWith(root + File.separator)) {
+            return;
+        }
+        List<java.nio.file.Path> paths = new ArrayList<>();
+        try (java.util.stream.Stream<java.nio.file.Path> stream = Files.walk(dir.toPath())) {
+            stream.sorted(new Comparator<java.nio.file.Path>() {
+                    @Override
+                    public int compare(java.nio.file.Path a, java.nio.file.Path b) {
+                        return b.compareTo(a);
+                    }
+                })
+                    .forEach(paths::add);
+        }
+        for (java.nio.file.Path path : paths) {
+            Files.deleteIfExists(path);
+        }
     }
 
     private static String versionFileName(String version, String fileName) {
