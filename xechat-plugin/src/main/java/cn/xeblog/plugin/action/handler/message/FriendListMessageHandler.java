@@ -9,6 +9,8 @@ import cn.xeblog.plugin.action.ConsoleAction;
 import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.cache.DataCache;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @DoMessage(MessageType.FRIEND_LIST)
 public class FriendListMessageHandler extends AbstractMessageHandler<FriendListMsgDTO> {
+
+    private static final DateTimeFormatter NOTICE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM/dd HH:mm:ss");
 
     @Override
     protected void process(Response<FriendListMsgDTO> response) {
@@ -52,14 +56,21 @@ public class FriendListMessageHandler extends AbstractMessageHandler<FriendListM
         if (previous == null || previous.isOnline() == current.isOnline()) {
             return;
         }
-        if (current.isOnline()) {
-            ConsoleAction.showSimpleMsg("好友 " + current.getNickname() + " 已上线" + formatPlatforms(current.getPlatforms()));
-        } else {
-            ConsoleAction.showSimpleMsg("好友 " + current.getNickname() + " 已离线");
-        }
+        ConsoleAction.showSimpleMsg(buildOnlineChangedMessage(currentNoticeTime(), current));
     }
 
-    private String formatPlatforms(Set<Platform> platforms) {
+    static String buildOnlineChangedMessage(String time, FriendDTO current) {
+        if (current.isOnline()) {
+            return "[" + time + "] 好友 " + current.getNickname() + " 已上线" + formatPlatforms(current.getPlatforms());
+        }
+        return "[" + time + "] 好友 " + current.getNickname() + " 已离线";
+    }
+
+    private static String currentNoticeTime() {
+        return NOTICE_TIME_FORMATTER.format(LocalDateTime.now());
+    }
+
+    private static String formatPlatforms(Set<Platform> platforms) {
         if (platforms == null || platforms.isEmpty()) {
             return "";
         }

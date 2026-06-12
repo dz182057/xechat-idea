@@ -333,11 +333,17 @@ public class InputAction implements MainWindowInitializedEventListener {
             return null;
         }
         User stickyPeer = DataCache.getUser(DataCache.stickyPrivateTarget);
-        if (stickyPeer == null) {
+        FriendDTO stickyFriend = DataCache.getFriend(DataCache.stickyPrivateTarget);
+        String cachedAccount = DataCache.peerAccountByUsername.get(DataCache.stickyPrivateTarget);
+        if (stickyPeer == null && stickyFriend == null && StrUtil.isBlank(cachedAccount)) {
             ConsoleAction.showSimpleMsg("锁定的私聊对象 @" + DataCache.stickyPrivateTarget
-                    + " 已不在线,自动退出私聊模式");
+                    + " 不在线，也不在好友列表中,自动退出私聊模式");
             DataCache.stickyPrivateTarget = null;
             hidePrivateBanner();
+            return null;
+        }
+        if (stickyPeer != null && StrUtil.isBlank(stickyPeer.getAccount())) {
+            ConsoleAction.showSimpleMsg(DataCache.stickyPrivateTarget + " 是游客,不能私聊");
             return null;
         }
         return new String[]{DataCache.stickyPrivateTarget};

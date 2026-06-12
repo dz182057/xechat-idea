@@ -5,6 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.EncryptedEnvelopeDTO;
+import cn.xeblog.commons.entity.FriendDTO;
 import cn.xeblog.commons.entity.MessageQuoteDTO;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserMsgDTO;
@@ -149,17 +150,11 @@ public class UploadUtils {
         }
         String payload = buildPrivateImagePayload(fileName, quote);
         for (String peerUsername : toUsers) {
-            User peer = DataCache.getUser(peerUsername);
-            if (peer == null) {
-                ConsoleAction.showSimpleMsg("找不到用户: " + peerUsername);
-                continue;
-            }
-            String peerAccount = peer.getAccount();
+            String peerAccount = resolvePrivatePeerAccount(peerUsername);
             if (StrUtil.isBlank(peerAccount)) {
-                ConsoleAction.showSimpleMsg(peerUsername + " 是游客,不能私聊");
+                ConsoleAction.showSimpleMsg("找不到对方账号，请先加为好友或等对方上线后再试");
                 continue;
             }
-            DataCache.peerAccountByUsername.put(peerUsername, peerAccount);
             E2EESessionService.ensureSessionKey(peerAccount).whenComplete((entry, err) -> {
                 if (err != null) {
                     ConsoleAction.showSimpleMsg("E2EE 派生会话密钥失败(" + peerUsername + "): " + err.getMessage());
@@ -180,6 +175,25 @@ public class UploadUtils {
                 }
             });
         }
+    }
+
+    static String resolvePrivatePeerAccount(String peerUsername) {
+        User peer = DataCache.getUser(peerUsername);
+        String peerAccount = peer != null ? peer.getAccount() : null;
+        if (peer != null && StrUtil.isBlank(peerAccount)) {
+            return null;
+        }
+        if (StrUtil.isBlank(peerAccount)) {
+            FriendDTO friend = DataCache.getFriend(peerUsername);
+            peerAccount = friend == null ? null : friend.getAccount();
+        }
+        if (StrUtil.isBlank(peerAccount)) {
+            peerAccount = DataCache.peerAccountByUsername.get(peerUsername);
+        }
+        if (StrUtil.isNotBlank(peerAccount)) {
+            DataCache.peerAccountByUsername.put(peerUsername, peerAccount);
+        }
+        return peerAccount;
     }
 
     private static String buildPrivateImagePayload(String fileName, MessageQuoteDTO quote) {
