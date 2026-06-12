@@ -20,6 +20,8 @@ import cn.xeblog.server.friend.FriendService;
 import cn.xeblog.server.util.IpUtil;
 import io.netty.channel.ChannelHandlerContext;
 
+import java.util.List;
+
 /**
  * 登录/注册/token 登录的共享"上线"流程。
  *
@@ -32,7 +34,7 @@ import io.netty.channel.ChannelHandlerContext;
  */
 public final class AccountLoginHelper {
 
-    private static final String DUPLICATE_CLIENT_LOGIN_MESSAGE = "该账号已在当前端登录,请勿重复登录";
+    private static final String ACCOUNT_REPLACED_MESSAGE = "该账号已在当前端其他位置登录,当前连接已下线";
 
     private AccountLoginHelper() {
     }
@@ -97,15 +99,10 @@ public final class AccountLoginHelper {
     public static boolean notifyOnline(User user, String token, long expiresAt,
                                        String e2eeSalt, String identityPubKey,
                                        String identityPrivKeyEnvelope) {
-        if (!UserCache.tryAcquireAccountClient(user)) {
-            Long accountId = user.getAccountId() > 0 ? user.getAccountId() : null;
-            LoginLogService.record(accountId, user.getIp(), user.getPlatform(), false,
-                    DUPLICATE_CLIENT_LOGIN_MESSAGE);
-            user.send(ResponseBuilder.system(DUPLICATE_CLIENT_LOGIN_MESSAGE));
-            return false;
-        }
-        UserCache.add(user.getId(), user);
+        List<User> replacedUsers = UserCache.addReplacingAccountClient(user);
         ChannelAction.add(user.getChannel());
+        kickReplacedUsers(replacedUsers, user.getId());
+
         Long accountId = user.getAccountId() > 0 ? user.getAccountId() : null;
         LoginLogService.record(accountId, user.getIp(), user.getPlatform(), true, null);
 
@@ -126,6 +123,22 @@ public final class AccountLoginHelper {
             FriendService.pushFriendListRefreshForAccount(user.getAccountId());
         }
         return true;
+    }
+
+    private static void kickReplacedUsers(List<User> replacedUsers, String currentUserId) {
+        if (replacedUsers == null || replacedUsers.isEmpty()) {
+            return;
+        }
+        for (User replacedUser : replacedUsers) {
+            if (replacedUser == null || currentUserId.equals(replacedUser.getId())) {
+                continue;
+            }
+            replacedUser.send(ResponseBuilder.system(ACCOUNT_REPLACED_MESSAGE));
+            ChannelAction.cleanUser(replacedUser.getId());
+            if (replacedUser.getChannel() != null) {
+                replacedUser.getChannel().close();
+            }
+        }
     }
 
     /**

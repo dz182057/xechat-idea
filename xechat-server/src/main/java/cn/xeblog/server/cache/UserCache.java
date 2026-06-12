@@ -14,7 +14,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 在线用户缓存,从单账号单连接演进为<b>多端并发</b>:同一 accountId 允许多个 channel 同时在线。
+ * 在线用户缓存,从单账号单连接演进为<b>多端并发</b>:同一 accountId 允许多个平台同时在线。
  *
  * <p>数据结构:</p>
  * <ul>
@@ -73,11 +73,9 @@ public final class UserCache {
     }
 
     /**
-     * 注册账号同一个客户端只能保留一条在线连接。
-     * <p>桌面端按 accountId + DESKTOP 限制,避免同一账号多开桌面客户端;
-     * 其他端按 accountId + uuid 限制,保留跨端同时在线能力。</p>
+     * 注册账号同一平台只能保留一条在线连接。
      */
-    public static boolean tryAcquireAccountClient(User user) {
+    public static synchronized boolean tryAcquireAccountClient(User user) {
         if (user == null || user.getAccountId() <= 0L) {
             return true;
         }
@@ -91,7 +89,7 @@ public final class UserCache {
 
     public static void add(String channelId, User user) {
         if (!tryAcquireAccountClient(user)) {
-            throw new IllegalStateException("该账号已在当前客户端登录,请勿重复打开客户端登录");
+            throw new IllegalStateException("该账号已在当前端登录,请勿重复登录");
         }
         ID_TO_USER.put(channelId, user);
         long accountId = user.getAccountId();
@@ -102,11 +100,47 @@ public final class UserCache {
         }
     }
 
+    /**
+     * 新登录接管同账号同平台在线席位,返回需要踢下线的旧连接。
+     *
+     * <p>不同平台互不影响,例如同一账号可以同时在线 IDEA、DESKTOP、WEB。</p>
+     */
+    public static synchronized List<User> addReplacingAccountClient(User user) {
+        if (user == null) {
+            return Collections.emptyList();
+        }
+        if (user.getAccountId() <= 0L) {
+            add(user.getId(), user);
+            return Collections.emptyList();
+        }
+
+        List<User> replacedUsers = new ArrayList<>(1);
+        String key = accountClientKey(user);
+        if (key != null) {
+            String oldChannelId = ACCOUNT_CLIENT_TO_ID.put(key, user.getId());
+            if (oldChannelId != null && !oldChannelId.equals(user.getId())) {
+                User oldUser = ID_TO_USER.get(oldChannelId);
+                if (oldUser != null) {
+                    replacedUsers.add(oldUser);
+                }
+            }
+        }
+
+        ID_TO_USER.put(user.getId(), user);
+        ACCOUNT_TO_IDS
+                .computeIfAbsent(user.getAccountId(), k -> ConcurrentHashMap.newKeySet())
+                .add(user.getId());
+        return replacedUsers;
+    }
+
     public static User get(String channelId) {
+        if (channelId == null) {
+            return null;
+        }
         return ID_TO_USER.get(channelId);
     }
 
-    public static void remove(String channelId) {
+    public static synchronized void remove(String channelId) {
         User user = ID_TO_USER.remove(channelId);
         if (user == null) {
             return;
@@ -236,8 +270,7 @@ public final class UserCache {
     }
 
     /**
-     * 同 platform 同账号是否已有在线连接(可用于"是否要踢旧"判定)。
-     * 同 platform 允许重复登录(多窗口场景),实际是否互踢由 Handler 决定。
+     * 同 platform 同账号是否已有在线连接。
      */
     public static boolean hasOnlineByAccountAndPlatform(long accountId, Platform platform) {
         Set<String> ids = ACCOUNT_TO_IDS.get(accountId);
@@ -283,13 +316,11 @@ public final class UserCache {
     }
 
     private static String accountClientKey(User user) {
-        if (user.getPlatform() == Platform.DESKTOP) {
-            return user.getAccountId() + "\nplatform:" + Platform.DESKTOP.name();
-        }
-        if (isBlank(user.getUuid())) {
+        Platform platform = user.getPlatform();
+        if (platform == null) {
             return null;
         }
-        return user.getAccountId() + "\nuuid:" + user.getUuid().trim();
+        return user.getAccountId() + "\nplatform:" + platform.name();
     }
 
     private static boolean isBlank(String value) {
