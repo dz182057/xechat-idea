@@ -31,6 +31,16 @@ public class GameFactoryTest {
     }
 
     @Test
+    public void shouldCreateGobangGame() {
+        Assert.assertNotNull(GameFactory.produce(Game.GOBANG));
+    }
+
+    @Test
+    public void shouldCreateDrawGuessGame() {
+        Assert.assertNotNull(GameFactory.produce(Game.DRAW_GUESS));
+    }
+
+    @Test
     public void homeownerRoomClosedEndsCurrentGame() throws Exception {
         DataCache.isOnline = true;
         GameAction.clean();

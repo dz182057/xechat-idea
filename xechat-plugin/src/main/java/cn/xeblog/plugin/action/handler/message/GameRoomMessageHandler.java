@@ -13,6 +13,7 @@ import cn.xeblog.plugin.action.GameAction;
 import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.cache.DataCache;
+import cn.xeblog.plugin.game.AbstractGame;
 import cn.xeblog.plugin.util.AppIconReminder;
 
 import java.util.Timer;
@@ -78,7 +79,9 @@ public class GameRoomMessageHandler extends AbstractGameMessageHandler<GameRoomM
     }
 
     private void playerReady(Response<GameRoomMsgDTO> response) {
-        GameAction.getAction().playerReadied(response.getUser());
+        if (GameAction.playing()) {
+            GameAction.getAction().playerReadied(response.getUser());
+        }
     }
 
     private void roomClosed(Response<GameRoomMsgDTO> response) {
@@ -99,13 +102,17 @@ public class GameRoomMessageHandler extends AbstractGameMessageHandler<GameRoomM
     private void gameStart(Response<GameRoomMsgDTO> response) {
         GameRoomMsgDTO msg = response.getBody();
         ConsoleAction.showSystemMsg(response.getTime(), msg.getGame().getName() + "游戏开始！");
-        GameAction.getAction().gameStarted((GameRoom) msg.getContent());
+        if (GameAction.playing()) {
+            GameAction.getAction().gameStarted((GameRoom) msg.getContent());
+        }
     }
 
     private void playerLeft(Response<GameRoomMsgDTO> response) {
         User player = response.getUser();
         ConsoleAction.showSystemMsg(response.getTime(), player.getUsername() + "退出了游戏！");
-        GameAction.getAction().playerLeft(player);
+        if (GameAction.playing()) {
+            GameAction.getAction().playerLeft(player);
+        }
     }
 
     private void playerInvite(Response<GameRoomMsgDTO> response) {
@@ -162,7 +169,14 @@ public class GameRoomMessageHandler extends AbstractGameMessageHandler<GameRoomM
                 ConsoleAction.showSystemMsg(response.getTime(), player.getUsername() + "已加入游戏！");
                 if (!GameAction.playing()) {
                     GameRoom gameRoom = result.getGameRoom();
-                    GameAction.create().roomOpened(gameRoom);
+                    initGameAction(msg, gameRoom);
+                    AbstractGame action = GameAction.create();
+                    if (action == null) {
+                        ConsoleAction.showSystemMsg(response.getTime(), "当前插件端暂不支持该游戏！");
+                        GameAction.clean();
+                        return;
+                    }
+                    action.roomOpened(gameRoom);
                 }
                 GameAction.getAction().playerJoined(player);
                 return;
@@ -188,13 +202,27 @@ public class GameRoomMessageHandler extends AbstractGameMessageHandler<GameRoomM
     }
 
     private void gameOver(Response<GameRoomMsgDTO> response) {
-        GameAction.getAction().gameEnded();
+        if (GameAction.playing()) {
+            GameAction.getAction().gameEnded();
+        }
     }
 
     private void gameError(Response<GameRoomMsgDTO> response) {
         String content = (String) response.getBody().getContent();
         ConsoleAction.showSystemMsg(response.getTime(), content);
         roomClosedHandler();
+    }
+
+    void initGameAction(GameRoomMsgDTO msg, GameRoom gameRoom) {
+        if (gameRoom != null) {
+            GameAction.setRoomId(gameRoom.getId());
+            GameAction.setGame(gameRoom.getGame());
+        } else {
+            GameAction.setRoomId(msg.getRoomId());
+            GameAction.setGame(msg.getGame());
+        }
+        GameAction.setNickname(DataCache.username);
+        GameAction.cancelInviteTimeoutTimer();
     }
 
 }
