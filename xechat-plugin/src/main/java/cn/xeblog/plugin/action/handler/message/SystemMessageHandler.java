@@ -17,9 +17,22 @@ import io.netty.channel.Channel;
 @DoMessage(MessageType.SYSTEM)
 public class SystemMessageHandler extends AbstractMessageHandler<String> {
 
+    private static final String SAME_PLATFORM_REPLACEMENT_MESSAGE = "该账号已在当前端其他位置登录";
+
     @Override
     protected void process(Response<String> response) {
         String body = response.getBody();
+        if (stopReconnectIfSamePlatformReplacement(body)) {
+            LoginPanel lp = MainWindow.getInstance().getLoginPanel();
+            if (lp != null) {
+                lp.showError(body);
+            }
+            MainWindow.getInstance().switchToLogin();
+            closeActiveChannel();
+            ConsoleAction.showSystemMsg(response.getTime(), body);
+            return;
+        }
+
         if (DataCache.loginFromReconnect) {
             ReconnectAction.disable();
             LoginPanel lp = MainWindow.getInstance().getLoginPanel();
@@ -41,6 +54,14 @@ public class SystemMessageHandler extends AbstractMessageHandler<String> {
             closeActiveChannel();
         }
         ConsoleAction.showSystemMsg(response.getTime(), body);
+    }
+
+    static boolean stopReconnectIfSamePlatformReplacement(String body) {
+        if (body == null || !body.contains(SAME_PLATFORM_REPLACEMENT_MESSAGE)) {
+            return false;
+        }
+        ReconnectAction.disable();
+        return true;
     }
 
     private static void closeActiveChannel() {
