@@ -216,7 +216,10 @@ public final class QuickQuizService {
 
     private static void sendToRoom(GameRoom room, Response response) {
         room.getUsers().forEach((k, v) -> {
-            UserCache.getByIdentityKey(v.getId()).forEach(player -> player.send(response));
+            User player = UserCache.get(v.getChannelId());
+            if (player != null) {
+                player.send(response);
+            }
         });
     }
 
@@ -227,7 +230,7 @@ public final class QuickQuizService {
     private static List<User> getRoomUsers(GameRoom room) {
         List<User> players = new ArrayList<>();
         room.getUsers().forEach((k, v) -> {
-            User user = UserCache.getPrimaryByIdentityKey(v.getId());
+            User user = UserCache.get(v.getChannelId());
             if (user != null) {
                 players.add(user);
             }

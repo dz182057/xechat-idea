@@ -34,42 +34,59 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                 playerLeft(user, gameRoom, body);
                 break;
             case PLAYER_INVITE:
+                if (!gameRoom.isHomeowner(user)) {
+                    return;
+                }
                 playerInvite(user, gameRoom, body);
                 break;
             case PLAYER_INVITE_RESULT:
                 playerInviteResult(user, gameRoom, body);
                 break;
             case ROOM_CLOSE:
+                if (!gameRoom.isHomeowner(user)) {
+                    return;
+                }
                 roomClose(user, gameRoom);
                 break;
             case GAME_START:
+                if (!gameRoom.isHomeowner(user)) {
+                    return;
+                }
                 gameRoom.getUsers().forEach((k, v) -> v.setReadied(false));
                 body.setContent(gameRoom);
                 sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 break;
             case PLAYER_READY:
-                gameRoom.readied(user);
-                sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                if (gameRoom.readied(user)) {
+                    sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                }
                 break;
             case PLAYER_CANCEL_READY:
-                gameRoom.readyCancelled(user);
-                sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                if (gameRoom.readyCancelled(user)) {
+                    sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                }
                 break;
             case GAME_OVER:
-                user.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                if (gameRoom.isPlayerConnection(user)) {
+                    user.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                }
                 break;
             case PLAYER_GAME_STARTED:
-                gameRoom.getHomeowner().send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                if (gameRoom.isPlayerConnection(user)) {
+                    gameRoom.getHomeowner().send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                }
                 break;
             case REGRET_REQUEST:
             case REGRET_RESPONSE:
+                if (!gameRoom.isPlayerConnection(user)) {
+                    return;
+                }
                 // 悔棋协商：服务端不参与决策，只把消息原样转发给房间内其他玩家
                 gameRoom.getUsers().forEach((k, v) -> {
-                    if (v.getId().equals(user.getIdentityKey())) {
+                    if (v.isConnection(user)) {
                         return;
                     }
-                    UserCache.getByIdentityKey(v.getId())
-                            .forEach(player -> player.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM)));
+                    sendToPlayer(v, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 });
                 break;
         }
@@ -99,7 +116,11 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         // 转换后的 dto 与 body.content 解耦，后续 setGameRoom 等需要回写
         body.setContent(dto);
         User player = user;
-        if (dto.getPlayerKey() != null) {
+        String playerKey = dto.getPlayerKey() != null ? dto.getPlayerKey() : user.getIdentityKey();
+        if (dto.getStatus() != InviteStatus.ACCEPT && gameRoom.getUsers().containsKey(playerKey)) {
+            return;
+        }
+        if (dto.getStatus() != InviteStatus.ACCEPT && dto.getPlayerKey() != null) {
             player = UserCache.getPrimaryByIdentityKey(dto.getPlayerKey());
             if (player == null) {
                 return;
@@ -197,8 +218,15 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
     private void sendMsg(GameRoom gameRoom, Response response) {
         gameRoom.getUsers().forEach((k, v) -> {
-            UserCache.getByIdentityKey(v.getId()).forEach(player -> player.send(response));
+            sendToPlayer(v, response);
         });
+    }
+
+    private void sendToPlayer(GameRoom.Player player, Response response) {
+        User user = UserCache.get(player.getChannelId());
+        if (user != null) {
+            user.send(response);
+        }
     }
 
 }

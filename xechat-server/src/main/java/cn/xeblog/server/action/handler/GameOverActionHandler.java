@@ -19,9 +19,15 @@ public class GameOverActionHandler extends AbstractGameActionHandler<GameDTO> {
 
     @Override
     protected void process(User user, GameRoom gameRoom, GameDTO body) {
+        if (!gameRoom.isPlayerConnection(user)) {
+            return;
+        }
         Response resp = ResponseBuilder.build(user, body, MessageType.GAME_OVER);
         gameRoom.getUsers().forEach((k, v) -> {
-            UserCache.getByIdentityKey(v.getId()).forEach(player -> player.send(resp));
+            User player = UserCache.get(v.getChannelId());
+            if (player != null) {
+                player.send(resp);
+            }
         });
     }
 

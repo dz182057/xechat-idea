@@ -27,6 +27,11 @@ public class GameRoomCache {
     private static final Map<String, GameRoom> USER_ROOM_MAP = new ConcurrentHashMap<>(32);
 
     /**
+     * 玩家实际进入游戏的连接缓存，key -> user.id(channelId)
+     */
+    private static final Map<String, GameRoom> CONNECTION_ROOM_MAP = new ConcurrentHashMap<>(32);
+
+    /**
      * 抢占房间
      *
      * @param roomId 房间ID
@@ -63,13 +68,19 @@ public class GameRoomCache {
         if (gameRoom.getUsers().size() > 0) {
             gameRoom.getUsers().forEach((k, v) -> {
                 USER_ROOM_MAP.remove(v.getId());
+                if (v.getChannelId() != null) {
+                    CONNECTION_ROOM_MAP.remove(v.getChannelId());
+                }
             });
         }
 
         java.util.Set<User> userSet = ConcurrentHashMap.newKeySet();
         gameRoom.getInviteUsers().forEach(key -> userSet.addAll(UserCache.getByIdentityKey(key)));
         gameRoom.getUsers().forEach((k, v) -> {
-            userSet.addAll(UserCache.getByIdentityKey(v.getId()));
+            User player = UserCache.get(v.getChannelId());
+            if (player != null) {
+                userSet.add(player);
+            }
         });
         if (userSet.size() > 0) {
             userSet.forEach(player -> {
@@ -113,6 +124,9 @@ public class GameRoomCache {
 
         if (gameRoom.addUser(user)) {
             USER_ROOM_MAP.put(identityKey, gameRoom);
+            if (user.getId() != null) {
+                CONNECTION_ROOM_MAP.put(user.getId(), gameRoom);
+            }
             return true;
         }
 
@@ -134,6 +148,9 @@ public class GameRoomCache {
 
         if (gameRoom.removeUser(user)) {
             USER_ROOM_MAP.remove(user.getIdentityKey());
+            if (user.getId() != null) {
+                CONNECTION_ROOM_MAP.remove(user.getId());
+            }
             if (gameRoom.getCurrentNums() == 0 || gameRoom.isHomeowner(user)) {
                 removeRoom(gameRoom.getId());
             }
@@ -149,6 +166,10 @@ public class GameRoomCache {
 
     public static GameRoom getGameRoomByUserId(String userId) {
         return USER_ROOM_MAP.get(userId);
+    }
+
+    public static GameRoom getGameRoomByConnectionId(String channelId) {
+        return CONNECTION_ROOM_MAP.get(channelId);
     }
 
 }

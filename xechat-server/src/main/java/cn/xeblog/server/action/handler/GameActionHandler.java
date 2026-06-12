@@ -20,18 +20,23 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
 
     @Override
     protected void process(User user, GameRoom gameRoom, GameDTO body) {
+        if (!gameRoom.isPlayerConnection(user)) {
+            return;
+        }
         if (gameRoom.getGame() == Game.TURTLE_SOUP) {
             TurtleSoupService.handle(user, gameRoom, body);
             return;
         }
 
         gameRoom.getUsers().forEach((k, v) -> {
-            if (v.getId().equals(user.getIdentityKey())) {
+            if (v.isConnection(user)) {
                 return;
             }
 
-            UserCache.getByIdentityKey(v.getId())
-                    .forEach(player -> player.send(ResponseBuilder.build(user, body, MessageType.GAME)));
+            User player = UserCache.get(v.getChannelId());
+            if (player != null) {
+                player.send(ResponseBuilder.build(user, body, MessageType.GAME));
+            }
         });
     }
 

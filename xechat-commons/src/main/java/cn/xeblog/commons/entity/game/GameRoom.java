@@ -75,6 +75,10 @@ public class GameRoom implements Serializable {
          */
         private String id;
         /**
+         * 实际进入该游戏房间的连接 ID。游戏事件只发给这个端。
+         */
+        private String channelId;
+        /**
          * 玩家昵称
          */
         private String username;
@@ -106,11 +110,16 @@ public class GameRoom implements Serializable {
 
         public Player(User user) {
             this.id = user.getIdentityKey();
+            this.channelId = user.getId();
             this.username = user.getUsername();
             this.accountId = user.getAccountId();
             this.account = user.getAccount();
             this.uuid = user.getUuid();
             this.nickname = user.getNickname();
+        }
+
+        public boolean isConnection(User user) {
+            return user != null && channelId != null && channelId.equals(user.getId());
         }
 
     }
@@ -139,6 +148,11 @@ public class GameRoom implements Serializable {
 
     public boolean removeUser(User user) {
         synchronized (users) {
+            Player player = users.get(user.getIdentityKey());
+            if (player == null || !player.isConnection(user)) {
+                return false;
+            }
+
             return users.remove(user.getIdentityKey()) != null;
         }
     }
@@ -161,7 +175,7 @@ public class GameRoom implements Serializable {
 
     public boolean readied(User user) {
         Player player = users.get(user.getIdentityKey());
-        if (player == null) {
+        if (player == null || !player.isConnection(user)) {
             return false;
         }
 
@@ -171,7 +185,7 @@ public class GameRoom implements Serializable {
 
     public boolean readyCancelled(User user) {
         Player player = users.get(user.getIdentityKey());
-        if (player == null) {
+        if (player == null || !player.isConnection(user)) {
             return false;
         }
 
@@ -184,7 +198,15 @@ public class GameRoom implements Serializable {
     }
 
     public boolean isHomeowner(User user) {
-        return homeowner != null && homeowner.getIdentityKey().equals(user.getIdentityKey());
+        return homeowner != null
+                && homeowner.getIdentityKey().equals(user.getIdentityKey())
+                && homeowner.getId() != null
+                && homeowner.getId().equals(user.getId());
+    }
+
+    public boolean isPlayerConnection(User user) {
+        Player player = users.get(user.getIdentityKey());
+        return player != null && player.isConnection(user);
     }
 
     public boolean isOvered() {

@@ -115,15 +115,17 @@ public class ChannelAction {
             log.info("游客 {} 下线 platform={}", user.getNickname(), user.getPlatform());
         }
 
-        GameRoom gameRoom = GameRoomCache.getGameRoomByUserId(user.getIdentityKey());
+        GameRoom gameRoom = GameRoomCache.getGameRoomByConnectionId(user.getId());
         if (gameRoom != null) {
             gameRoom.getUsers().forEach((k, v) -> {
-                if (v.getId().equals(user.getIdentityKey())) {
+                if (v.isConnection(user)) {
                     return;
                 }
 
-                UserCache.getByIdentityKey(v.getId())
-                        .forEach(player -> player.send(ResponseBuilder.build(user, new GameRoomMsgDTO(GameRoomMsgDTO.MsgType.PLAYER_LEFT, null), MessageType.GAME_ROOM)));
+                User player = UserCache.get(v.getChannelId());
+                if (player != null) {
+                    player.send(ResponseBuilder.build(user, new GameRoomMsgDTO(GameRoomMsgDTO.MsgType.PLAYER_LEFT, null), MessageType.GAME_ROOM));
+                }
             });
             GameRoomCache.leftRoom(gameRoom.getId(), user);
         }

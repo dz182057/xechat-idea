@@ -162,7 +162,7 @@ public final class TurtleSoupService {
                 judge(user, room, state, dto);
                 break;
             case CLUE_REQUEST:
-                requestClue(user, state);
+                requestClue(user, room, state);
                 break;
             case CLUE_RESPONSE:
                 respondClue(user, room, state, dto);
@@ -202,8 +202,8 @@ public final class TurtleSoupService {
         }
         state.confirmed = true;
         state.startedAt = System.currentTimeMillis();
-        User host = UserCache.getPrimaryByIdentityKey(state.hostId);
-        User guesser = UserCache.getPrimaryByIdentityKey(state.guesserId);
+        User host = getRoomUser(room, state.hostId);
+        User guesser = getRoomUser(room, state.guesserId);
         if (host != null) {
             sendStart(state, host, true);
         }
@@ -309,7 +309,7 @@ public final class TurtleSoupService {
         }
     }
 
-    private static void requestClue(User user, RoomState state) {
+    private static void requestClue(User user, GameRoom room, RoomState state) {
         if (!ensureConfirmed(user, state)) {
             return;
         }
@@ -322,8 +322,8 @@ public final class TurtleSoupService {
             return;
         }
         state.awaitingClueApproval = true;
-        List<User> hosts = UserCache.getByIdentityKey(state.hostId);
-        if (hosts.isEmpty()) {
+        User host = getRoomUser(room, state.hostId);
+        if (host == null) {
             user.send(ResponseBuilder.system("主持人不在线，暂时无法查看关键线索"));
             state.awaitingClueApproval = false;
             return;
@@ -331,7 +331,7 @@ public final class TurtleSoupService {
         TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.CLUE_REQUEST);
         event.setKeyClue(null);
         Response response = ResponseBuilder.build(user, event, MessageType.GAME);
-        hosts.forEach(host -> host.send(response));
+        host.send(response);
     }
 
     private static void respondClue(User user, GameRoom room, RoomState state, TurtleSoupDTO dto) {
@@ -420,7 +420,7 @@ public final class TurtleSoupService {
         TurtleSoupDTO dto = baseEvent(state, TurtleSoupDTO.Event.PREVIEW_STORY);
         sanitizePreview(dto, host);
         Response response = ResponseBuilder.build(null, dto, MessageType.GAME);
-        UserCache.getByIdentityKey(player.getIdentityKey()).forEach(online -> online.send(response));
+        player.send(response);
     }
 
     static void sanitizePreview(TurtleSoupDTO dto, boolean host) {
@@ -441,7 +441,7 @@ public final class TurtleSoupService {
             dto.setKeyClue(null);
         }
         Response response = ResponseBuilder.build(null, dto, MessageType.GAME);
-        UserCache.getByIdentityKey(player.getIdentityKey()).forEach(online -> online.send(response));
+        player.send(response);
     }
 
     private static TurtleSoupDTO baseEvent(RoomState state, TurtleSoupDTO.Event event) {
@@ -466,7 +466,10 @@ public final class TurtleSoupService {
 
     private static void sendToRoom(GameRoom room, Response response) {
         room.getUsers().forEach((k, v) -> {
-            UserCache.getByIdentityKey(v.getId()).forEach(player -> player.send(response));
+            User player = UserCache.get(v.getChannelId());
+            if (player != null) {
+                player.send(response);
+            }
         });
     }
 
@@ -491,12 +494,20 @@ public final class TurtleSoupService {
     private static List<User> getRoomUsers(GameRoom room) {
         List<User> players = new ArrayList<>();
         room.getUsers().forEach((k, v) -> {
-            User user = UserCache.getPrimaryByIdentityKey(v.getId());
+            User user = UserCache.get(v.getChannelId());
             if (user != null) {
                 players.add(user);
             }
         });
         return players;
+    }
+
+    private static User getRoomUser(GameRoom room, String identityKey) {
+        GameRoom.Player player = room.getUsers().get(identityKey);
+        if (player == null) {
+            return null;
+        }
+        return UserCache.get(player.getChannelId());
     }
 
     private static User findPlayer(List<User> players, String userId) {
