@@ -99,6 +99,8 @@ public final class AccountLoginHelper {
     public static boolean notifyOnline(User user, String token, long expiresAt,
                                        String e2eeSalt, String identityPubKey,
                                        String identityPrivKeyEnvelope) {
+        boolean samePlatformAlreadyOnline = user.getAccountId() > 0
+                && UserCache.hasOnlineByAccountAndPlatform(user.getAccountId(), user.getPlatform());
         List<User> replacedUsers = UserCache.addReplacingAccountClient(user);
         ChannelAction.add(user.getChannel());
         kickReplacedUsers(replacedUsers, user.getId());
@@ -117,12 +119,20 @@ public final class AccountLoginHelper {
         // 2) 给自己发当前在线列表
         ChannelAction.sendOnlineUsers(user);
 
-        // 3) 广播上线状态(同账号其他端已经在线时也广播一次,客户端按 accountId 合并)
-        ChannelAction.sendUserState(user, UserStateMsgDTO.State.ONLINE);
+        // 3) 广播上线状态:新增端通知;同账号同平台重连接管旧连接只刷新在线列表
+        if (shouldNotifyOnlineState(user, samePlatformAlreadyOnline)) {
+            ChannelAction.sendUserState(user, UserStateMsgDTO.State.ONLINE);
+        } else {
+            ChannelAction.sendOnlineUsers();
+        }
         if (!user.isGuest()) {
             FriendService.pushFriendListRefreshForAccount(user.getAccountId());
         }
         return true;
+    }
+
+    static boolean shouldNotifyOnlineState(User user, boolean samePlatformAlreadyOnline) {
+        return user == null || user.getAccountId() <= 0L || !samePlatformAlreadyOnline;
     }
 
     private static void kickReplacedUsers(List<User> replacedUsers, String currentUserId) {
