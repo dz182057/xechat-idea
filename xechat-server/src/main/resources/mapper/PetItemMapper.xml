@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetItemMapper">
+
+    <sql id="cols">
+        account_id, item_id, count, updated_at
+    </sql>
+
+    <select id="findByAccountIdAndItemId" resultType="cn.xeblog.server.pet.PetItemRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_items
+        WHERE account_id = #{accountId}
+          AND item_id = #{itemId}
+    </select>
+
+    <select id="listPositiveByAccountId" resultType="cn.xeblog.server.pet.PetItemRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_items
+        WHERE account_id = #{accountId}
+          AND count &gt; 0
+        ORDER BY item_id ASC
+    </select>
+
+    <insert id="addItemIfUnderLimit">
+        INSERT INTO pet_items (
+            account_id, item_id, count, updated_at
+        )
+        SELECT #{accountId}, #{itemId}, #{quantity}, #{updatedAt}
+        WHERE #{quantity} &lt;= #{maxCount}
+        ON CONFLICT(account_id, item_id) DO UPDATE
+        SET count = count + excluded.count,
+            updated_at = excluded.updated_at
+        WHERE pet_items.count + excluded.count &lt;= #{maxCount}
+    </insert>
+
+    <update id="decrementItemIfEnough">
+        UPDATE pet_items
+        SET count = count - #{quantity},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND item_id = #{itemId}
+          AND count &gt;= #{quantity}
+    </update>
+
+</mapper>

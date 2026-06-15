@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetDogMapper">
+
+    <sql id="cols">
+        id, owner_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, energy_date, status,
+        explore_location, explore_ends_at, explore_duration_hours, race_count, race_first_count, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.pet.PetDogRecord">
+        INSERT INTO dogs (
+            id, owner_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, energy_date, status,
+            explore_location, explore_ends_at, explore_duration_hours, race_count, race_first_count, created_at, updated_at
+        ) VALUES (
+            #{id}, #{ownerId}, #{name}, #{breed}, #{stage}, #{speed}, #{stamina}, #{burst}, #{wisdom}, #{bond},
+            #{energy}, #{energyDate}, #{status}, #{exploreLocation}, #{exploreEndsAt}, #{exploreDurationHours},
+            #{raceCount}, #{raceFirstCount}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <select id="listByOwner" resultType="cn.xeblog.server.pet.PetDogRecord">
+        SELECT <include refid="cols"/>
+        FROM dogs
+        WHERE owner_id = #{ownerId}
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="findByIdAndOwner" resultType="cn.xeblog.server.pet.PetDogRecord">
+        SELECT <include refid="cols"/>
+        FROM dogs
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+    </select>
+
+    <select id="countByOwner" resultType="int">
+        SELECT COUNT(1)
+        FROM dogs
+        WHERE owner_id = #{ownerId}
+    </select>
+
+    <update id="updateName">
+        UPDATE dogs
+        SET name = #{name},
+            updated_at = CASE
+                WHEN status = 'exploring' AND explore_duration_hours IS NULL THEN updated_at
+                ELSE #{updatedAt}
+            END
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+    </update>
+
+    <update id="updateCareStats">
+        UPDATE dogs
+        SET bond = #{bond},
+            energy = #{energy},
+            updated_at = CASE
+                WHEN status = 'exploring' AND explore_duration_hours IS NULL THEN updated_at
+                ELSE #{updatedAt}
+            END
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+    </update>
+
+    <update id="updateStage">
+        UPDATE dogs
+        SET stage = #{stage},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+          AND stage != #{stage}
+    </update>
+
+    <update id="recordRaceResult">
+        UPDATE dogs
+        SET race_count = race_count + 1,
+            race_first_count = race_first_count + #{firstPlaceIncrement},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+    </update>
+
+    <update id="startExplore">
+        UPDATE dogs
+        SET energy = energy - #{energyCost},
+            status = 'exploring',
+            explore_location = #{location},
+            explore_ends_at = #{exploreEndsAt},
+            explore_duration_hours = #{durationHours},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+          AND status = 'idle'
+          AND energy &gt;= #{energyCost}
+    </update>
+
+    <update id="openExplore">
+        UPDATE dogs
+        SET status = 'idle',
+            explore_location = NULL,
+            explore_ends_at = NULL,
+            explore_duration_hours = NULL,
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+          AND status = 'exploring'
+    </update>
+
+    <update id="resetExplore">
+        UPDATE dogs
+        SET status = 'idle',
+            explore_location = NULL,
+            explore_ends_at = NULL,
+            explore_duration_hours = NULL,
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+          AND status = 'exploring'
+    </update>
+
+    <update id="finishExploreNow">
+        UPDATE dogs
+        SET explore_ends_at = #{exploreEndsAt},
+            explore_duration_hours = CASE
+                WHEN explore_duration_hours IS NULL THEN #{durationHours}
+                ELSE explore_duration_hours
+            END,
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+          AND status = 'exploring'
+          AND explore_ends_at IS NOT NULL
+          AND explore_ends_at &gt; #{exploreEndsAt}
+    </update>
+
+    <update id="refreshExpiredEnergy">
+        UPDATE dogs
+        SET energy = #{energyLimit},
+            energy_date = #{today},
+            updated_at = CASE
+                WHEN status = 'exploring' AND explore_duration_hours IS NULL THEN updated_at
+                ELSE #{updatedAt}
+            END
+        WHERE owner_id = #{ownerId}
+          AND (energy_date IS NULL OR energy_date &lt; #{today})
+    </update>
+
+</mapper>

@@ -254,5 +254,10 @@ public enum Action {
     /**
      * 设置隐身状态
      */
-    SET_STEALTH;
+    SET_STEALTH,
+
+    /**
+     * 狗狗宇宙个人数据
+     */
+    PET;
 }

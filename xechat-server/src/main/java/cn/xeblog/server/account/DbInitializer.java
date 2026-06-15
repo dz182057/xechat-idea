@@ -81,6 +81,7 @@ public final class DbInitializer {
             ensureDrawGuessWordTable();
             ensureQuickQuizTables();
             ensureTurtleSoupTables();
+            ensurePetTables();
             ensurePushSubscriptionTable();
 
             log.info("账号体系数据库就绪: {}", GlobalConfig.DB_PATH);
@@ -335,6 +336,82 @@ public final class DbInitializer {
                         ")");
                 st.execute("CREATE INDEX IF NOT EXISTS idx_push_subscriptions_account " +
                         "ON push_subscriptions(account_id)");
+            }
+        }
+    }
+
+    /**
+     * 给已有数据库补齐狗狗宇宙个人数据表。
+     */
+    private static void ensurePetTables() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE IF NOT EXISTS dogs (" +
+                        "id TEXT PRIMARY KEY," +
+                        "owner_id INTEGER NOT NULL," +
+                        "name TEXT NOT NULL," +
+                        "breed TEXT NOT NULL," +
+                        "stage TEXT NOT NULL DEFAULT 'puppy'," +
+                        "speed INTEGER NOT NULL," +
+                        "stamina INTEGER NOT NULL," +
+                        "burst INTEGER NOT NULL," +
+                        "wisdom INTEGER NOT NULL," +
+                        "bond INTEGER NOT NULL," +
+                        "energy INTEGER NOT NULL DEFAULT 10," +
+                        "energy_date TEXT NOT NULL DEFAULT '1970-01-01'," +
+                        "status TEXT NOT NULL DEFAULT 'idle'," +
+                        "explore_location TEXT," +
+                        "explore_ends_at INTEGER," +
+                        "explore_duration_hours INTEGER," +
+                        "race_count INTEGER NOT NULL DEFAULT 0," +
+                        "race_first_count INTEGER NOT NULL DEFAULT 0," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_dogs_owner ON dogs(owner_id, created_at)");
+                addColumnIfMissing(conn, st, "dogs", "energy_date", "TEXT NOT NULL DEFAULT '1970-01-01'");
+                addColumnIfMissing(conn, st, "dogs", "explore_location", "TEXT");
+                addColumnIfMissing(conn, st, "dogs", "explore_ends_at", "INTEGER");
+                addColumnIfMissing(conn, st, "dogs", "explore_duration_hours", "INTEGER");
+                addColumnIfMissing(conn, st, "dogs", "race_count", "INTEGER NOT NULL DEFAULT 0");
+                addColumnIfMissing(conn, st, "dogs", "race_first_count", "INTEGER NOT NULL DEFAULT 0");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_assets (" +
+                        "account_id INTEGER PRIMARY KEY," +
+                        "bones INTEGER NOT NULL DEFAULT 300," +
+                        "food INTEGER NOT NULL DEFAULT 6," +
+                        "makeup_cards INTEGER NOT NULL DEFAULT 0," +
+                        "dog_slots INTEGER NOT NULL DEFAULT 1," +
+                        "energy_limit INTEGER NOT NULL DEFAULT 10," +
+                        "companion_dog_id TEXT," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                addColumnIfMissing(conn, st, "pet_assets", "companion_dog_id", "TEXT");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_items (" +
+                        "account_id INTEGER NOT NULL," +
+                        "item_id TEXT NOT NULL," +
+                        "count INTEGER NOT NULL DEFAULT 0," +
+                        "updated_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (account_id, item_id)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_checkins (" +
+                        "account_id INTEGER NOT NULL," +
+                        "checkin_date TEXT NOT NULL," +
+                        "cycle_day INTEGER NOT NULL," +
+                        "created_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (account_id, checkin_date)" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_checkins_account " +
+                        "ON pet_checkins(account_id, created_at)");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_daily_counters (" +
+                        "account_id INTEGER NOT NULL," +
+                        "counter_date TEXT NOT NULL," +
+                        "counter TEXT NOT NULL," +
+                        "value INTEGER NOT NULL DEFAULT 0," +
+                        "updated_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (account_id, counter_date, counter)" +
+                        ")");
             }
         }
     }

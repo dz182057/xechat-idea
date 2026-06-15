@@ -159,5 +159,10 @@ public enum MessageType {
     /**
      * 好友关系变化
      */
-    FRIEND_UPDATED;
+    FRIEND_UPDATED,
+
+    /**
+     * 狗狗宇宙个人数据
+     */
+    PET;
 }

@@ -35,6 +35,11 @@
         <mapper resource="mapper/DrawGuessWordMapper.xml"/>
         <mapper resource="mapper/QuickQuizMapper.xml"/>
         <mapper resource="mapper/TurtleSoupMapper.xml"/>
+        <mapper resource="mapper/PetDogMapper.xml"/>
+        <mapper resource="mapper/PetAssetsMapper.xml"/>
+        <mapper resource="mapper/PetItemMapper.xml"/>
+        <mapper resource="mapper/PetCheckinMapper.xml"/>
+        <mapper resource="mapper/PetDailyCounterMapper.xml"/>
     </mappers>
 
 </configuration>

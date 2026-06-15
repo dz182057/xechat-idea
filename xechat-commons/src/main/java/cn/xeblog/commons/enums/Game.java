@@ -24,6 +24,7 @@ public enum Game {
     DRAW_GUESS("你画我猜", false),
     QUICK_QUIZ("快问快答", false),
     TURTLE_SOUP("海龟汤", false),
+    DOG_RACE("狗狗赛跑", true),
     ;
 
     /**
