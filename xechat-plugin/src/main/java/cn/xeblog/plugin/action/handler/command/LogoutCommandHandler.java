@@ -10,6 +10,7 @@ import cn.xeblog.plugin.enums.Command;
 import cn.xeblog.plugin.persistence.PersistenceData;
 import cn.xeblog.plugin.persistence.PersistenceService;
 import cn.xeblog.plugin.ui.MainWindow;
+import io.netty.channel.Channel;
 
 /**
  * @author anlingyi
@@ -19,9 +20,18 @@ import cn.xeblog.plugin.ui.MainWindow;
 public class LogoutCommandHandler extends AbstractCommandHandler {
 
     @Override
+    protected boolean requiresOnline() {
+        return false;
+    }
+
+    @Override
     public void process(String[] args) {
         if (!DataCache.isOnline) {
-            ConsoleAction.showSimpleMsg("已是离线状态！");
+            ReconnectAction.disable();
+            DataCache.stickyPrivateTarget = null;
+            closeChannelIfActive();
+            MainWindow.getInstance().switchToLogin();
+            ConsoleAction.showSimpleMsg("已停止重连,请在登录页重新登录");
             return;
         }
 
@@ -43,9 +53,16 @@ public class LogoutCommandHandler extends AbstractCommandHandler {
         pd.setToken(null);
         // account 字段保留,登录页下次进来还能默认填回上次的账号
 
-        DataCache.channel.close();
+        closeChannelIfActive();
         // 显式退出 → 切回登录页(channelInactive 也会兜底切,这里立即切是为了消除"主界面残留"延迟感)
         MainWindow.getInstance().switchToLogin();
+    }
+
+    private static void closeChannelIfActive() {
+        Channel channel = DataCache.channel;
+        if (channel != null && channel.isActive()) {
+            channel.close();
+        }
     }
 
 }

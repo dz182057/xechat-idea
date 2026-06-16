@@ -10,12 +10,16 @@ import cn.xeblog.plugin.cache.DataCache;
 public abstract class AbstractCommandHandler implements CommandHandler {
 
     protected boolean check(String[] args) {
-        if (DataCache.isOnline) {
+        if (!requiresOnline() || DataCache.isOnline) {
             return true;
         }
 
         ConsoleAction.showLoginMsg();
         return false;
+    }
+
+    protected boolean requiresOnline() {
+        return true;
     }
 
     @Override
