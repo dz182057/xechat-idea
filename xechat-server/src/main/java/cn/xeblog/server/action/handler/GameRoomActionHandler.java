@@ -30,6 +30,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
     @Override
     protected void process(User user, GameRoom gameRoom, GameRoomMsgDTO body) {
+        fillRoomMetadata(gameRoom, body);
         switch (body.getMsgType()) {
             case PLAYER_LEFT:
                 playerLeft(user, gameRoom, body);
@@ -101,6 +102,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
         msg.setRoomId(gameRoom.getId());
+        msg.setGame(gameRoom.getGame());
         msg.setMsgType(GameRoomMsgDTO.MsgType.ROOM_CLOSE);
 
         Response resp = ResponseBuilder.build(user, msg, MessageType.GAME_ROOM);
@@ -230,6 +232,11 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         if (user != null) {
             user.send(response);
         }
+    }
+
+    private void fillRoomMetadata(GameRoom gameRoom, GameRoomMsgDTO body) {
+        body.setRoomId(gameRoom.getId());
+        body.setGame(gameRoom.getGame());
     }
 
 }

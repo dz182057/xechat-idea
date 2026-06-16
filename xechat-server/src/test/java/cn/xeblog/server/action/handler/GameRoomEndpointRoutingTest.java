@@ -77,12 +77,16 @@ public class GameRoomEndpointRoutingTest {
         Assert.assertNull(readResponse(acceptedEndpoint));
         Assert.assertNull(readResponse(otherEndpoint));
 
-        GameRoomMsgDTO ready = new GameRoomMsgDTO(roomId, Game.GOBANG,
+        GameRoomMsgDTO ready = new GameRoomMsgDTO(roomId, null,
                 GameRoomMsgDTO.MsgType.PLAYER_READY, null);
         handler.process(acceptedEndpoint, room, ready);
 
-        Assert.assertEquals(MessageType.GAME_ROOM, readResponse(homeowner).getType());
-        Assert.assertEquals(MessageType.GAME_ROOM, readResponse(acceptedEndpoint).getType());
+        Response homeownerReadyResponse = readResponse(homeowner);
+        Response acceptedReadyResponse = readResponse(acceptedEndpoint);
+        Assert.assertEquals(MessageType.GAME_ROOM, homeownerReadyResponse.getType());
+        Assert.assertEquals(MessageType.GAME_ROOM, acceptedReadyResponse.getType());
+        Assert.assertEquals(Game.GOBANG, ((GameRoomMsgDTO) homeownerReadyResponse.getBody()).getGame());
+        Assert.assertEquals(Game.GOBANG, ((GameRoomMsgDTO) acceptedReadyResponse.getBody()).getGame());
         Assert.assertNull("未接受邀请的同账号其它端不应收到游戏房间事件", readResponse(otherEndpoint));
 
         handler.process(otherEndpoint, room, ready);

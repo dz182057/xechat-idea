@@ -49,9 +49,9 @@ public class RequestHandler {
             return;
         }
 
-        // 部分拉取类 action 是无参请求，允许 body 为空。
-        if (!isNoBodyAction(request.getAction()) && ObjectUtil.isEmpty(request.getBody())) {
-            ctx.writeAndFlush(ResponseBuilder.system("Body is null!"));
+        // 部分查询类 action 允许 body 为空；其它 action 缺少参数时直接拒绝。
+        if (!allowsEmptyBodyAction(request.getAction()) && ObjectUtil.isEmpty(request.getBody())) {
+            ctx.writeAndFlush(ResponseBuilder.system("Body is null: " + request.getAction()));
             return;
         }
 
@@ -59,9 +59,14 @@ public class RequestHandler {
             ActionHandler produce = ActionHandlerFactory.INSTANCE.produce(request.getAction());
             Object body = request.getBody();
 
-            // 无参 action 的 body 可能为空，直接走 handler 不做反序列化。
-            if (isNoBodyAction(request.getAction())) {
+            // 真正无参的 action 直接走 handler；可选 body 的 action 若传了 body 仍需保留反序列化。
+            if (skipsBodyConversion(request.getAction())) {
                 produce.handle(ctx, body);
+                return;
+            }
+
+            if (ObjectUtil.isEmpty(body)) {
+                produce.handle(ctx, null);
                 return;
             }
 
@@ -120,7 +125,12 @@ public class RequestHandler {
         }
     }
 
-    private static boolean isNoBodyAction(Action action) {
+    private static boolean allowsEmptyBodyAction(Action action) {
+        return skipsBodyConversion(action)
+                || action == Action.PULL_HISTORY;
+    }
+
+    private static boolean skipsBodyConversion(Action action) {
         return action == Action.LIST_USERS
                 || action == Action.LIST_FRIENDS
                 || action == Action.LIST_FRIEND_REQUESTS
