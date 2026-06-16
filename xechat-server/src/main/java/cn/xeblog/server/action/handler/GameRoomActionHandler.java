@@ -16,6 +16,7 @@ import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
+import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
 
 import java.util.List;
@@ -95,6 +96,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
     private void roomClose(User user, GameRoom gameRoom) {
         GameRoomCache.removeRoom(gameRoom.getId());
         QuickQuizService.clearRoom(gameRoom.getId());
+        MinesweeperService.clearRoom(gameRoom.getId());
         TurtleSoupService.clearRoom(gameRoom.getId());
 
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
@@ -190,6 +192,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
         if (GameRoomCache.leftRoom(gameRoom.getId(), user)) {
             QuickQuizService.clearRoom(gameRoom.getId());
+            MinesweeperService.clearRoom(gameRoom.getId());
             TurtleSoupService.clearRoom(gameRoom.getId());
             Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);
             sendMsg(gameRoom, resp);

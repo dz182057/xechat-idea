@@ -6,6 +6,7 @@ import cn.xeblog.commons.entity.game.minesweeper.MinesweeperCellDTO;
 import cn.xeblog.commons.entity.game.minesweeper.MinesweeperDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Game;
+import cn.xeblog.commons.game.minesweeper.NoGuessMinesweeper;
 import cn.xeblog.plugin.action.GameAction;
 import cn.xeblog.plugin.action.MessageAction;
 import cn.xeblog.plugin.annotation.DoGame;
@@ -777,23 +778,17 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         }
         ensureCoopCells(coopRows, coopCols, coopMines);
         coopRoundActive = true;
-        java.util.List<Point> candidates = new ArrayList<>();
+        NoGuessMinesweeper.Board board = NoGuessMinesweeper.generate(
+                coopRows,
+                coopCols,
+                coopMines,
+                new NoGuessMinesweeper.Point(firstX, firstY),
+                new java.util.Random());
         for (int y = 0; y < coopRows; y++) {
             for (int x = 0; x < coopCols; x++) {
-                if (x == firstX && y == firstY) {
-                    continue;
-                }
-                candidates.add(new Point(x, y));
-            }
-        }
-        Collections.shuffle(candidates);
-        for (int i = 0; i < Math.min(coopMines, candidates.size()); i++) {
-            Point point = candidates.get(i);
-            coopCells[point.y][point.x].hasMine = true;
-        }
-        for (int y = 0; y < coopRows; y++) {
-            for (int x = 0; x < coopCols; x++) {
-                coopCells[y][x].adjacentMines = countAdjacentMines(x, y);
+                NoGuessMinesweeper.Cell cell = board.cell(x, y);
+                coopCells[y][x].hasMine = cell.isMine();
+                coopCells[y][x].adjacentMines = cell.getAdjacent();
             }
         }
         coopBoardGenerated = true;

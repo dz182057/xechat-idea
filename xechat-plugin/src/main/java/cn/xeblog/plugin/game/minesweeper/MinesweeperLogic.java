@@ -1,5 +1,7 @@
 package cn.xeblog.plugin.game.minesweeper;
 
+import cn.xeblog.commons.game.minesweeper.NoGuessMinesweeper;
+
 import java.awt.Color;
 import javax.swing.JOptionPane;
 import javax.swing.BorderFactory;
@@ -101,23 +103,16 @@ public class MinesweeperLogic {
      * 功能：随机生雷并记录周围地雷数<br>
      */
     public void randomMine() {
-        //随机生成地雷
-        for (int i = 0; i < this.minesweeperUI.mineNum;) {
-            int row = (int) (Math.random() * this.minesweeperUI.gridRows);
-            int column = (int) (Math.random() * this.minesweeperUI.gridColumns);
-            //判断该位置是否已经有雷
-            if (this.minesweeperUI.mapMine[row][column].get("number") != -1) {
-                this.minesweeperUI.mapMine[row][column].put("number", -1);
-                i++;
-            }
-        }
-        //记录周围的雷数
+        NoGuessMinesweeper.Board board = NoGuessMinesweeper.generate(
+            this.minesweeperUI.gridRows,
+            this.minesweeperUI.gridColumns,
+            this.minesweeperUI.mineNum,
+            new NoGuessMinesweeper.Point(this.minesweeperUI.gridColumns / 2, this.minesweeperUI.gridRows / 2),
+            new java.util.Random());
         for (int row = 0; row < this.minesweeperUI.gridRows; row++) {
             for (int column = 0; column < this.minesweeperUI.gridColumns; column++) {
-                if (this.minesweeperUI.mapMine[row][column].get("number") != -1) {
-                    this.minesweeperUI.mapMine[row][column].put("number",
-                        this.countMineAround(row, column));
-                }
+                NoGuessMinesweeper.Cell cell = board.cell(column, row);
+                this.minesweeperUI.mapMine[row][column].put("number", cell.isMine() ? -1 : cell.getAdjacent());
             }
         }
     }

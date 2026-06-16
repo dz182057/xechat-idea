@@ -23,6 +23,11 @@ public enum Action {
     GAME,
 
     /**
+     * 扫雷单人服务端生成/操作
+     */
+    MINESWEEPER,
+
+    /**
      * 设置状态
      */
     SET_STATUS,

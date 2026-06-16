@@ -9,6 +9,7 @@ import cn.xeblog.commons.entity.game.GameDTO;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
 
 /**
@@ -25,6 +26,9 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
         }
         if (gameRoom.getGame() == Game.TURTLE_SOUP) {
             TurtleSoupService.handle(user, gameRoom, body);
+            return;
+        }
+        if (gameRoom.getGame() == Game.MINESWEEPER && MinesweeperService.handleRoom(user, gameRoom, body)) {
             return;
         }
 

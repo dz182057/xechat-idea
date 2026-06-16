@@ -63,7 +63,11 @@ public class MinesweeperDTO extends GameDTO {
         SYNC_REQUEST,
         SYNC_SNAPSHOT,
         RESTART_REQUEST,
-        RESTART_RESPONSE
+        RESTART_RESPONSE,
+        SERVER_START_REQUEST,
+        SERVER_START_RESPONSE,
+        SERVER_ACTION_REQUEST,
+        SERVER_ERROR
     }
 
     public enum ActionType {

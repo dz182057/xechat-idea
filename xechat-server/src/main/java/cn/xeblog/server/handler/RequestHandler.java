@@ -79,7 +79,7 @@ public class RequestHandler {
                         Class<? extends GameDTO> subClass = resolveGameSubClass(base == null ? null : base.getGame());
                         body = subClass == GameDTO.class ? base : JSONUtil.toBean(json, subClass);
                     } else {
-                        body = JSONUtil.toBean(body.toString(), ClassUtil.getTypeArgument(produce.getClass()));
+                        body = JSONUtil.toBean(body.toString(), resolveBodyClass(request.getAction(), produce));
                     }
                 } catch (Exception e) {
                     ctx.writeAndFlush(ResponseBuilder.system("消息内容解析异常!"));
@@ -89,6 +89,13 @@ public class RequestHandler {
 
             produce.handle(ctx, body);
         });
+    }
+
+    private static Class<?> resolveBodyClass(Action action, Object produce) {
+        if (action == Action.MINESWEEPER) {
+            return MinesweeperDTO.class;
+        }
+        return ClassUtil.getTypeArgument(produce.getClass());
     }
 
     private static Class<? extends GameDTO> resolveGameSubClass(Game game) {
