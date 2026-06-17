@@ -296,6 +296,7 @@ public final class UserCache {
         dst.setAvatarVersion(src.getAvatarVersion());
         dst.setGuest(src.isGuest());
         dst.setStatus(src.getStatus());
+        dst.setCurrentGame(src.getCurrentGame());
         dst.setShortRegion(src.getShortRegion());
         dst.setRole(src.getRole());
         dst.setPermit(src.getPermit());

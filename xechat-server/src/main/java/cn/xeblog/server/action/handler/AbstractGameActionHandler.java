@@ -49,9 +49,15 @@ public abstract class AbstractGameActionHandler<T extends GameDTO> extends Abstr
                 }
             }
 
-            user.setStatus(UserStatus.FISHING);
-            user.send(ResponseBuilder.build(null, new GameRoomMsgDTO(GameRoomMsgDTO.MsgType.GAME_ERROR, msg), MessageType.GAME_ROOM));
-            ChannelAction.updateUserStatus(user);
+            if (GameRoomCache.getGameRoomByUserId(user.getIdentityKey()) == null) {
+                user.setStatus(UserStatus.FISHING);
+                user.setCurrentGame(null);
+                ChannelAction.updateUserStatus(user);
+            }
+            user.send(ResponseBuilder.build(
+                    null,
+                    new GameRoomMsgDTO(body.getRoomId(), body.getGame(), GameRoomMsgDTO.MsgType.GAME_ERROR, msg),
+                    MessageType.GAME_ROOM));
             return;
         }
 

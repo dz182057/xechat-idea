@@ -75,7 +75,6 @@ public class GameRoomCache {
         }
 
         java.util.Set<User> userSet = ConcurrentHashMap.newKeySet();
-        gameRoom.getInviteUsers().forEach(key -> userSet.addAll(UserCache.getByIdentityKey(key)));
         gameRoom.getUsers().forEach((k, v) -> {
             User player = UserCache.get(v.getChannelId());
             if (player != null) {
@@ -84,11 +83,8 @@ public class GameRoomCache {
         });
         if (userSet.size() > 0) {
             userSet.forEach(player -> {
-                if (gameRoom.isHomeowner(player)) {
-                    return;
-                }
-
                 player.setStatus(UserStatus.FISHING);
+                player.setCurrentGame(null);
                 ChannelAction.updateUserStatus(player);
             });
         }
@@ -127,6 +123,9 @@ public class GameRoomCache {
             if (user.getId() != null) {
                 CONNECTION_ROOM_MAP.put(user.getId(), gameRoom);
             }
+            user.setStatus(UserStatus.PLAYING);
+            user.setCurrentGame(gameRoom.getGame());
+            ChannelAction.updateUserStatus(user);
             return true;
         }
 
@@ -151,6 +150,9 @@ public class GameRoomCache {
             if (user.getId() != null) {
                 CONNECTION_ROOM_MAP.remove(user.getId());
             }
+            user.setStatus(UserStatus.FISHING);
+            user.setCurrentGame(null);
+            ChannelAction.updateUserStatus(user);
             if (gameRoom.getCurrentNums() == 0 || gameRoom.isHomeowner(user)) {
                 removeRoom(gameRoom.getId());
             }
@@ -170,6 +172,12 @@ public class GameRoomCache {
 
     public static GameRoom getGameRoomByConnectionId(String channelId) {
         return CONNECTION_ROOM_MAP.get(channelId);
+    }
+
+    static void clear() {
+        GAME_ROOM_MAP.clear();
+        USER_ROOM_MAP.clear();
+        CONNECTION_ROOM_MAP.clear();
     }
 
 }

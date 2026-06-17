@@ -9,7 +9,10 @@ import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.factory.ObjectFactory;
 import cn.xeblog.server.friend.FriendService;
+import cn.xeblog.server.game.dograce.DogRaceService;
+import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
+import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
 import cn.xeblog.server.service.AbstractResponseHistoryService;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -118,6 +121,17 @@ public class ChannelAction {
 
         GameRoom gameRoom = GameRoomCache.getGameRoomByConnectionId(user.getId());
         if (gameRoom != null) {
+            boolean homeowner = gameRoom.isHomeowner(user);
+            GameRoomMsgDTO msg = new GameRoomMsgDTO(
+                    gameRoom.getId(),
+                    gameRoom.getGame(),
+                    homeowner ? GameRoomMsgDTO.MsgType.ROOM_CLOSE : GameRoomMsgDTO.MsgType.PLAYER_LEFT,
+                    null);
+            Response response = ResponseBuilder.build(user, msg, MessageType.GAME_ROOM);
+            if (homeowner) {
+                gameRoom.getInviteUsers()
+                        .forEach(playerKey -> UserCache.getByIdentityKey(playerKey).forEach(player -> player.send(response)));
+            }
             gameRoom.getUsers().forEach((k, v) -> {
                 if (v.isConnection(user)) {
                     return;
@@ -125,10 +139,10 @@ public class ChannelAction {
 
                 User player = UserCache.get(v.getChannelId());
                 if (player != null) {
-                    player.send(ResponseBuilder.build(user, new GameRoomMsgDTO(GameRoomMsgDTO.MsgType.PLAYER_LEFT, null), MessageType.GAME_ROOM));
+                    player.send(response);
                 }
             });
-            QuickQuizService.clearRoom(gameRoom);
+            clearGameRoomState(gameRoom);
             GameRoomCache.leftRoom(gameRoom.getId(), user);
         }
 
@@ -156,6 +170,13 @@ public class ChannelAction {
                 viewer.send(response);
             }
         }
+    }
+
+    private static void clearGameRoomState(GameRoom gameRoom) {
+        QuickQuizService.clearRoom(gameRoom);
+        MinesweeperService.clearRoom(gameRoom.getId());
+        TurtleSoupService.clearRoom(gameRoom.getId());
+        DogRaceService.clearRoom(gameRoom.getId());
     }
 
 }

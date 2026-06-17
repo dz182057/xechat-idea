@@ -141,20 +141,23 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         Response response = ResponseBuilder.build(player, body, MessageType.GAME_ROOM);
         if (dto.getStatus() == InviteStatus.ACCEPT) {
             if (GameRoomCache.joinRoom(gameRoom.getId(), player)) {
-                player.setStatus(UserStatus.PLAYING);
-                ChannelAction.updateUserStatus(player);
                 dto.setGameRoom(gameRoom);
                 sendMsg(gameRoom, response);
             } else {
-                player.setStatus(UserStatus.FISHING);
-                ChannelAction.updateUserStatus(player);
-                player.send(ResponseBuilder.build(null, new GameRoomMsgDTO(GameRoomMsgDTO.MsgType.GAME_ERROR, "加入游戏失败，游戏房间已满员！"), MessageType.GAME_ROOM));
+                GameInviteResultDTO failed = new GameInviteResultDTO(InviteStatus.FAILED);
+                failed.setPlayerKey(player.getIdentityKey());
+                GameRoomMsgDTO msg = new GameRoomMsgDTO(
+                        gameRoom.getId(),
+                        gameRoom.getGame(),
+                        GameRoomMsgDTO.MsgType.PLAYER_INVITE_RESULT,
+                        failed);
+                Response failedResponse = ResponseBuilder.build(player, msg, MessageType.GAME_ROOM);
+                player.send(failedResponse);
+                if (gameRoom.getHomeowner() != null) {
+                    gameRoom.getHomeowner().send(failedResponse);
+                }
             }
         } else {
-            if (player.getStatus() == UserStatus.PLAYING) {
-                player.setStatus(UserStatus.FISHING);
-                ChannelAction.updateUserStatus(player);
-            }
             // 通知房主
             gameRoom.getHomeowner().send(response);
             if (dto.getStatus() == InviteStatus.TIMEOUT) {
@@ -176,11 +179,14 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
         msg.setGame(gameRoom.getGame());
         msg.setRoomId(gameRoom.getId());
-        if (players.stream().anyMatch(conn -> conn.getStatus() != UserStatus.FISHING)) {
+        GameRoom currentRoom = GameRoomCache.getGameRoomByUserId(player.getIdentityKey());
+        if (currentRoom != null || players.stream().anyMatch(conn -> conn.getStatus() != UserStatus.FISHING)) {
             msg.setMsgType(GameRoomMsgDTO.MsgType.PLAYER_INVITE_RESULT);
             msg.setContent(new GameInviteResultDTO(InviteStatus.REJECT, null, null));
             user.send(ResponseBuilder.build(player, msg, MessageType.GAME_ROOM));
-            user.send(ResponseBuilder.system("人家正在" + player.getStatus().alias() + "呢！就你天天摸鱼？"));
+            String gameName = currentRoom == null ? "" : "《" + currentRoom.getGame().getName() + "》";
+            String statusName = player.getStatus() == null ? "忙" : player.getStatus().alias();
+            user.send(ResponseBuilder.system("人家正在" + gameName + statusName + "呢！就你天天摸鱼？"));
             return;
         }
         if (gameRoom.getInviteUsers().contains(player.getIdentityKey())) {

@@ -2,6 +2,7 @@ package cn.xeblog.commons.entity;
 
 import cn.hutool.core.map.MapUtil;
 import cn.xeblog.commons.constants.IpConstants;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.Permissions;
 import cn.xeblog.commons.enums.Platform;
 import cn.xeblog.commons.enums.UserStatus;
@@ -86,6 +87,13 @@ public class User implements Serializable {
     @Getter
     @Setter
     private UserStatus status;
+
+    /**
+     * 当前正在进行的游戏。仅 status=PLAYING 时用于在线列表展示。
+     */
+    @Getter
+    @Setter
+    private Game currentGame;
 
     /**
      * 地区简称
