@@ -3,13 +3,17 @@ package cn.xeblog.server.game.dogbattle;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
+import cn.xeblog.commons.entity.pet.PetDogDTO;
+import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.enums.Game;
+import cn.xeblog.server.pet.PetProfileService;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 public final class DogBattleService {
 
@@ -27,6 +31,7 @@ public final class DogBattleService {
     private static final double WIND_ACCEL = 0.006;
     private static final int MAX_STEPS = 240;
     private static final Map<String, BattleState> STATES = new ConcurrentHashMap<>();
+    private static Function<GameRoom.Player, PetDogDTO> dogResolver = DogBattleService::resolvePetDog;
 
     private DogBattleService() {
     }
@@ -142,6 +147,14 @@ public final class DogBattleService {
         if (roomId != null) {
             STATES.remove(roomId);
         }
+    }
+
+    static void setDogResolverForTest(Function<GameRoom.Player, PetDogDTO> resolver) {
+        dogResolver = resolver == null ? DogBattleService::resolvePetDog : resolver;
+    }
+
+    static void resetDogResolver() {
+        dogResolver = DogBattleService::resolvePetDog;
     }
 
     private static SimulationResult simulate(
@@ -285,7 +298,7 @@ public final class DogBattleService {
             List<DogBattleDTO.DogBattlePlayerDTO> players = new ArrayList<>();
             int index = 0;
             for (GameRoom.Player player : room.getUsers().values()) {
-                players.add(createPlayer(player, index == 0 ? "LEFT" : "RIGHT"));
+                players.add(createPlayer(player, index == 0 ? "LEFT" : "RIGHT", dogResolver.apply(player)));
                 index++;
                 if (index >= 2) {
                     break;
@@ -377,7 +390,7 @@ public final class DogBattleService {
         }
     }
 
-    private static DogBattleDTO.DogBattlePlayerDTO createPlayer(GameRoom.Player player, String side) {
+    private static DogBattleDTO.DogBattlePlayerDTO createPlayer(GameRoom.Player player, String side, PetDogDTO petDog) {
         DogBattleDTO.DogBattlePlayerDTO dto = new DogBattleDTO.DogBattlePlayerDTO();
         dto.setPlayerKey(player.getId());
         dto.setUsername(player.getUsername());
@@ -385,14 +398,41 @@ public final class DogBattleService {
         dto.setHp(MAX_HP);
         dto.setScore(0);
         dto.setSkillCooldown(0);
-        DogBattleDTO.DogBattleDogDTO dog = new DogBattleDTO.DogBattleDogDTO();
-        dog.setDogId(player.getId() + ":default");
-        dog.setName("默认狗狗");
-        dog.setBreed("native");
-        dog.setSkillLevel(1);
-        dog.setProjectileSkinId("bone");
-        dto.setDog(dog);
+        dto.setDog(toBattleDog(player, petDog));
         return dto;
+    }
+
+    private static PetDogDTO resolvePetDog(GameRoom.Player player) {
+        if (player == null || player.getAccountId() <= 0) {
+            return null;
+        }
+        try {
+            PetProfileDTO profile = PetProfileService.profile(player.getAccountId());
+            if (profile == null || profile.getDogs() == null || profile.getDogs().isEmpty()) {
+                return null;
+            }
+            if (profile.getCompanionDogId() != null) {
+                for (PetDogDTO dog : profile.getDogs()) {
+                    if (profile.getCompanionDogId().equals(dog.getId())) {
+                        return dog;
+                    }
+                }
+            }
+            return profile.getDogs().get(0);
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private static DogBattleDTO.DogBattleDogDTO toBattleDog(GameRoom.Player player, PetDogDTO petDog) {
+        DogBattleDTO.DogBattleDogDTO dog = new DogBattleDTO.DogBattleDogDTO();
+        String breed = petDog == null ? "native" : normalizeBreed(petDog.getBreed());
+        dog.setDogId(petDog == null ? player.getId() + ":default" : petDog.getId());
+        dog.setName(petDog == null ? "默认狗狗" : petDog.getName());
+        dog.setBreed(breed);
+        dog.setSkillLevel(1);
+        dog.setProjectileSkinId(defaultProjectileSkinId(breed));
+        return dog;
     }
 
     private static DogBattleDTO.DogBattlePlayerDTO copyPlayer(DogBattleDTO.DogBattlePlayerDTO player) {
@@ -461,6 +501,42 @@ public final class DogBattleService {
             return roundCount;
         }
         return 3;
+    }
+
+    private static String normalizeBreed(String breed) {
+        if ("shiba".equals(breed)
+                || "corgi".equals(breed)
+                || "golden".equals(breed)
+                || "border_collie".equals(breed)
+                || "greyhound".equals(breed)
+                || "poodle".equals(breed)
+                || "native".equals(breed)
+                || "husky".equals(breed)) {
+            return breed;
+        }
+        return "native";
+    }
+
+    private static String defaultProjectileSkinId(String breed) {
+        switch (breed) {
+            case "corgi":
+                return "corgi_bone";
+            case "golden":
+                return "golden_tennis";
+            case "border_collie":
+                return "training_frisbee";
+            case "greyhound":
+                return "stream_bone_dart";
+            case "poodle":
+                return "bow_toy_ball";
+            case "shiba":
+                return "meme_bone";
+            case "husky":
+                return "slipper";
+            case "native":
+            default:
+                return "bowl_lid";
+        }
     }
 
     private static final class SkillTurn {

@@ -3,8 +3,10 @@ package cn.xeblog.server.game.dogbattle;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
+import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.enums.Game;
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -15,9 +17,15 @@ public class DogBattleServiceTest {
     private final User left = createUser("left-channel", 1001L, "左边狗狗");
     private final User right = createUser("right-channel", 1002L, "右边狗狗");
 
+    @Before
+    public void setUp() {
+        DogBattleService.setDogResolverForTest(player -> null);
+    }
+
     @After
     public void tearDown() {
         DogBattleService.clearRoom(room.getId());
+        DogBattleService.resetDogResolver();
     }
 
     @Test
@@ -177,6 +185,46 @@ public class DogBattleServiceTest {
     }
 
     @Test
+    public void startMatchUsesResolvedBattleDogFromPetProfile() {
+        DogBattleService.setDogResolverForTest(user -> {
+            if (user.getAccountId() == left.getAccountId()) {
+                return petDog("dog-left", "短腿队长", "corgi");
+            }
+            return petDog("dog-right", "二哈教练", "husky");
+        });
+        room.addUser(left);
+        room.addUser(right);
+
+        DogBattleDTO snapshot = startMatch();
+
+        DogBattleDTO.DogBattlePlayerDTO leftPlayer = findPlayer(snapshot, left.getIdentityKey());
+        DogBattleDTO.DogBattlePlayerDTO rightPlayer = findPlayer(snapshot, right.getIdentityKey());
+        assertEquals("dog-left", leftPlayer.getDog().getDogId());
+        assertEquals("短腿队长", leftPlayer.getDog().getName());
+        assertEquals("corgi", leftPlayer.getDog().getBreed());
+        assertEquals("corgi_bone", leftPlayer.getDog().getProjectileSkinId());
+        assertEquals("husky", rightPlayer.getDog().getBreed());
+        assertEquals("slipper", rightPlayer.getDog().getProjectileSkinId());
+    }
+
+    @Test
+    public void corgiSkillReducesDirectHitDamageAsServerAuthority() {
+        DogBattleService.setDogResolverForTest(user -> petDog(user.getId() + "-dog", "柯基", "corgi"));
+        room.addUser(left);
+        room.addUser(right);
+        startMatch();
+
+        DogBattleDTO input = directHitInput();
+        input.setUseSkill(true);
+        DogBattleDTO result = DogBattleService.handleInput(left, room, input);
+
+        assertNotNull(result);
+        assertTrue(result.isUsedSkill());
+        assertEquals("短腿稳投", result.getSkillName());
+        assertEquals(21, result.getHit().getDamage());
+    }
+
+    @Test
     public void rejectSkillWhenDisabledByRoomConfig() {
         room.setDogBattleAllowSkill(false);
         room.addUser(left);
@@ -282,6 +330,15 @@ public class DogBattleServiceTest {
         input.setAngle(0);
         input.setPower(0);
         return input;
+    }
+
+    private static PetDogDTO petDog(String id, String name, String breed) {
+        PetDogDTO dog = new PetDogDTO();
+        dog.setId(id);
+        dog.setName(name);
+        dog.setBreed(breed);
+        dog.setStage("adult");
+        return dog;
     }
 
     private static GameRoom createRoom() {
