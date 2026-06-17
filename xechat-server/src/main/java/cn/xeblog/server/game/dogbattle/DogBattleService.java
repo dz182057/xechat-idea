@@ -21,7 +21,10 @@ public final class DogBattleService {
     private static final int DOG_HEIGHT = 80;
     private static final int MAX_HP = 100;
     private static final int DIRECT_DAMAGE = 24;
+    private static final int CORGI_SKILL_DAMAGE = 21;
+    private static final int OBSTACLE_DAMAGE = 24;
     private static final double GRAVITY = 0.35;
+    private static final double WIND_ACCEL = 0.006;
     private static final int MAX_STEPS = 240;
     private static final Map<String, BattleState> STATES = new ConcurrentHashMap<>();
 
@@ -68,24 +71,45 @@ public final class DogBattleService {
             if (actor == null || target == null) {
                 return null;
             }
+            if (input.isUseSkill() && (!state.allowSkill || actor.getSkillCooldown() > 0)) {
+                return null;
+            }
 
-            SimulationResult simulation = simulate(actor, target, input);
+            SkillTurn skillTurn = SkillTurn.from(actor, input.isUseSkill());
+            SimulationResult simulation = simulate(
+                    actor,
+                    target,
+                    state.obstacles,
+                    skillTurn.effectiveWindPower(state.windPower),
+                    skillTurn.directDamage(),
+                    input
+            );
             if ("DOG".equals(simulation.hit.getTargetType())) {
                 target.setHp(Math.max(0, target.getHp() - simulation.hit.getDamage()));
+            } else if ("OBSTACLE".equals(simulation.hit.getTargetType())) {
+                state.damageObstacle(simulation.hit.getTargetId(), simulation.hit.getDamage());
             }
+            state.updateSkillCooldown(actor, skillTurn);
 
             boolean roundOver = target.getHp() <= 0;
             boolean matchOver = false;
+            String roundWinnerPlayerKey = roundOver ? actor.getPlayerKey() : null;
             String nextPlayerKey = target.getPlayerKey();
             if (roundOver) {
                 actor.setScore(actor.getScore() + 1);
-                matchOver = true;
-                state.matchOver = true;
-                state.winnerPlayerKey = actor.getPlayerKey();
-                nextPlayerKey = null;
+                if (actor.getScore() >= state.requiredWins) {
+                    matchOver = true;
+                    state.matchOver = true;
+                    state.winnerPlayerKey = actor.getPlayerKey();
+                    nextPlayerKey = null;
+                } else {
+                    state.startNextRound(actor.getPlayerKey());
+                    nextPlayerKey = state.currentPlayerKey;
+                }
             } else {
                 state.currentPlayerKey = nextPlayerKey;
                 state.turnNo++;
+                state.windPower = nextWindPower(state.windPower, state.turnNo);
             }
 
             DogBattleDTO result = new DogBattleDTO();
@@ -99,11 +123,15 @@ public final class DogBattleService {
             result.setTrajectory(simulation.trajectory);
             result.setHit(simulation.hit);
             result.setPlayers(state.copyPlayers());
-            result.setObstacles(new ArrayList<>());
+            result.setWind(wind(state.turnNo, state.windPower));
+            result.setObstacles(state.copyObstacles());
             result.setNextPlayerKey(nextPlayerKey);
+            result.setNextWind(matchOver ? null : wind(state.turnNo, state.windPower));
+            result.setUsedSkill(skillTurn.used);
+            result.setSkillName(skillTurn.skillName);
             result.setRoundOver(roundOver);
             result.setMatchOver(matchOver);
-            result.setWinnerPlayerKey(state.winnerPlayerKey);
+            result.setWinnerPlayerKey(roundWinnerPlayerKey != null ? roundWinnerPlayerKey : state.winnerPlayerKey);
             result.setPhase(matchOver ? "matchOver" : roundOver ? "roundOver" : "playing");
 
             return result;
@@ -119,6 +147,9 @@ public final class DogBattleService {
     private static SimulationResult simulate(
             DogBattleDTO.DogBattlePlayerDTO actor,
             DogBattleDTO.DogBattlePlayerDTO target,
+            List<DogBattleDTO.DogBattleObstacleDTO> obstacles,
+            int windPower,
+            int directDamage,
             DogBattleDTO input
     ) {
         int angle = clamp(input.getAngle(), 0, 90);
@@ -135,6 +166,7 @@ public final class DogBattleService {
 
         DogBattleDTO.DogBattleHitDTO hit = null;
         for (int step = 0; step < MAX_STEPS; step++) {
+            vx += windPower * WIND_ACCEL;
             vy += GRAVITY;
             x += vx;
             y += vy;
@@ -142,8 +174,13 @@ public final class DogBattleService {
                 trajectory.add(point(x, y));
             }
 
+            DogBattleDTO.DogBattleObstacleDTO obstacle = findObstacle(x, y, obstacles);
+            if (obstacle != null) {
+                hit = hit("OBSTACLE", obstacle.getId(), x, y, false, OBSTACLE_DAMAGE);
+                break;
+            }
             if (inDogBox(x, y, target)) {
-                hit = hit("DOG", target.getPlayerKey(), x, y, true, DIRECT_DAMAGE);
+                hit = hit("DOG", target.getPlayerKey(), x, y, true, directDamage);
                 break;
             }
             if (y >= GROUND_Y) {
@@ -160,6 +197,25 @@ public final class DogBattleService {
         }
         trajectory.add(point(hit.getX(), hit.getY()));
         return new SimulationResult(trajectory, hit);
+    }
+
+    private static DogBattleDTO.DogBattleObstacleDTO findObstacle(
+            double x,
+            double y,
+            List<DogBattleDTO.DogBattleObstacleDTO> obstacles
+    ) {
+        for (DogBattleDTO.DogBattleObstacleDTO obstacle : obstacles) {
+            if (obstacle.isDestroyed()) {
+                continue;
+            }
+            if (x >= obstacle.getX()
+                    && x <= obstacle.getX() + obstacle.getWidth()
+                    && y >= obstacle.getY()
+                    && y <= obstacle.getY() + obstacle.getHeight()) {
+                return obstacle;
+            }
+        }
+        return null;
     }
 
     private static boolean inDogBox(double x, double y, DogBattleDTO.DogBattlePlayerDTO player) {
@@ -201,16 +257,25 @@ public final class DogBattleService {
 
     private static final class BattleState {
         private final List<DogBattleDTO.DogBattlePlayerDTO> players;
+        private final int roundCount;
+        private final int requiredWins;
+        private final boolean allowSkill;
         private final LinkedHashSet<String> startedPlayerKeys = new LinkedHashSet<>();
+        private final List<DogBattleDTO.DogBattleObstacleDTO> obstacles = new ArrayList<>();
         private int roundNo = 1;
         private int turnNo = 1;
+        private int windPower;
         private boolean started;
         private boolean matchOver;
         private String currentPlayerKey;
         private String winnerPlayerKey;
 
-        private BattleState(List<DogBattleDTO.DogBattlePlayerDTO> players) {
+        private BattleState(List<DogBattleDTO.DogBattlePlayerDTO> players, int roundCount, boolean allowSkill) {
             this.players = players;
+            this.roundCount = normalizeRoundCount(roundCount);
+            this.requiredWins = this.roundCount / 2 + 1;
+            this.allowSkill = allowSkill;
+            this.obstacles.addAll(generateObstacles(roundNo));
             if (!players.isEmpty()) {
                 this.currentPlayerKey = players.get(0).getPlayerKey();
             }
@@ -226,7 +291,7 @@ public final class DogBattleService {
                     break;
                 }
             }
-            return new BattleState(players);
+            return new BattleState(players, room.getDogBattleRoundCount(), room.isDogBattleAllowSkill());
         }
 
         private DogBattleDTO toSnapshot(GameRoom room, String event) {
@@ -239,11 +304,46 @@ public final class DogBattleService {
             snapshot.setTurnNo(turnNo);
             snapshot.setCurrentPlayerKey(currentPlayerKey);
             snapshot.setPlayers(copyPlayers());
-            snapshot.setWind(wind(turnNo));
-            snapshot.setObstacles(new ArrayList<>());
+            snapshot.setWind(wind(turnNo, windPower));
+            snapshot.setObstacles(copyObstacles());
             snapshot.setPhase("playing");
             snapshot.setWinnerPlayerKey(winnerPlayerKey);
             return snapshot;
+        }
+
+        private void startNextRound(String firstPlayerKey) {
+            roundNo++;
+            turnNo = 1;
+            windPower = 0;
+            currentPlayerKey = firstPlayerKey;
+            winnerPlayerKey = null;
+            for (DogBattleDTO.DogBattlePlayerDTO player : players) {
+                player.setHp(MAX_HP);
+            }
+            obstacles.clear();
+            obstacles.addAll(generateObstacles(roundNo));
+        }
+
+        private void damageObstacle(String obstacleId, int damage) {
+            for (DogBattleDTO.DogBattleObstacleDTO obstacle : obstacles) {
+                if (!obstacle.getId().equals(obstacleId) || !obstacle.isDestructible()) {
+                    continue;
+                }
+                int nextHp = Math.max(0, (obstacle.getHp() == null ? 0 : obstacle.getHp()) - damage);
+                obstacle.setHp(nextHp);
+                obstacle.setDestroyed(nextHp <= 0);
+                return;
+            }
+        }
+
+        private void updateSkillCooldown(DogBattleDTO.DogBattlePlayerDTO actor, SkillTurn skillTurn) {
+            if (skillTurn.used) {
+                actor.setSkillCooldown(skillTurn.cooldown);
+                return;
+            }
+            if (actor.getSkillCooldown() > 0) {
+                actor.setSkillCooldown(actor.getSkillCooldown() - 1);
+            }
         }
 
         private DogBattleDTO.DogBattlePlayerDTO findPlayer(String playerKey) {
@@ -264,6 +364,14 @@ public final class DogBattleService {
             List<DogBattleDTO.DogBattlePlayerDTO> copy = new ArrayList<>();
             for (DogBattleDTO.DogBattlePlayerDTO player : players) {
                 copy.add(copyPlayer(player));
+            }
+            return copy;
+        }
+
+        private List<DogBattleDTO.DogBattleObstacleDTO> copyObstacles() {
+            List<DogBattleDTO.DogBattleObstacleDTO> copy = new ArrayList<>();
+            for (DogBattleDTO.DogBattleObstacleDTO obstacle : obstacles) {
+                copy.add(copyObstacle(obstacle));
             }
             return copy;
         }
@@ -299,6 +407,20 @@ public final class DogBattleService {
         return copy;
     }
 
+    private static DogBattleDTO.DogBattleObstacleDTO copyObstacle(DogBattleDTO.DogBattleObstacleDTO obstacle) {
+        DogBattleDTO.DogBattleObstacleDTO copy = new DogBattleDTO.DogBattleObstacleDTO();
+        copy.setId(obstacle.getId());
+        copy.setType(obstacle.getType());
+        copy.setX(obstacle.getX());
+        copy.setY(obstacle.getY());
+        copy.setWidth(obstacle.getWidth());
+        copy.setHeight(obstacle.getHeight());
+        copy.setHp(obstacle.getHp());
+        copy.setDestructible(obstacle.isDestructible());
+        copy.setDestroyed(obstacle.isDestroyed());
+        return copy;
+    }
+
     private static DogBattleDTO.DogBattleConfigDTO config(GameRoom room) {
         DogBattleDTO.DogBattleConfigDTO config = new DogBattleDTO.DogBattleConfigDTO();
         config.setRoundCount(room.getDogBattleRoundCount());
@@ -306,11 +428,107 @@ public final class DogBattleService {
         return config;
     }
 
-    private static DogBattleDTO.DogBattleWindDTO wind(int turnNo) {
+    private static List<DogBattleDTO.DogBattleObstacleDTO> generateObstacles(int roundNo) {
+        List<DogBattleDTO.DogBattleObstacleDTO> obstacles = new ArrayList<>();
+        DogBattleDTO.DogBattleObstacleDTO woodBox = new DogBattleDTO.DogBattleObstacleDTO();
+        woodBox.setId("wood-box-" + roundNo);
+        woodBox.setType("WOOD_BOX");
+        woodBox.setX(470);
+        woodBox.setY(390);
+        woodBox.setWidth(60);
+        woodBox.setHeight(110);
+        woodBox.setHp(30);
+        woodBox.setDestructible(true);
+        woodBox.setDestroyed(false);
+        obstacles.add(woodBox);
+        return obstacles;
+    }
+
+    private static DogBattleDTO.DogBattleWindDTO wind(int turnNo, int power) {
         DogBattleDTO.DogBattleWindDTO wind = new DogBattleDTO.DogBattleWindDTO();
         wind.setTurnNo(turnNo);
-        wind.setPower(0);
+        wind.setPower(power);
         return wind;
+    }
+
+    private static int nextWindPower(int currentWind, int nextTurnNo) {
+        int delta = nextTurnNo % 3 - 1;
+        return clamp(currentWind + delta, -5, 5);
+    }
+
+    private static int normalizeRoundCount(int roundCount) {
+        if (roundCount == 1 || roundCount == 3 || roundCount == 5 || roundCount == 7) {
+            return roundCount;
+        }
+        return 3;
+    }
+
+    private static final class SkillTurn {
+        private final boolean used;
+        private final String skillName;
+        private final String breed;
+        private final int cooldown;
+
+        private SkillTurn(boolean used, String skillName, String breed, int cooldown) {
+            this.used = used;
+            this.skillName = skillName;
+            this.breed = breed;
+            this.cooldown = cooldown;
+        }
+
+        private static SkillTurn from(DogBattleDTO.DogBattlePlayerDTO actor, boolean useSkill) {
+            String breed = actor.getDog() == null ? "native" : actor.getDog().getBreed();
+            if (!useSkill) {
+                return new SkillTurn(false, null, breed, 0);
+            }
+            return new SkillTurn(true, skillName(breed), breed, skillCooldown(breed));
+        }
+
+        private int effectiveWindPower(int windPower) {
+            if (used && "native".equals(breed)) {
+                return (int) Math.round(windPower * 0.75);
+            }
+            return windPower;
+        }
+
+        private int directDamage() {
+            if (used && "corgi".equals(breed)) {
+                return CORGI_SKILL_DAMAGE;
+            }
+            return DIRECT_DAMAGE;
+        }
+
+        private static int skillCooldown(String breed) {
+            if ("golden".equals(breed) || "greyhound".equals(breed) || "poodle".equals(breed)) {
+                return 4;
+            }
+            if ("shiba".equals(breed) || "husky".equals(breed)) {
+                return 5;
+            }
+            return 3;
+        }
+
+        private static String skillName(String breed) {
+            switch (breed) {
+                case "corgi":
+                    return "短腿稳投";
+                case "golden":
+                    return "金球回收";
+                case "border_collie":
+                    return "牧羊测风";
+                case "greyhound":
+                    return "疾影抛射";
+                case "poodle":
+                    return "蓬松缓冲";
+                case "shiba":
+                    return "表情包反击";
+                case "husky":
+                    return "二哈乱抛";
+                case "native":
+                default:
+                    return "土狗识路";
+            }
+        }
     }
 
     private static final class SimulationResult {

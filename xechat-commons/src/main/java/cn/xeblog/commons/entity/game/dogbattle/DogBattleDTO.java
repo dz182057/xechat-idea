@@ -26,6 +26,9 @@ public class DogBattleDTO extends GameDTO {
     private List<DogBattleTrajectoryPointDTO> trajectory;
     private DogBattleHitDTO hit;
     private String nextPlayerKey;
+    private DogBattleWindDTO nextWind;
+    private boolean usedSkill;
+    private String skillName;
     private boolean roundOver;
     private boolean matchOver;
 
