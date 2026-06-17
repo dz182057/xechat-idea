@@ -46,6 +46,11 @@ public class CreateGameRoomDTO implements Serializable {
      */
     private String turtleSoupHostMode;
 
+    /**
+     * 狗狗赛跑模式：pure_betting / owned_dog
+     */
+    private String dogRaceMode;
+
     public CreateGameRoomDTO(Game game, int nums, String gameMode) {
         this.game = game;
         this.nums = nums;

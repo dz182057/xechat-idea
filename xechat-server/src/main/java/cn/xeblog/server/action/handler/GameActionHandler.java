@@ -9,6 +9,7 @@ import cn.xeblog.commons.entity.game.GameDTO;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.game.dograce.DogRaceService;
 import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
 
@@ -29,6 +30,10 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
             return;
         }
         if (gameRoom.getGame() == Game.MINESWEEPER && MinesweeperService.handleRoom(user, gameRoom, body)) {
+            return;
+        }
+        if (gameRoom.getGame() == Game.DOG_RACE) {
+            DogRaceService.handle(user, gameRoom, body);
             return;
         }
 

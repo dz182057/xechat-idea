@@ -82,6 +82,7 @@ public final class DbInitializer {
             ensureQuickQuizTables();
             ensureTurtleSoupTables();
             ensurePushSubscriptionTable();
+            ensurePetTables();
 
             log.info("账号体系数据库就绪: {}", GlobalConfig.DB_PATH);
         } catch (Exception e) {
@@ -335,6 +336,46 @@ public final class DbInitializer {
                         ")");
                 st.execute("CREATE INDEX IF NOT EXISTS idx_push_subscriptions_account " +
                         "ON push_subscriptions(account_id)");
+            }
+        }
+    }
+
+    /**
+     * 给已有数据库补齐狗狗宇宙最小资料表。
+     */
+    private static void ensurePetTables() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE IF NOT EXISTS pet_assets (" +
+                        "account_id INTEGER PRIMARY KEY," +
+                        "bones INTEGER NOT NULL DEFAULT 100," +
+                        "food INTEGER NOT NULL DEFAULT 0," +
+                        "makeup_cards INTEGER NOT NULL DEFAULT 0," +
+                        "dog_slots INTEGER NOT NULL DEFAULT 1," +
+                        "energy_limit INTEGER NOT NULL DEFAULT 10," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_dogs (" +
+                        "id TEXT PRIMARY KEY," +
+                        "account_id INTEGER NOT NULL," +
+                        "name TEXT NOT NULL," +
+                        "breed TEXT NOT NULL," +
+                        "stage TEXT NOT NULL," +
+                        "speed INTEGER NOT NULL," +
+                        "stamina INTEGER NOT NULL," +
+                        "burst INTEGER NOT NULL," +
+                        "wisdom INTEGER NOT NULL," +
+                        "bond INTEGER NOT NULL," +
+                        "energy INTEGER NOT NULL," +
+                        "status TEXT NOT NULL," +
+                        "race_count INTEGER NOT NULL DEFAULT 0," +
+                        "race_first_count INTEGER NOT NULL DEFAULT 0," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_dogs_account ON pet_dogs(account_id)");
             }
         }
     }

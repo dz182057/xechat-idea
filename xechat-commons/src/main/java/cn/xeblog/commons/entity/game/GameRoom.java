@@ -52,6 +52,11 @@ public class GameRoom implements Serializable {
     private String turtleSoupHostMode;
 
     /**
+     * 狗狗赛跑模式：pure_betting / owned_dog
+     */
+    private String dogRaceMode;
+
+    /**
      * 房主
      */
     private User homeowner;

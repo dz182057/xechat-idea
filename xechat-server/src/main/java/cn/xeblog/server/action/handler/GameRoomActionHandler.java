@@ -7,6 +7,7 @@ import cn.xeblog.commons.entity.game.GameInviteResultDTO;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.GameRoomMsgDTO;
 import cn.xeblog.commons.enums.Action;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.InviteStatus;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.UserStatus;
@@ -15,6 +16,7 @@ import cn.xeblog.server.annotation.DoAction;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.game.dograce.DogRaceService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
 import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
@@ -57,6 +59,9 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                 gameRoom.getUsers().forEach((k, v) -> v.setReadied(false));
                 body.setContent(gameRoom);
                 sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                if (gameRoom.getGame() == Game.DOG_RACE) {
+                    DogRaceService.startRace(gameRoom);
+                }
                 break;
             case PLAYER_READY:
                 if (gameRoom.readied(user)) {
@@ -99,6 +104,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         QuickQuizService.clearRoom(gameRoom);
         MinesweeperService.clearRoom(gameRoom.getId());
         TurtleSoupService.clearRoom(gameRoom.getId());
+        DogRaceService.clearRoom(gameRoom.getId());
 
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
         msg.setRoomId(gameRoom.getId());
@@ -196,6 +202,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             QuickQuizService.clearRoom(gameRoom);
             MinesweeperService.clearRoom(gameRoom.getId());
             TurtleSoupService.clearRoom(gameRoom.getId());
+            DogRaceService.clearRoom(gameRoom.getId());
             Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);
             sendMsg(gameRoom, resp);
             if (gameRoom.isHomeowner(user)) {

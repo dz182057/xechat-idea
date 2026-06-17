@@ -170,3 +170,36 @@ CREATE TABLE IF NOT EXISTS quick_quiz_records (
 );
 CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_player ON quick_quiz_records(player_key, question_id);
 CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question ON quick_quiz_records(room_id, question_id);
+
+-- 狗狗宇宙个人资产
+CREATE TABLE IF NOT EXISTS pet_assets (
+    account_id     INTEGER PRIMARY KEY,
+    bones          INTEGER NOT NULL DEFAULT 100,
+    food           INTEGER NOT NULL DEFAULT 0,
+    makeup_cards   INTEGER NOT NULL DEFAULT 0,
+    dog_slots      INTEGER NOT NULL DEFAULT 1,
+    energy_limit   INTEGER NOT NULL DEFAULT 10,
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL
+);
+
+-- 狗狗宇宙狗狗资料
+CREATE TABLE IF NOT EXISTS pet_dogs (
+    id               TEXT PRIMARY KEY,
+    account_id       INTEGER NOT NULL,
+    name             TEXT NOT NULL,
+    breed            TEXT NOT NULL,
+    stage            TEXT NOT NULL,
+    speed            INTEGER NOT NULL,
+    stamina          INTEGER NOT NULL,
+    burst            INTEGER NOT NULL,
+    wisdom           INTEGER NOT NULL,
+    bond             INTEGER NOT NULL,
+    energy           INTEGER NOT NULL,
+    status           TEXT NOT NULL,
+    race_count       INTEGER NOT NULL DEFAULT 0,
+    race_first_count INTEGER NOT NULL DEFAULT 0,
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pet_dogs_account ON pet_dogs(account_id);
