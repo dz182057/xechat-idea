@@ -54,4 +54,12 @@ public class MinesweeperTest {
         Assert.assertEquals(30, hard.cols);
         Assert.assertEquals(99, hard.mines);
     }
+
+    @Test
+    public void coopLastActionCellShouldMatchSameCoordinateOnly() {
+        Assert.assertTrue(Minesweeper.isCoopLastActionCell(2, 3, 2, 3));
+        Assert.assertFalse(Minesweeper.isCoopLastActionCell(2, 3, 3, 2));
+        Assert.assertFalse(Minesweeper.isCoopLastActionCell(2, 3, null, 3));
+        Assert.assertFalse(Minesweeper.isCoopLastActionCell(2, 3, 2, null));
+    }
 }

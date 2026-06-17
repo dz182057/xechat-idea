@@ -103,6 +103,12 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
 
     private String coopHostPlayerKey;
 
+    private Integer coopLastActionX;
+
+    private Integer coopLastActionY;
+
+    private String coopLastActionActorKey;
+
     private boolean coopBoardGenerated;
 
     private boolean coopRoundActive;
@@ -450,7 +456,10 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         if (result.openedCount > 0 && result.phase == MinesweeperDTO.Phase.playing) {
             coopTurnPlayerKey = getOtherPlayerKey(actorKey);
         }
-        sendCoopState(result, actorKey);
+        coopLastActionX = body.getX();
+        coopLastActionY = body.getY();
+        coopLastActionActorKey = actorKey;
+        sendCoopState(result, actorKey, body.getX(), body.getY());
         updateCoopStatus(result.phase, result.hitMine, result.won);
         renderCoopGrid();
     }
@@ -472,6 +481,14 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
             coopRoundActive = false;
             coopPhase = MinesweeperDTO.Phase.playing;
             coopStartedAt = System.currentTimeMillis();
+            coopLastActionX = null;
+            coopLastActionY = null;
+            coopLastActionActorKey = null;
+        }
+        if (body.getX() != null && body.getY() != null) {
+            coopLastActionX = body.getX();
+            coopLastActionY = body.getY();
+            coopLastActionActorKey = body.getActorKey();
         }
         if (body.getNextTurnPlayerKey() != null) {
             coopTurnPlayerKey = body.getNextTurnPlayerKey();
@@ -881,6 +898,10 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
     }
 
     private void sendCoopState(OpenResult result, String actorKey) {
+        sendCoopState(result, actorKey, null, null);
+    }
+
+    private void sendCoopState(OpenResult result, String actorKey, Integer x, Integer y) {
         MinesweeperDTO dto = new MinesweeperDTO();
         dto.setGame(Game.MINESWEEPER);
         dto.setEvent(result.phase == MinesweeperDTO.Phase.playing
@@ -891,6 +912,8 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         dto.setMines(coopMines);
         dto.setCells(toVisibleCells(result.phase != MinesweeperDTO.Phase.playing));
         dto.setActorKey(actorKey);
+        dto.setX(x);
+        dto.setY(y);
         dto.setNextTurnPlayerKey(coopTurnPlayerKey);
         dto.setPhase(result.phase);
         dto.setOpenedCount(result.openedCount);
@@ -1020,6 +1043,10 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
         return new ConcealedToolbarLabels("Debug", "R", sharedMarkMode ? "M*" : "M", "V");
     }
 
+    static boolean isCoopLastActionCell(int x, int y, Integer lastX, Integer lastY) {
+        return lastX != null && lastY != null && lastX == x && lastY == y;
+    }
+
     static class ConcealedToolbarLabels {
         final String title;
         final String restart;
@@ -1145,19 +1172,30 @@ public class Minesweeper extends AbstractGame<MinesweeperDTO> {
 
     private void styleCoopButton(JButton button, CoopCell cell) {
         button.setFocusPainted(false);
+        boolean opponentLastAction = isCoopLastActionCell(cell.x, cell.y, coopLastActionX, coopLastActionY)
+                && (coopLastActionActorKey == null || !coopLastActionActorKey.equals(getMyPlayerKey()));
         if (!coopConcealedMode) {
             button.setOpaque(true);
             if (cell.opened) {
                 button.setBackground(cell.exploded ? new Color(255, 190, 190) : new Color(238, 238, 238));
             }
+            if (opponentLastAction) {
+                button.setBorder(BorderFactory.createLineBorder(new Color(37, 99, 235), 2));
+                button.setToolTipText("对方上一手");
+            }
             return;
         }
-        button.setBorder(BorderFactory.createEmptyBorder());
-        button.setBorderPainted(false);
+        button.setBorder(opponentLastAction
+                ? BorderFactory.createLineBorder(new Color(37, 99, 235), 2)
+                : BorderFactory.createEmptyBorder());
+        button.setBorderPainted(opponentLastAction);
         button.setContentAreaFilled(false);
         button.setOpaque(false);
         button.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
         button.setForeground(Color.BLACK);
+        if (opponentLastAction) {
+            button.setToolTipText("对方上一手");
+        }
     }
 
     private void styleCoopToolbar() {
