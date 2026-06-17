@@ -66,7 +66,8 @@ public final class MinesweeperService {
         if (dto.getEvent() != MinesweeperDTO.Event.SERVER_ACTION_REQUEST) {
             return;
         }
-        RoomState state = STATES.computeIfAbsent(singleKey(user), key -> createState(dto, singleKey(user), null));
+        RoomState state = STATES.compute(singleKey(user), (key, oldState) ->
+                shouldRecreateState(oldState, dto) ? createState(dto, key, null) : oldState);
         OpenResult result = applyAction(state, dto);
         user.send(ResponseBuilder.build(null, stateEvent(state, result, true), MessageType.GAME));
     }
@@ -121,6 +122,16 @@ public final class MinesweeperService {
         state.phase = MinesweeperDTO.Phase.playing;
         state.nextTurnPlayerKey = nextTurnPlayerKey;
         return state;
+    }
+
+    private static boolean shouldRecreateState(RoomState state, MinesweeperDTO dto) {
+        if (state == null || state.phase != MinesweeperDTO.Phase.playing) {
+            return true;
+        }
+        int rows = normalizeRows(dto.getRows());
+        int cols = normalizeCols(dto.getCols());
+        int mines = normalizeMines(rows, cols, dto.getMines());
+        return state.rows != rows || state.cols != cols || state.mines != mines;
     }
 
     private static OpenResult applyAction(RoomState state, MinesweeperDTO dto) {
