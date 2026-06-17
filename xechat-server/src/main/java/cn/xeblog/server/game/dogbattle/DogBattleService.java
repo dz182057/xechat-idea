@@ -9,6 +9,7 @@ import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.pet.PetProfileService;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,7 @@ public final class DogBattleService {
     private static final int MAX_STEPS = 240;
     private static final Map<String, BattleState> STATES = new ConcurrentHashMap<>();
     private static Function<GameRoom.Player, PetDogDTO> dogResolver = DogBattleService::resolvePetDog;
+    private static RewardApplier rewardApplier = PetProfileService::addDogBattleReward;
 
     private DogBattleService() {
     }
@@ -117,6 +119,7 @@ public final class DogBattleService {
                     matchOver = true;
                     state.matchOver = true;
                     state.winnerPlayerKey = actor.getPlayerKey();
+                    state.applyReward(actor.getPlayerKey(), target.getPlayerKey());
                     nextPlayerKey = null;
                 } else {
                     state.startNextRound(actor.getPlayerKey());
@@ -148,7 +151,7 @@ public final class DogBattleService {
             result.setRoundOver(roundOver);
             result.setMatchOver(matchOver);
             result.setWinnerPlayerKey(roundWinnerPlayerKey != null ? roundWinnerPlayerKey : state.winnerPlayerKey);
-            result.setRewardPreview(matchOver ? rewardPreview(state.winnerPlayerKey) : null);
+            result.setRewardPreview(matchOver ? rewardPreview(state.winnerPlayerKey, state.rewardApplied) : null);
             result.setPhase(matchOver ? "matchOver" : roundOver ? "roundOver" : "playing");
 
             return result;
@@ -167,6 +170,14 @@ public final class DogBattleService {
 
     static void resetDogResolver() {
         dogResolver = DogBattleService::resolvePetDog;
+    }
+
+    static void setRewardApplierForTest(RewardApplier applier) {
+        rewardApplier = applier == null ? PetProfileService::addDogBattleReward : applier;
+    }
+
+    static void resetRewardApplier() {
+        rewardApplier = PetProfileService::addDogBattleReward;
     }
 
     private static SimulationResult simulate(
@@ -299,6 +310,7 @@ public final class DogBattleService {
 
     private static final class BattleState {
         private final List<DogBattleDTO.DogBattlePlayerDTO> players;
+        private final Map<String, Long> accountIds;
         private final int roundCount;
         private final int requiredWins;
         private final boolean allowSkill;
@@ -309,12 +321,19 @@ public final class DogBattleService {
         private int windPower;
         private boolean started;
         private boolean matchOver;
+        private boolean rewardApplied;
         private String currentPlayerKey;
         private String winnerPlayerKey;
         private String poodleGuardPlayerKey;
 
-        private BattleState(List<DogBattleDTO.DogBattlePlayerDTO> players, int roundCount, boolean allowSkill) {
+        private BattleState(
+                List<DogBattleDTO.DogBattlePlayerDTO> players,
+                Map<String, Long> accountIds,
+                int roundCount,
+                boolean allowSkill
+        ) {
             this.players = players;
+            this.accountIds = accountIds;
             this.roundCount = normalizeRoundCount(roundCount);
             this.requiredWins = this.roundCount / 2 + 1;
             this.allowSkill = allowSkill;
@@ -326,15 +345,17 @@ public final class DogBattleService {
 
         private static BattleState from(GameRoom room) {
             List<DogBattleDTO.DogBattlePlayerDTO> players = new ArrayList<>();
+            Map<String, Long> accountIds = new LinkedHashMap<>();
             int index = 0;
             for (GameRoom.Player player : room.getUsers().values()) {
                 players.add(createPlayer(player, index == 0 ? "LEFT" : "RIGHT", dogResolver.apply(player)));
+                accountIds.put(player.getId(), player.getAccountId());
                 index++;
                 if (index >= 2) {
                     break;
                 }
             }
-            return new BattleState(players, room.getDogBattleRoundCount(), room.isDogBattleAllowSkill());
+            return new BattleState(players, accountIds, room.getDogBattleRoundCount(), room.isDogBattleAllowSkill());
         }
 
         private DogBattleDTO toSnapshot(GameRoom room, String event) {
@@ -377,6 +398,18 @@ public final class DogBattleService {
                 obstacle.setDestroyed(nextHp <= 0);
                 return;
             }
+        }
+
+        private void applyReward(String winnerPlayerKey, String loserPlayerKey) {
+            if (rewardApplied) {
+                return;
+            }
+            Long winnerAccountId = accountIds.get(winnerPlayerKey);
+            Long loserAccountId = accountIds.get(loserPlayerKey);
+            if (winnerAccountId == null || loserAccountId == null) {
+                return;
+            }
+            rewardApplied = rewardApplier.apply(winnerAccountId, loserAccountId, WINNER_REWARD_BONES, LOSER_REWARD_BONES);
         }
 
         private void applyDefensiveSkill(DogBattleDTO.DogBattlePlayerDTO target, DogBattleDTO.DogBattleHitDTO hit) {
@@ -555,12 +588,12 @@ public final class DogBattleService {
         return wind;
     }
 
-    private static DogBattleDTO.DogBattleRewardPreviewDTO rewardPreview(String winnerPlayerKey) {
+    private static DogBattleDTO.DogBattleRewardPreviewDTO rewardPreview(String winnerPlayerKey, boolean economyApplied) {
         DogBattleDTO.DogBattleRewardPreviewDTO rewardPreview = new DogBattleDTO.DogBattleRewardPreviewDTO();
         rewardPreview.setWinnerPlayerKey(winnerPlayerKey);
         rewardPreview.setWinnerBones(WINNER_REWARD_BONES);
         rewardPreview.setLoserBones(LOSER_REWARD_BONES);
-        rewardPreview.setEconomyApplied(false);
+        rewardPreview.setEconomyApplied(economyApplied);
         return rewardPreview;
     }
 
@@ -729,5 +762,9 @@ public final class DogBattleService {
             this.trajectory = trajectory;
             this.hit = hit;
         }
+    }
+
+    interface RewardApplier {
+        boolean apply(long winnerAccountId, long loserAccountId, int winnerBones, int loserBones);
     }
 }

@@ -26,6 +26,7 @@ public class DogBattleServiceTest {
     public void tearDown() {
         DogBattleService.clearRoom(room.getId());
         DogBattleService.resetDogResolver();
+        DogBattleService.resetRewardApplier();
     }
 
     @Test
@@ -391,7 +392,16 @@ public class DogBattleServiceTest {
     }
 
     @Test
-    public void matchOverIncludesRewardPreviewWithoutApplyingEconomy() {
+    public void matchOverAppliesRewardOnceAndIncludesRewardPreview() {
+        final int[] rewardCalls = {0};
+        DogBattleService.setRewardApplierForTest((winnerAccountId, loserAccountId, winnerBones, loserBones) -> {
+            rewardCalls[0]++;
+            assertEquals(left.getAccountId(), winnerAccountId);
+            assertEquals(right.getAccountId(), loserAccountId);
+            assertEquals(8, winnerBones);
+            assertEquals(3, loserBones);
+            return true;
+        });
         room.setDogBattleRoundCount(1);
         room.addUser(left);
         room.addUser(right);
@@ -417,7 +427,11 @@ public class DogBattleServiceTest {
         assertEquals(left.getIdentityKey(), result.getRewardPreview().getWinnerPlayerKey());
         assertEquals(8, result.getRewardPreview().getWinnerBones());
         assertEquals(3, result.getRewardPreview().getLoserBones());
-        assertFalse(result.getRewardPreview().isEconomyApplied());
+        assertTrue(result.getRewardPreview().isEconomyApplied());
+        assertEquals(1, rewardCalls[0]);
+
+        assertNull(DogBattleService.handleInput(left, room, directHitInput()));
+        assertEquals(1, rewardCalls[0]);
     }
 
     @Test

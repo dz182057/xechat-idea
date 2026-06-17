@@ -227,6 +227,26 @@ public final class PetProfileService {
         }
     }
 
+    public static boolean addDogBattleReward(long winnerAccountId, long loserAccountId, int winnerBones, int loserBones) {
+        if (winnerAccountId <= 0 || loserAccountId <= 0 || winnerBones < 0 || loserBones < 0) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            ensureAssets(session, winnerAccountId);
+            ensureAssets(session, loserAccountId);
+            PetAssetsMapper mapper = session.getMapper(PetAssetsMapper.class);
+            if (winnerBones > 0 && mapper.addBones(winnerAccountId, winnerBones, now) <= 0) {
+                return false;
+            }
+            if (loserBones > 0 && mapper.addBones(loserAccountId, loserBones, now) <= 0) {
+                return false;
+            }
+            session.commit();
+            return true;
+        }
+    }
+
     public static PetProfileDTO adopt(long accountId, PetAdoptDTO request) {
         synchronized (accountLock(accountId)) {
             return adoptLocked(accountId, request);
