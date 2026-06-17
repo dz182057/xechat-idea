@@ -73,6 +73,67 @@ public class MinesweeperServiceTest {
         }
     }
 
+    @Test
+    public void roomApprovedRestartShouldClearTurnStateBeforeNextAction() {
+        User homeowner = user("home-channel-restart", 9201L, "home-restart");
+        User opponent = user("opponent-channel-restart", 9202L, "opponent-restart");
+        UserCache.add(homeowner.getId(), homeowner);
+        UserCache.add(opponent.getId(), opponent);
+        GameRoom room = room("minesweeper-room-restart-test", homeowner, opponent);
+        MinesweeperService.clearRoom(room.getId());
+        try {
+            MinesweeperDTO firstAction = actionRequest(room.getId(), 9, 9, 10, 4, 4);
+            firstAction.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, firstAction);
+            drain(homeowner);
+            drain(opponent);
+
+            MinesweeperDTO restart = new MinesweeperDTO(room.getId());
+            restart.setEvent(MinesweeperDTO.Event.RESTART_RESPONSE);
+            restart.setRestartApproved(true);
+            restart.setActorKey(opponent.getIdentityKey());
+            Assert.assertFalse(MinesweeperService.handleRoom(opponent, room, restart));
+
+            MinesweeperDTO restartedAction = actionRequest(room.getId(), 9, 9, 10, 4, 4);
+            restartedAction.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, restartedAction);
+            MinesweeperDTO restartedResponse = gameBody(readResponse(homeowner));
+
+            Assert.assertEquals(Integer.valueOf(9), restartedResponse.getRows());
+            Assert.assertEquals(Integer.valueOf(9), restartedResponse.getCols());
+            Assert.assertEquals(Integer.valueOf(10), restartedResponse.getMines());
+            Assert.assertEquals(opponent.getIdentityKey(), restartedResponse.getNextTurnPlayerKey());
+        } finally {
+            MinesweeperService.clearRoom(room.getId());
+            UserCache.remove(homeowner.getId());
+            UserCache.remove(opponent.getId());
+        }
+    }
+
+    @Test
+    public void roomActionShouldBroadcastLastActionPositionAndActor() {
+        User homeowner = user("home-channel-highlight", 9301L, "home-highlight");
+        User opponent = user("opponent-channel-highlight", 9302L, "opponent-highlight");
+        UserCache.add(homeowner.getId(), homeowner);
+        UserCache.add(opponent.getId(), opponent);
+        GameRoom room = room("minesweeper-room-highlight-test", homeowner, opponent);
+        MinesweeperService.clearRoom(room.getId());
+        try {
+            MinesweeperDTO action = actionRequest(room.getId(), 9, 9, 10, 3, 5);
+            action.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, action);
+            MinesweeperDTO response = gameBody(readResponse(opponent));
+
+            Assert.assertEquals(Integer.valueOf(3), response.getX());
+            Assert.assertEquals(Integer.valueOf(5), response.getY());
+            Assert.assertEquals(homeowner.getIdentityKey(), response.getActorKey());
+        } finally {
+            MinesweeperService.clearRoom(room.getId());
+            UserCache.remove(homeowner.getId());
+            UserCache.remove(opponent.getId());
+        }
+    }
+
     private static MinesweeperDTO actionRequest(int rows, int cols, int mines, int x, int y) {
         return actionRequest("single", rows, cols, mines, x, y);
     }
@@ -112,8 +173,12 @@ public class MinesweeperServiceTest {
     }
 
     private static GameRoom room(User homeowner, User opponent) {
+        return room("minesweeper-room-test", homeowner, opponent);
+    }
+
+    private static GameRoom room(String roomId, User homeowner, User opponent) {
         GameRoom room = new GameRoom();
-        room.setId("minesweeper-room-test");
+        room.setId(roomId);
         room.setGame(Game.MINESWEEPER);
         room.setNums(2);
         room.setHomeowner(homeowner);

@@ -49,6 +49,11 @@ public final class MinesweeperService {
             case SERVER_ACTION_REQUEST:
                 handleRoomAction(user, room, dto);
                 return true;
+            case RESTART_RESPONSE:
+                if (Boolean.TRUE.equals(dto.getRestartApproved())) {
+                    STATES.remove(roomKey(room.getId()));
+                }
+                return false;
             default:
                 return false;
         }
@@ -69,7 +74,7 @@ public final class MinesweeperService {
         RoomState state = STATES.compute(singleKey(user), (key, oldState) ->
                 shouldRecreateState(oldState, dto) ? createState(dto, key, null) : oldState);
         OpenResult result = applyAction(state, dto);
-        user.send(ResponseBuilder.build(null, stateEvent(state, result, true), MessageType.GAME));
+        user.send(ResponseBuilder.build(null, stateEvent(state, result, true, null, null, null), MessageType.GAME));
     }
 
     public static void clearRoom(String roomId) {
@@ -88,7 +93,7 @@ public final class MinesweeperService {
         if (result.openedCount > 0 && state.phase == MinesweeperDTO.Phase.playing) {
             state.nextTurnPlayerKey = otherPlayerKey(room, actorKey);
         }
-        sendToRoom(room, ResponseBuilder.build(user, stateEvent(state, result, false), MessageType.GAME));
+        sendToRoom(room, ResponseBuilder.build(user, stateEvent(state, result, false, actorKey, dto.getX(), dto.getY()), MessageType.GAME));
     }
 
     private static MinesweeperDTO startResponse(MinesweeperDTO request, String roomId, String nextTurnPlayerKey) {
@@ -226,11 +231,15 @@ public final class MinesweeperService {
         return count;
     }
 
-    private static MinesweeperDTO stateEvent(RoomState state, OpenResult result, boolean single) {
+    private static MinesweeperDTO stateEvent(RoomState state, OpenResult result, boolean single,
+                                             String actorKey, Integer x, Integer y) {
         MinesweeperDTO dto = new MinesweeperDTO(state.roomId);
         dto.setEvent(state.phase == MinesweeperDTO.Phase.playing
                 ? MinesweeperDTO.Event.STATE_PATCH
                 : MinesweeperDTO.Event.GAME_RESULT);
+        dto.setActorKey(actorKey);
+        dto.setX(x);
+        dto.setY(y);
         dto.setRows(state.rows);
         dto.setCols(state.cols);
         dto.setMines(state.mines);
