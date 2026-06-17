@@ -31,6 +31,7 @@ public class DogBattleDTO extends GameDTO {
     private String skillName;
     private boolean roundOver;
     private boolean matchOver;
+    private DogBattleRewardPreviewDTO rewardPreview;
 
     private int angle;
     private int power;
@@ -95,5 +96,13 @@ public class DogBattleDTO extends GameDTO {
         private int y;
         private boolean directHit;
         private int damage;
+    }
+
+    @Data
+    public static class DogBattleRewardPreviewDTO implements Serializable {
+        private String winnerPlayerKey;
+        private int winnerBones;
+        private int loserBones;
+        private boolean economyApplied;
     }
 }

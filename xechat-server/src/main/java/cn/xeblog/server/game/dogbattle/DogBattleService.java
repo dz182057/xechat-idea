@@ -30,6 +30,8 @@ public final class DogBattleService {
     private static final int SPLASH_RADIUS = 85;
     private static final int MIN_SPLASH_DAMAGE = 4;
     private static final int MAX_SPLASH_DAMAGE = 18;
+    private static final int WINNER_REWARD_BONES = 8;
+    private static final int LOSER_REWARD_BONES = 3;
     private static final double GRAVITY = 0.35;
     private static final double WIND_ACCEL = 0.006;
     private static final int MAX_STEPS = 240;
@@ -146,6 +148,7 @@ public final class DogBattleService {
             result.setRoundOver(roundOver);
             result.setMatchOver(matchOver);
             result.setWinnerPlayerKey(roundWinnerPlayerKey != null ? roundWinnerPlayerKey : state.winnerPlayerKey);
+            result.setRewardPreview(matchOver ? rewardPreview(state.winnerPlayerKey) : null);
             result.setPhase(matchOver ? "matchOver" : roundOver ? "roundOver" : "playing");
 
             return result;
@@ -550,6 +553,15 @@ public final class DogBattleService {
         wind.setTurnNo(turnNo);
         wind.setPower(power);
         return wind;
+    }
+
+    private static DogBattleDTO.DogBattleRewardPreviewDTO rewardPreview(String winnerPlayerKey) {
+        DogBattleDTO.DogBattleRewardPreviewDTO rewardPreview = new DogBattleDTO.DogBattleRewardPreviewDTO();
+        rewardPreview.setWinnerPlayerKey(winnerPlayerKey);
+        rewardPreview.setWinnerBones(WINNER_REWARD_BONES);
+        rewardPreview.setLoserBones(LOSER_REWARD_BONES);
+        rewardPreview.setEconomyApplied(false);
+        return rewardPreview;
     }
 
     private static int nextWindPower(int currentWind, int nextTurnNo) {

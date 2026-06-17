@@ -391,6 +391,36 @@ public class DogBattleServiceTest {
     }
 
     @Test
+    public void matchOverIncludesRewardPreviewWithoutApplyingEconomy() {
+        room.setDogBattleRoundCount(1);
+        room.addUser(left);
+        room.addUser(right);
+        startMatch();
+
+        DogBattleDTO result = null;
+        for (int i = 0; i < 8; i++) {
+            result = DogBattleService.handleInput(left, room, directHitInput());
+            if (result != null && result.isMatchOver()) {
+                break;
+            }
+            DogBattleService.handleInput(right, room, missInput());
+        }
+
+        assertNotNull(result);
+        assertTrue(
+                "lastHit=" + result.getHit().getTargetType()
+                        + ", rightHp=" + findPlayer(result, right.getIdentityKey()).getHp()
+                        + ", turnNo=" + result.getTurnNo(),
+                result.isMatchOver()
+        );
+        assertNotNull(result.getRewardPreview());
+        assertEquals(left.getIdentityKey(), result.getRewardPreview().getWinnerPlayerKey());
+        assertEquals(8, result.getRewardPreview().getWinnerBones());
+        assertEquals(3, result.getRewardPreview().getLoserBones());
+        assertFalse(result.getRewardPreview().isEconomyApplied());
+    }
+
+    @Test
     public void clearRoomRemovesBattleState() {
         room.addUser(left);
         room.addUser(right);
