@@ -225,6 +225,111 @@ public class DogBattleServiceTest {
     }
 
     @Test
+    public void greyhoundSkillRaisesInitialSpeedWithoutIncreasingDamage() {
+        DogBattleService.setDogResolverForTest(user -> petDog(user.getId() + "-dog", "灵缇", "greyhound"));
+        room.addUser(left);
+        room.addUser(right);
+        startMatch();
+
+        DogBattleDTO input = input(23, 97);
+        input.setUseSkill(true);
+        DogBattleDTO result = DogBattleService.handleInput(left, room, input);
+
+        assertNotNull(result);
+        assertEquals("疾影抛射", result.getSkillName());
+        assertEquals("DOG", result.getHit().getTargetType());
+        assertEquals(24, result.getHit().getDamage());
+        assertEquals(4, findPlayer(result, left.getIdentityKey()).getSkillCooldown());
+    }
+
+    @Test
+    public void goldenSkillRefundsOneCooldownWhenNoEffectiveDamage() {
+        DogBattleService.setDogResolverForTest(user -> petDog(user.getId() + "-dog", "金毛", "golden"));
+        room.addUser(left);
+        room.addUser(right);
+        startMatch();
+
+        DogBattleDTO input = missInput();
+        input.setUseSkill(true);
+        DogBattleDTO result = DogBattleService.handleInput(left, room, input);
+
+        assertNotNull(result);
+        assertEquals("金球回收", result.getSkillName());
+        assertEquals(0, result.getHit().getDamage());
+        assertEquals(3, findPlayer(result, left.getIdentityKey()).getSkillCooldown());
+    }
+
+    @Test
+    public void poodleSkillReducesNextSplashDamageOnly() {
+        DogBattleService.setDogResolverForTest(user -> {
+            if (user.getAccountId() == left.getAccountId()) {
+                return petDog(user.getId() + "-dog", "贵宾", "poodle");
+            }
+            return petDog(user.getId() + "-dog", "田园", "native");
+        });
+        room.addUser(left);
+        room.addUser(right);
+        startMatch();
+
+        DogBattleDTO guard = missInput();
+        guard.setUseSkill(true);
+        assertNotNull(DogBattleService.handleInput(left, room, guard));
+
+        DogBattleDTO splash = DogBattleService.handleInput(right, room, input(26, 100));
+
+        assertNotNull(splash);
+        assertEquals("DOG", splash.getHit().getTargetType());
+        assertFalse(splash.getHit().isDirectHit());
+        assertEquals(6, splash.getHit().getDamage());
+        assertEquals(94, findPlayer(splash, left.getIdentityKey()).getHp());
+    }
+
+    @Test
+    public void shibaSkillRequiresBehindAndSuppressesTargetSkillOnHit() {
+        DogBattleService.setDogResolverForTest(user -> {
+            if (user.getAccountId() == left.getAccountId()) {
+                return petDog(user.getId() + "-dog", "柴犬", "shiba");
+            }
+            return petDog(user.getId() + "-dog", "田园", "native");
+        });
+        room.addUser(left);
+        room.addUser(right);
+        startMatch();
+
+        DogBattleDTO notBehind = directHitInput();
+        notBehind.setUseSkill(true);
+        assertNull(DogBattleService.handleInput(left, room, notBehind));
+
+        DogBattleService.handleInput(left, room, missInput());
+        DogBattleService.handleInput(right, room, directHitInput());
+
+        DogBattleDTO counter = directHitInput();
+        counter.setUseSkill(true);
+        DogBattleDTO result = DogBattleService.handleInput(left, room, counter);
+
+        assertNotNull(result);
+        assertEquals("表情包反击", result.getSkillName());
+        assertEquals(1, findPlayer(result, right.getIdentityKey()).getSkillCooldown());
+    }
+
+    @Test
+    public void huskySkillChangesProjectileSkinWithoutChangingDamage() {
+        DogBattleService.setDogResolverForTest(user -> petDog(user.getId() + "-dog", "哈士奇", "husky"));
+        room.addUser(left);
+        room.addUser(right);
+        startMatch();
+
+        DogBattleDTO input = directHitInput();
+        input.setUseSkill(true);
+        DogBattleDTO result = DogBattleService.handleInput(left, room, input);
+
+        assertNotNull(result);
+        assertEquals("二哈乱抛", result.getSkillName());
+        assertEquals(24, result.getHit().getDamage());
+        assertNotEquals("slipper", findPlayer(result, left.getIdentityKey()).getDog().getProjectileSkinId());
+    }
+
+    @Test
     public void rejectSkillWhenDisabledByRoomConfig() {
         room.setDogBattleAllowSkill(false);
         room.addUser(left);
@@ -317,18 +422,18 @@ public class DogBattleServiceTest {
     }
 
     private static DogBattleDTO directHitInput() {
-        DogBattleDTO input = new DogBattleDTO();
-        input.setEvent("PLAYER_INPUT");
-        input.setAngle(45);
-        input.setPower(100);
-        return input;
+        return input(45, 100);
     }
 
     private static DogBattleDTO missInput() {
+        return input(0, 0);
+    }
+
+    private static DogBattleDTO input(int angle, int power) {
         DogBattleDTO input = new DogBattleDTO();
         input.setEvent("PLAYER_INPUT");
-        input.setAngle(0);
-        input.setPower(0);
+        input.setAngle(angle);
+        input.setPower(power);
         return input;
     }
 

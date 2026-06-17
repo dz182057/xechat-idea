@@ -27,6 +27,9 @@ public final class DogBattleService {
     private static final int DIRECT_DAMAGE = 24;
     private static final int CORGI_SKILL_DAMAGE = 21;
     private static final int OBSTACLE_DAMAGE = 24;
+    private static final int SPLASH_RADIUS = 85;
+    private static final int MIN_SPLASH_DAMAGE = 4;
+    private static final int MAX_SPLASH_DAMAGE = 18;
     private static final double GRAVITY = 0.35;
     private static final double WIND_ACCEL = 0.006;
     private static final int MAX_STEPS = 240;
@@ -81,20 +84,26 @@ public final class DogBattleService {
             }
 
             SkillTurn skillTurn = SkillTurn.from(actor, input.isUseSkill());
+            if (skillTurn.used && !skillTurn.canUse(actor, target)) {
+                return null;
+            }
             SimulationResult simulation = simulate(
                     actor,
                     target,
                     state.obstacles,
                     skillTurn.effectiveWindPower(state.windPower),
                     skillTurn.directDamage(),
+                    skillTurn.speedMultiplier(),
                     input
             );
+            state.applyDefensiveSkill(target, simulation.hit);
             if ("DOG".equals(simulation.hit.getTargetType())) {
                 target.setHp(Math.max(0, target.getHp() - simulation.hit.getDamage()));
             } else if ("OBSTACLE".equals(simulation.hit.getTargetType())) {
                 state.damageObstacle(simulation.hit.getTargetId(), simulation.hit.getDamage());
             }
-            state.updateSkillCooldown(actor, skillTurn);
+            state.applyPostSkillEffects(actor, target, skillTurn, simulation.hit);
+            state.updateSkillCooldown(actor, skillTurn, simulation.hit);
 
             boolean roundOver = target.getHp() <= 0;
             boolean matchOver = false;
@@ -163,6 +172,7 @@ public final class DogBattleService {
             List<DogBattleDTO.DogBattleObstacleDTO> obstacles,
             int windPower,
             int directDamage,
+            double speedMultiplier,
             DogBattleDTO input
     ) {
         int angle = clamp(input.getAngle(), 0, 90);
@@ -170,7 +180,7 @@ public final class DogBattleService {
         int startX = "LEFT".equals(actor.getSide()) ? LEFT_X : RIGHT_X;
         int direction = "LEFT".equals(actor.getSide()) ? 1 : -1;
         double radians = Math.toRadians(angle);
-        double speed = 4 + power * 0.13;
+        double speed = (4 + power * 0.13) * speedMultiplier;
         double x = startX;
         double y = GROUND_Y - DOG_HEIGHT / 2.0;
         double vx = Math.cos(radians) * speed * direction;
@@ -197,7 +207,7 @@ public final class DogBattleService {
                 break;
             }
             if (y >= GROUND_Y) {
-                hit = hit("GROUND", null, x, GROUND_Y, false, 0);
+                hit = splashHitOrGround(target, x, GROUND_Y);
                 break;
             }
             if (x < 0 || x > WORLD_WIDTH) {
@@ -210,6 +220,22 @@ public final class DogBattleService {
         }
         trajectory.add(point(hit.getX(), hit.getY()));
         return new SimulationResult(trajectory, hit);
+    }
+
+    private static DogBattleDTO.DogBattleHitDTO splashHitOrGround(
+            DogBattleDTO.DogBattlePlayerDTO target,
+            double x,
+            double y
+    ) {
+        int targetX = "LEFT".equals(target.getSide()) ? LEFT_X : RIGHT_X;
+        double targetY = GROUND_Y - DOG_HEIGHT / 2.0;
+        double distance = Math.hypot(x - targetX, y - targetY);
+        if (distance > SPLASH_RADIUS) {
+            return hit("GROUND", null, x, y, false, 0);
+        }
+        double ratio = 1 - distance / SPLASH_RADIUS;
+        int damage = (int) Math.floor(MIN_SPLASH_DAMAGE + ratio * (MAX_SPLASH_DAMAGE - MIN_SPLASH_DAMAGE));
+        return hit("DOG", target.getPlayerKey(), x, y, false, damage);
     }
 
     private static DogBattleDTO.DogBattleObstacleDTO findObstacle(
@@ -282,6 +308,7 @@ public final class DogBattleService {
         private boolean matchOver;
         private String currentPlayerKey;
         private String winnerPlayerKey;
+        private String poodleGuardPlayerKey;
 
         private BattleState(List<DogBattleDTO.DogBattlePlayerDTO> players, int roundCount, boolean allowSkill) {
             this.players = players;
@@ -349,9 +376,43 @@ public final class DogBattleService {
             }
         }
 
-        private void updateSkillCooldown(DogBattleDTO.DogBattlePlayerDTO actor, SkillTurn skillTurn) {
+        private void applyDefensiveSkill(DogBattleDTO.DogBattlePlayerDTO target, DogBattleDTO.DogBattleHitDTO hit) {
+            if (target == null || hit == null || !target.getPlayerKey().equals(poodleGuardPlayerKey)) {
+                return;
+            }
+            poodleGuardPlayerKey = null;
+            if ("DOG".equals(hit.getTargetType()) && !hit.isDirectHit() && hit.getDamage() > 0) {
+                hit.setDamage(Math.max(0, (int) Math.floor(hit.getDamage() * 0.9)));
+            }
+        }
+
+        private void applyPostSkillEffects(
+                DogBattleDTO.DogBattlePlayerDTO actor,
+                DogBattleDTO.DogBattlePlayerDTO target,
+                SkillTurn skillTurn,
+                DogBattleDTO.DogBattleHitDTO hit
+        ) {
+            if (!skillTurn.used) {
+                return;
+            }
+            if ("poodle".equals(skillTurn.breed)) {
+                poodleGuardPlayerKey = actor.getPlayerKey();
+            } else if ("shiba".equals(skillTurn.breed)
+                    && "DOG".equals(hit.getTargetType())
+                    && hit.getDamage() >= MIN_SPLASH_DAMAGE) {
+                target.setSkillCooldown(Math.max(target.getSkillCooldown(), 1));
+            } else if ("husky".equals(skillTurn.breed) && actor.getDog() != null) {
+                actor.getDog().setProjectileSkinId(huskySkillProjectileSkin(turnNo));
+            }
+        }
+
+        private void updateSkillCooldown(
+                DogBattleDTO.DogBattlePlayerDTO actor,
+                SkillTurn skillTurn,
+                DogBattleDTO.DogBattleHitDTO hit
+        ) {
             if (skillTurn.used) {
-                actor.setSkillCooldown(skillTurn.cooldown);
+                actor.setSkillCooldown(skillTurn.cooldownAfter(hit));
                 return;
             }
             if (actor.getSkillCooldown() > 0) {
@@ -539,6 +600,18 @@ public final class DogBattleService {
         }
     }
 
+    private static String huskySkillProjectileSkin(int turnNo) {
+        switch (Math.floorMod(turnNo, 3)) {
+            case 0:
+                return "husky_toy_fragments";
+            case 1:
+                return "husky_sofa_cushion";
+            case 2:
+            default:
+                return "husky_slipper_spin";
+        }
+    }
+
     private static final class SkillTurn {
         private final boolean used;
         private final String skillName;
@@ -560,11 +633,28 @@ public final class DogBattleService {
             return new SkillTurn(true, skillName(breed), breed, skillCooldown(breed));
         }
 
+        private boolean canUse(DogBattleDTO.DogBattlePlayerDTO actor, DogBattleDTO.DogBattlePlayerDTO target) {
+            if (!used || !"shiba".equals(breed)) {
+                return true;
+            }
+            return actor.getHp() < target.getHp() || actor.getScore() < target.getScore();
+        }
+
         private int effectiveWindPower(int windPower) {
             if (used && "native".equals(breed)) {
-                return (int) Math.round(windPower * 0.75);
+                return (int) (windPower * 0.75);
+            }
+            if (used && "border_collie".equals(breed)) {
+                return (int) (windPower * 0.9);
             }
             return windPower;
+        }
+
+        private double speedMultiplier() {
+            if (used && "greyhound".equals(breed)) {
+                return 1.12;
+            }
+            return 1.0;
         }
 
         private int directDamage() {
@@ -572,6 +662,15 @@ public final class DogBattleService {
                 return CORGI_SKILL_DAMAGE;
             }
             return DIRECT_DAMAGE;
+        }
+
+        private int cooldownAfter(DogBattleDTO.DogBattleHitDTO hit) {
+            if (used
+                    && "golden".equals(breed)
+                    && (hit == null || !"DOG".equals(hit.getTargetType()) || hit.getDamage() < MIN_SPLASH_DAMAGE)) {
+                return Math.max(0, cooldown - 1);
+            }
+            return cooldown;
         }
 
         private static int skillCooldown(String breed) {
