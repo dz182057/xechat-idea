@@ -4,11 +4,13 @@ import cn.hutool.core.util.StrUtil;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetAssetsDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinStatusDTO;
+import cn.xeblog.commons.entity.pet.PetCollectionItemDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenResultDTO;
 import cn.xeblog.commons.entity.pet.PetExploreRewardDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStartDTO;
+import cn.xeblog.commons.entity.pet.PetExploreStatusDTO;
 import cn.xeblog.commons.entity.pet.PetFeedDTO;
 import cn.xeblog.commons.entity.pet.PetInventoryItemDTO;
 import cn.xeblog.commons.entity.pet.PetMakeupCheckinDTO;
@@ -99,8 +101,10 @@ public final class PetProfileService {
     private static final String INVALID_EXPLORE_RESET_ERROR = "探险数据异常，已重置，请重新开始探险";
     private static final int EXPLORE_ROLL_BONES = 15;
     private static final int EXPLORE_ITEM_OVERFLOW_BONES = 10;
+    private static final int HUSKY_TREASURE_MAP_FRAGMENT_LIMIT = 3;
     private static final int DAILY_EXPLORE_START_LIMIT = 3;
     private static final int DAILY_EXPLORE_ITEM_GAIN_LIMIT = 5;
+    private static final String TREASURE_MAP_FRAGMENT_COLLECTION_ID = "treasure_map_fragment";
     private static final String ITEM_FEAST = "item_feast";
     private static final String ITEM_EXPRESS = "item_express";
     private static final String DAILY_COUNTER_FEED_FOOD = "feed_food";
@@ -147,6 +151,14 @@ public final class PetProfileService {
     private static final List<String> BACK_HILL_RARE_ITEM_IDS = Collections.unmodifiableList(Collections.singletonList(
             ITEM_FEAST
     ));
+    private static final List<String> BACK_HILL_COLLECTION_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "back_hill_ball",
+            "back_hill_branch",
+            "back_hill_leaf",
+            "back_hill_stone",
+            "back_hill_mushroom",
+            "back_hill_feather"
+    ));
     private static final List<String> LUCKY_BAG_ITEM_IDS = createLuckyBagItemIds();
     private static final Set<String> SHOP_NORMAL_ITEM_IDS = Collections.unmodifiableSet(
             new HashSet<>(LUCKY_BAG_NORMAL_ITEM_IDS));
@@ -169,7 +181,10 @@ public final class PetProfileService {
             List<PetDogRecord> rows = dogMapper.listByOwner(accountId);
             boolean dogStageChanged = updateDogGrowthStages(dogMapper, accountId, rows, now);
             List<PetItemRecord> itemRows = session.getMapper(PetItemMapper.class).listPositiveByAccountId(accountId);
+            PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
+            List<PetCollectionRecord> collectionRows = collectionMapper.listByAccountId(accountId);
             PetCheckinMapper checkinMapper = session.getMapper(PetCheckinMapper.class);
+            PetDailyCounterMapper dailyCounterMapper = session.getMapper(PetDailyCounterMapper.class);
             PetCheckinRecord todayCheckin = checkinMapper.findByAccountIdAndDate(accountId, todayText);
             List<String> checkedDatesInMonth = checkinMapper.listDatesByAccountIdAndMonthPrefix(
                     accountId, todayText.substring(0, 7));
@@ -188,9 +203,23 @@ public final class PetProfileService {
                 items.add(toDTO(row));
             }
             profile.setItems(items);
+            List<PetCollectionItemDTO> collections = new ArrayList<>(collectionRows.size());
+            for (PetCollectionRecord row : collectionRows) {
+                collections.add(toDTO(row));
+            }
+            profile.setCollections(collections);
             profile.setCompanionDogId(resolveCompanionDogId(assets.getCompanionDogId(), dogs));
             profile.setCheckinStatus(new PetCheckinStatusDTO(todayText, todayCheckin != null, cycleDay,
                     checkedDatesInMonth));
+            profile.setExploreStatus(new PetExploreStatusDTO(
+                    DAILY_EXPLORE_START_LIMIT,
+                    findDailyCounterValue(dailyCounterMapper, accountId, todayText, DAILY_COUNTER_EXPLORE_START),
+                    DAILY_EXPLORE_ITEM_GAIN_LIMIT,
+                    findDailyCounterValue(dailyCounterMapper, accountId, todayText, DAILY_COUNTER_EXPLORE_ITEM_GAIN),
+                    Math.min(HUSKY_TREASURE_MAP_FRAGMENT_LIMIT,
+                            findCollectionCount(collectionMapper, accountId, TREASURE_MAP_FRAGMENT_COLLECTION_ID)),
+                    findCollectionCount(collectionMapper, accountId, TREASURE_MAP_FRAGMENT_COLLECTION_ID)
+                            >= HUSKY_TREASURE_MAP_FRAGMENT_LIMIT));
             if (dogEnergyRefreshed || dogStageChanged) {
                 session.commit();
             }
@@ -903,10 +932,46 @@ public final class PetProfileService {
             } else if (roll < 58) {
                 applyExploreItemReward(assetsMapper, counterMapper, itemMapper, accountId,
                         BACK_HILL_RARE_ITEM_IDS, itemCounts, rewards, today, now);
+            } else if (roll < 78) {
+                applyExploreCollectionReward(session, accountId, rewards, now);
+            } else if (roll < 80) {
+                applyExploreTreasureMapReward(session, accountId, rewards, now);
             } else {
                 addExploreBones(assetsMapper, accountId, EXPLORE_ROLL_BONES, rewards, now);
             }
         }
+    }
+
+    private static void applyExploreCollectionReward(SqlSession session, long accountId,
+                                                     List<PetExploreRewardDTO> rewards, long now) {
+        PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
+        String itemId = pickBackHillCollectionItem(collectionMapper.listByAccountId(accountId));
+        collectionMapper.addCollection(accountId, itemId, now);
+        rewards.add(new PetExploreRewardDTO("collection", itemId, 1));
+    }
+
+    private static void applyExploreTreasureMapReward(SqlSession session, long accountId,
+                                                      List<PetExploreRewardDTO> rewards, long now) {
+        session.getMapper(PetCollectionMapper.class).addCollection(
+                accountId, TREASURE_MAP_FRAGMENT_COLLECTION_ID, now);
+        rewards.add(new PetExploreRewardDTO("collection", TREASURE_MAP_FRAGMENT_COLLECTION_ID, 1));
+    }
+
+    private static String pickBackHillCollectionItem(List<PetCollectionRecord> collections) {
+        Map<String, Integer> counts = new HashMap<>();
+        for (PetCollectionRecord collection : collections) {
+            counts.put(collection.getItemId(), collection.getCount());
+        }
+        String selected = BACK_HILL_COLLECTION_ITEM_IDS.get(0);
+        int selectedCount = Integer.MAX_VALUE;
+        for (String itemId : BACK_HILL_COLLECTION_ITEM_IDS) {
+            int count = counts.getOrDefault(itemId, 0);
+            if (count < selectedCount) {
+                selected = itemId;
+                selectedCount = count;
+            }
+        }
+        return selected;
     }
 
     private static void applyExploreItemReward(PetAssetsMapper assetsMapper, PetDailyCounterMapper counterMapper,
@@ -1219,6 +1284,17 @@ public final class PetProfileService {
         return ACCOUNT_LOCKS.computeIfAbsent(accountId, ignored -> new Object());
     }
 
+    private static int findDailyCounterValue(PetDailyCounterMapper mapper, long accountId,
+                                             String date, String counter) {
+        Integer value = mapper.findValue(accountId, date, counter);
+        return value == null ? 0 : Math.max(0, value);
+    }
+
+    private static int findCollectionCount(PetCollectionMapper mapper, long accountId, String itemId) {
+        Integer value = mapper.findCount(accountId, itemId);
+        return value == null ? 0 : Math.max(0, value);
+    }
+
     private static boolean isUniqueConstraint(PersistenceException e) {
         String message = e.getMessage();
         return message != null && message.contains("SQLITE_CONSTRAINT");
@@ -1249,7 +1325,8 @@ public final class PetProfileService {
     private static PetDogDTO toDTO(PetDogRecord row) {
         return new PetDogDTO(row.getId(), row.getName(), row.getBreed(), row.getStage(),
                 row.getSpeed(), row.getStamina(), row.getBurst(), row.getWisdom(), row.getBond(),
-                row.getEnergy(), row.getStatus(), row.getExploreLocation(), row.getExploreEndsAt());
+                row.getEnergy(), row.getStatus(), row.getExploreLocation(), row.getExploreEndsAt(),
+                row.getRaceCount(), row.getRaceFirstCount());
     }
 
     private static boolean updateDogGrowthStages(PetDogMapper dogMapper, long accountId,
@@ -1295,6 +1372,10 @@ public final class PetProfileService {
 
     private static PetInventoryItemDTO toDTO(PetItemRecord row) {
         return new PetInventoryItemDTO(row.getItemId(), row.getCount());
+    }
+
+    private static PetCollectionItemDTO toDTO(PetCollectionRecord row) {
+        return new PetCollectionItemDTO(row.getItemId(), row.getCount(), row.isDiscovered());
     }
 
     private static String resolveCompanionDogId(String savedDogId, List<PetDogDTO> dogs) {

@@ -395,6 +395,14 @@ public final class DbInitializer {
                         "updated_at INTEGER NOT NULL," +
                         "PRIMARY KEY (account_id, item_id)" +
                         ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_collections (" +
+                        "account_id INTEGER NOT NULL," +
+                        "item_id TEXT NOT NULL," +
+                        "count INTEGER NOT NULL DEFAULT 0," +
+                        "discovered INTEGER NOT NULL DEFAULT 1," +
+                        "updated_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (account_id, item_id)" +
+                        ")");
                 st.execute("CREATE TABLE IF NOT EXISTS pet_checkins (" +
                         "account_id INTEGER NOT NULL," +
                         "checkin_date TEXT NOT NULL," +

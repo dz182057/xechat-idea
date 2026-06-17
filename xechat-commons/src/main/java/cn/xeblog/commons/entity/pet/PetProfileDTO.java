@@ -26,9 +26,13 @@ public class PetProfileDTO implements Serializable {
 
     private List<PetInventoryItemDTO> items;
 
+    private List<PetCollectionItemDTO> collections;
+
     private String companionDogId;
 
     private PetCheckinStatusDTO checkinStatus;
+
+    private PetExploreStatusDTO exploreStatus;
 
     public static PetProfileDTO empty(long accountId) {
         PetProfileDTO profile = new PetProfileDTO();
@@ -36,6 +40,8 @@ public class PetProfileDTO implements Serializable {
         profile.setAssets(new PetAssetsDTO(300, 6, 0, 1, 10));
         profile.setDogs(new ArrayList<>());
         profile.setItems(new ArrayList<>());
+        profile.setCollections(new ArrayList<>());
+        profile.setExploreStatus(new PetExploreStatusDTO(3, 0, 5, 0, 0, false));
         return profile;
     }
 

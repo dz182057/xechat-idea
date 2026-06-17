@@ -3,8 +3,10 @@ package cn.xeblog.server.action.handler;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
+import cn.xeblog.commons.entity.pet.PetCollectionItemDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetFeedDTO;
+import cn.xeblog.commons.entity.pet.PetExploreStatusDTO;
 import cn.xeblog.commons.entity.pet.PetInventoryItemDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRequestDTO;
@@ -98,6 +100,33 @@ public class PetActionHandlerTest {
         Assert.assertFalse(profile.getCheckinStatus().isTodayCheckedIn());
         Assert.assertEquals(1, profile.getCheckinStatus().getCycleDay());
         Assert.assertTrue(profile.getCheckinStatus().getCheckedDatesInMonth().isEmpty());
+        Assert.assertNotNull(profile.getExploreStatus());
+        Assert.assertEquals(3, profile.getExploreStatus().getDailyStartLimit());
+        Assert.assertEquals(0, profile.getExploreStatus().getDailyStartsUsed());
+        Assert.assertEquals(5, profile.getExploreStatus().getDailyItemGainLimit());
+        Assert.assertEquals(0, profile.getExploreStatus().getDailyItemGainsUsed());
+        Assert.assertEquals(0, profile.getExploreStatus().getTreasureMapFragments());
+        Assert.assertFalse(profile.getExploreStatus().isHuskyUnlocked());
+        Assert.assertTrue(profile.getCollections().isEmpty());
+    }
+
+    @Test
+    public void petProfileIncludesExploreStatusFromDailyCounters() {
+        User user = user(9010L, "explore_status_user");
+        setDailyCounter(user.getAccountId(), "explore_start", 2);
+        setDailyCounter(user.getAccountId(), "explore_item_gain", 4);
+
+        PetProfileDTO profile = requestProfile(user);
+
+        PetExploreStatusDTO status = profile.getExploreStatus();
+        Assert.assertNotNull(status);
+        Assert.assertEquals(3, status.getDailyStartLimit());
+        Assert.assertEquals(2, status.getDailyStartsUsed());
+        Assert.assertEquals(5, status.getDailyItemGainLimit());
+        Assert.assertEquals(4, status.getDailyItemGainsUsed());
+        Assert.assertEquals(0, status.getTreasureMapFragments());
+        Assert.assertFalse(status.isHuskyUnlocked());
+        Assert.assertTrue(profile.getCollections().isEmpty());
     }
 
     @Test
@@ -183,7 +212,10 @@ public class PetActionHandlerTest {
 
         PetProfileDTO profile = requestProfile(user);
 
-        Assert.assertEquals("adult", findDog(profile, dog.getId()).getStage());
+        PetDogDTO profileDog = findDog(profile, dog.getId());
+        Assert.assertEquals("adult", profileDog.getStage());
+        Assert.assertEquals(3, profileDog.getRaceCount());
+        Assert.assertEquals(0, profileDog.getRaceFirstCount());
     }
 
     @Test
@@ -195,7 +227,10 @@ public class PetActionHandlerTest {
 
         PetProfileDTO profile = requestProfile(user);
 
-        Assert.assertEquals("champion", findDog(profile, dog.getId()).getStage());
+        PetDogDTO profileDog = findDog(profile, dog.getId());
+        Assert.assertEquals("champion", profileDog.getStage());
+        Assert.assertEquals(3, profileDog.getRaceCount());
+        Assert.assertEquals(1, profileDog.getRaceFirstCount());
     }
 
     @Test
@@ -237,6 +272,8 @@ public class PetActionHandlerTest {
         Assert.assertEquals(Long.valueOf(98001L), body.getRequestId());
         PetDogDTO racedDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
         Assert.assertEquals("adult", racedDog.getStage());
+        Assert.assertEquals(3, racedDog.getRaceCount());
+        Assert.assertEquals(0, racedDog.getRaceFirstCount());
         assertDogRaceProgress(user.getAccountId(), dog.getId(), 3, 0);
     }
 
@@ -255,6 +292,8 @@ public class PetActionHandlerTest {
         Assert.assertEquals(Long.valueOf(98002L), body.getRequestId());
         PetDogDTO racedDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
         Assert.assertEquals("champion", racedDog.getStage());
+        Assert.assertEquals(4, racedDog.getRaceCount());
+        Assert.assertEquals(1, racedDog.getRaceFirstCount());
         assertDogRaceProgress(user.getAccountId(), dog.getId(), 4, 1);
     }
 
@@ -2989,6 +3028,53 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void exploreOpenDiscoversBackHillCollectionAndReturnsCollectionReward() {
+        User user = user(97031L, "explore_collection_user");
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 1, 97031L));
+        Assert.assertTrue(readPetBody(user).isSuccess());
+        setExploreEnded(user.getAccountId(), dog.getId());
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 58);
+
+        try {
+            new PetActionHandler().process(user, exploreOpenRequest(dog.getId(), 97032L));
+
+            PetResponseDTO body = readPetBody(user);
+            Assert.assertTrue(body.isSuccess());
+            JSONObject result = JSONUtil.parseObj(body.getContent());
+            PetProfileDTO profile = result.getBean("profile", PetProfileDTO.class);
+            JSONArray rewards = result.getJSONArray("rewards");
+            Assert.assertEquals(1, profile.getCollections().size());
+            PetCollectionItemDTO collection = profile.getCollections().get(0);
+            Assert.assertTrue(backHillCollectionItemIds().contains(collection.getItemId()));
+            Assert.assertEquals(1, collection.getCount());
+            Assert.assertTrue(collection.isDiscovered());
+            Assert.assertTrue(hasReward(rewards, "collection", collection.getItemId()));
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
+    }
+
+    @Test
+    public void exploreOpenUnlocksHuskyAfterThreeTreasureMapFragments() {
+        User user = user(97033L, "explore_husky_user");
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 78);
+
+        try {
+            openEndedOneHourExplore(user, dog.getId(), 97033L, 97034L);
+            openEndedOneHourExplore(user, dog.getId(), 97035L, 97036L);
+            openEndedOneHourExplore(user, dog.getId(), 97037L, 97038L);
+
+            PetProfileDTO profile = requestProfile(user);
+            Assert.assertEquals(3, profile.getExploreStatus().getTreasureMapFragments());
+            Assert.assertTrue(profile.getExploreStatus().isHuskyUnlocked());
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
+    }
+
+    @Test
     public void exploreOpenResetsInvalidExploreWithoutRewards() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
@@ -3139,6 +3225,14 @@ public class PetActionHandlerTest {
         return request;
     }
 
+    private static void openEndedOneHourExplore(User user, String dogId, long startRequestId, long openRequestId) {
+        new PetActionHandler().process(user, exploreStartRequest(dogId, "back_hill", 1, startRequestId));
+        Assert.assertTrue(readPetBody(user).isSuccess());
+        setExploreEnded(user.getAccountId(), dogId);
+        new PetActionHandler().process(user, exploreOpenRequest(dogId, openRequestId));
+        Assert.assertTrue(readPetBody(user).isSuccess());
+    }
+
     private static PetRequestDTO raceResultRequest(String dogId, int rank, long requestId) {
         Map<String, Object> content = new HashMap<>();
         content.put("dogId", dogId);
@@ -3207,6 +3301,27 @@ public class PetActionHandlerTest {
             total += item.getCount();
         }
         return total;
+    }
+
+    private static boolean hasReward(JSONArray rewards, String type, String itemId) {
+        for (int i = 0; i < rewards.size(); i++) {
+            JSONObject reward = rewards.getJSONObject(i);
+            if (type.equals(reward.getStr("type")) && itemId.equals(reward.getStr("itemId"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Set<String> backHillCollectionItemIds() {
+        return new HashSet<>(Arrays.asList(
+                "back_hill_ball",
+                "back_hill_branch",
+                "back_hill_leaf",
+                "back_hill_stone",
+                "back_hill_mushroom",
+                "back_hill_feather"
+        ));
     }
 
     private static Set<String> luckyBagItemIds() {

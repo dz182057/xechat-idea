@@ -42,4 +42,8 @@ public class PetDogDTO implements Serializable {
 
     private Long exploreEndsAt;
 
+    private int raceCount;
+
+    private int raceFirstCount;
+
 }

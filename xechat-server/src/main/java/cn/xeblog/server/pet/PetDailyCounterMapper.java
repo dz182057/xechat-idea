@@ -7,6 +7,10 @@ import org.apache.ibatis.annotations.Param;
  */
 public interface PetDailyCounterMapper {
 
+    Integer findValue(@Param("accountId") long accountId,
+                      @Param("counterDate") String counterDate,
+                      @Param("counter") String counter);
+
     int incrementIfUnderLimit(@Param("accountId") long accountId,
                               @Param("counterDate") String counterDate,
                               @Param("counter") String counter,
