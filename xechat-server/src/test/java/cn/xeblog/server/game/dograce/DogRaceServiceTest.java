@@ -243,6 +243,48 @@ public class DogRaceServiceTest {
         }
     }
 
+    @Test
+    public void ownedDogRaceShouldBroadcastRealDogSkillWhenTriggered() throws Exception {
+        Path tempDir = Files.createTempDirectory("xechat-dog-race-skill-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());
+        GlobalConfig.initDataPath(tempDir.toString());
+        resetDbFactory();
+        try {
+            cn.xeblog.commons.entity.User user = accountUser(990102L);
+            PetProfileDTO profile = PetService.adopt(user, adopt("shiba", "技能狗"));
+            String realDogId = profile.getDogs().get(0).getId();
+
+            for (long seed = 1L; seed <= 2000L; seed++) {
+                GameRoom room = ownedDogRoom("dog-race-skill-" + seed, user);
+                DogRaceService.startRaceForTest(room, seed);
+                for (int rollNo = 0; rollNo < 30; rollNo++) {
+                    DogRaceDTO roll = DogRaceService.applyRequestForTest(
+                            room,
+                            user.getIdentityKey(),
+                            user.getUsername(),
+                            request(room, DogRaceDTO.Event.ROLL_REQ, null, null, 0, null));
+                    if (realDogId.equals(roll.getDie() == null ? null : roll.getDie().getDogId())
+                            && roll.getSkillName() != null) {
+                        Assert.assertEquals("梗王翻盘", roll.getSkillName());
+                        Assert.assertTrue(roll.getParticipants().stream()
+                                .anyMatch(dog -> realDogId.equals(dog.getDogId())
+                                        && roll.getSkillName().equals(dog.getSkillName())
+                                        && dog.isSkillTriggered()));
+                        return;
+                    }
+                    if (roll.getEvent() == DogRaceDTO.Event.RACE_SETTLE) {
+                        break;
+                    }
+                }
+            }
+            Assert.fail("2000 个种子内应至少触发一次真实宠物狗技能");
+        } finally {
+            resetDbFactory();
+            System.clearProperty(GlobalConfig.DATA_PATH_PROPERTY);
+            GlobalConfig.initDataPath(null);
+        }
+    }
+
     private DogRaceDTO request(GameRoom room, DogRaceDTO.Event event, String dogId, String betKind, int cell, String tileType) {
         DogRaceDTO dto = new DogRaceDTO(room.getId());
         dto.setEvent(event);
@@ -268,6 +310,24 @@ public class DogRaceServiceTest {
         dto.setBreed(breed);
         dto.setName(name);
         return dto;
+    }
+
+    private static GameRoom ownedDogRoom(String roomId, cn.xeblog.commons.entity.User user) {
+        GameRoom room = new GameRoom();
+        room.setId(roomId);
+        room.setGame(Game.DOG_RACE);
+        room.setNums(6);
+        room.setDogRaceMode("owned_dog");
+        room.getUsers().put(user.getIdentityKey(), new GameRoom.Player(
+                user.getIdentityKey(),
+                user.getId(),
+                user.getUsername(),
+                user.getAccountId(),
+                user.getAccount(),
+                user.getUuid(),
+                user.getNickname(),
+                false));
+        return room;
     }
 
     private static void resetDbFactory() throws Exception {

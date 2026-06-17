@@ -40,6 +40,9 @@ public final class DogRaceService {
     private static final int[] WEEKLY_POINTS = {10, 6, 3, 1, 0};
     private static final long HURRY_ROLL_COOLDOWN_MS = 5000L;
     private static final long AUTO_ROLL_DELAY_MS = 25000L;
+    private static final double DOG_SKILL_BASE_RATE = 0.05D;
+    private static final double DOG_SKILL_RATE_PER_STAT = 0.0025D;
+    private static final double DOG_SKILL_MAX_RATE = 0.3D;
     private static final String[] DOG_BREEDS = {"corgi", "golden", "border_collie", "greyhound", "poodle"};
     private static final String[] DOG_NAMES = {"赤豆", "橘子", "青团", "蓝莓", "葡萄"};
     private static final Map<String, RaceState> ROOM_STATES = new ConcurrentHashMap<>();
@@ -302,6 +305,7 @@ public final class DogRaceService {
                 unit.ownerPlayerKey = player.getId();
                 unit.ownerName = player.getUsername();
                 unit.ownerAccountId = player.getAccountId();
+                unit.skillStatValue = skillStatValue(petDog);
                 state.units.put(unit.id, unit);
                 push(state.stacks, unit.position, unit.id);
                 slot++;
@@ -334,8 +338,82 @@ public final class DogRaceService {
         int steps = rollDog(random);
         MoveResult result = moveUnit(state, dogId, steps, true);
         RaceUnit dog = state.units.get(dogId);
+        String skillName = tryApplyDogSkill(state, dog);
+        if (skillName != null) {
+            roll.setSkillName(skillName);
+        }
+        int to = dog == null ? result.to : dog.position;
         roll.setDie(new DogRaceDTO.Die("dog", dog == null ? 0 : dog.slot, dogId, null, steps));
-        roll.setBroadcast("🎲 " + (dog == null ? dogId : dog.name) + " 掷出 " + steps + " 点，冲到第 " + result.to + " 格！");
+        roll.setBroadcast("🎲 " + (dog == null ? dogId : dog.name) + " 掷出 " + steps + " 点，冲到第 " + to + " 格！"
+                + (skillName == null ? "" : " ✨触发【" + skillName + "】"));
+    }
+
+    private static String tryApplyDogSkill(RaceState state, RaceUnit dog) {
+        if (dog == null || dog.ownerAccountId <= 0L || dog.breed == null || state.usedSkillDogIds.contains(dog.id)) {
+            return null;
+        }
+        DogRaceSkill skill = skillForBreed(dog.breed);
+        if (skill == null) {
+            return null;
+        }
+        double rate = Math.min(DOG_SKILL_BASE_RATE + Math.max(0, Math.min(100, dog.skillStatValue)) * DOG_SKILL_RATE_PER_STAT,
+                DOG_SKILL_MAX_RATE);
+        if (state.random.nextDouble() >= rate) {
+            return null;
+        }
+        state.usedSkillDogIds.add(dog.id);
+        dog.skillName = skill.name;
+        dog.skillTriggered = true;
+        if (skill.extraSteps > 0) {
+            moveUnit(state, dog.id, skill.extraSteps, false);
+        }
+        return skill.name;
+    }
+
+    private static DogRaceSkill skillForBreed(String breed) {
+        switch (breed) {
+            case "corgi":
+                return new DogRaceSkill("人来疯", 1);
+            case "golden":
+                return new DogRaceSkill("捡球高手", 0);
+            case "border_collie":
+                return new DogRaceSkill("聪明走位", 0);
+            case "greyhound":
+                return new DogRaceSkill("猎影冲刺", 1);
+            case "poodle":
+                return new DogRaceSkill("轻盈跳跃", 1);
+            case "native":
+                return new DogRaceSkill("主场作战", 1);
+            case "shiba":
+                return new DogRaceSkill("梗王翻盘", 2);
+            case "husky":
+                return new DogRaceSkill("拆家", 1);
+            default:
+                return null;
+        }
+    }
+
+    private static int skillStatValue(PetProfileDTO.Dog dog) {
+        if (dog == null || dog.getBreed() == null) {
+            return 0;
+        }
+        switch (dog.getBreed()) {
+            case "corgi":
+            case "shiba":
+                return dog.getBurst();
+            case "golden":
+                return dog.getBond();
+            case "border_collie":
+                return dog.getWisdom();
+            case "greyhound":
+            case "poodle":
+            case "husky":
+                return dog.getSpeed();
+            case "native":
+                return dog.getStamina();
+            default:
+                return 0;
+        }
     }
 
     private static void moveCat(RaceState state, Random random, DogRaceDTO roll) {
@@ -423,8 +501,8 @@ public final class DogRaceService {
                         unit.position,
                         stackIndex,
                         null,
-                        null,
-                        false
+                        unit.skillName,
+                        unit.skillTriggered
                 ));
             } else {
                 cats.add(new DogRaceDTO.Cat(unit.id, unit.name, unit.position, stackIndex));
@@ -661,6 +739,7 @@ public final class DogRaceService {
         private final Set<String> legBetKeys = new HashSet<>();
         private final Set<String> finalBetKeys = new HashSet<>();
         private final Set<String> tilePlayerKeys = new HashSet<>();
+        private final Set<String> usedSkillDogIds = new HashSet<>();
         private int legNo = 1;
         private List<String> diceBag = new ArrayList<>();
         private boolean finished;
@@ -683,6 +762,9 @@ public final class DogRaceService {
         private String ownerPlayerKey;
         private String ownerName;
         private long ownerAccountId;
+        private int skillStatValue;
+        private String skillName;
+        private boolean skillTriggered;
 
         private RaceUnit(String id, String name, String type, int slot, int position) {
             this.id = id;
@@ -690,6 +772,16 @@ public final class DogRaceService {
             this.type = type;
             this.slot = slot;
             this.position = position;
+        }
+    }
+
+    private static class DogRaceSkill {
+        private final String name;
+        private final int extraSteps;
+
+        private DogRaceSkill(String name, int extraSteps) {
+            this.name = name;
+            this.extraSteps = extraSteps;
         }
     }
 
