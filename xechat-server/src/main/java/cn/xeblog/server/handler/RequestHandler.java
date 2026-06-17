@@ -7,6 +7,7 @@ import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.Request;
 import cn.xeblog.commons.entity.game.GameDTO;
 import cn.xeblog.commons.entity.game.chess.ChessDTO;
+import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
 import cn.xeblog.commons.entity.game.drawguess.DrawGuessDTO;
 import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.entity.game.landlords.LandlordsGameDTO;
@@ -104,6 +105,8 @@ public class RequestHandler {
                 return TurtleSoupDTO.class;
             case MINESWEEPER:
                 return MinesweeperDTO.class;
+            case DOG_BATTLE:
+                return DogBattleDTO.class;
             case CHINESE_CHESS:
                 return ChessDTO.class;
             case LANDLORDS:
