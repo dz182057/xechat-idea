@@ -6,7 +6,9 @@ import cn.xeblog.commons.entity.game.GameInviteDTO;
 import cn.xeblog.commons.entity.game.GameInviteResultDTO;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.GameRoomMsgDTO;
+import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
 import cn.xeblog.commons.enums.Action;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.InviteStatus;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.UserStatus;
@@ -15,6 +17,7 @@ import cn.xeblog.server.annotation.DoAction;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.game.dogbattle.DogBattleService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
 
@@ -73,6 +76,12 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                 break;
             case PLAYER_GAME_STARTED:
                 if (gameRoom.isPlayerConnection(user)) {
+                    if (gameRoom.getGame() == Game.DOG_BATTLE) {
+                        DogBattleDTO snapshot = DogBattleService.playerStarted(gameRoom, user);
+                        if (snapshot != null) {
+                            sendMsg(gameRoom, ResponseBuilder.build(null, snapshot, MessageType.GAME));
+                        }
+                    }
                     gameRoom.getHomeowner().send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 }
                 break;
@@ -96,6 +105,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         GameRoomCache.removeRoom(gameRoom.getId());
         QuickQuizService.clearRoom(gameRoom.getId());
         TurtleSoupService.clearRoom(gameRoom.getId());
+        DogBattleService.clearRoom(gameRoom.getId());
 
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
         msg.setRoomId(gameRoom.getId());
@@ -191,6 +201,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         if (GameRoomCache.leftRoom(gameRoom.getId(), user)) {
             QuickQuizService.clearRoom(gameRoom.getId());
             TurtleSoupService.clearRoom(gameRoom.getId());
+            DogBattleService.clearRoom(gameRoom.getId());
             Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);
             sendMsg(gameRoom, resp);
             if (gameRoom.isHomeowner(user)) {
