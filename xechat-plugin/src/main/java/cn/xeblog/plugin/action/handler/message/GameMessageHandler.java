@@ -1,6 +1,7 @@
 package cn.xeblog.plugin.action.handler.message;
 
 import cn.hutool.json.JSONUtil;
+import cn.xeblog.commons.entity.game.dograce.DogRaceDTO;
 import cn.xeblog.commons.entity.game.minesweeper.MinesweeperDTO;
 import cn.xeblog.commons.entity.game.turtlesoup.TurtleSoupDTO;
 import cn.xeblog.commons.enums.MessageType;
@@ -9,6 +10,7 @@ import cn.xeblog.commons.entity.game.GameDTO;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.plugin.annotation.DoMessage;
 import cn.xeblog.plugin.game.AbstractGame;
+import cn.xeblog.plugin.game.dograce.DogRace;
 import cn.xeblog.plugin.game.minesweeper.Minesweeper;
 import cn.xeblog.plugin.game.turtlesoup.TurtleSoup;
 
@@ -36,6 +38,14 @@ public class GameMessageHandler extends AbstractGameMessageHandler<GameDTO> {
                     ? (MinesweeperDTO) body
                     : JSONUtil.toBean(JSONUtil.toJsonStr(body), MinesweeperDTO.class);
             ((Minesweeper) action).handle(dto);
+            return;
+        }
+        if (action instanceof DogRace) {
+            Object body = response.getBody();
+            DogRaceDTO dto = body instanceof DogRaceDTO
+                    ? (DogRaceDTO) body
+                    : JSONUtil.toBean(JSONUtil.toJsonStr(body), DogRaceDTO.class);
+            ((DogRace) action).handle(dto);
             return;
         }
         GameAction.handle(response);

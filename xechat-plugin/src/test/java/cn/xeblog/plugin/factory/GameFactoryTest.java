@@ -6,6 +6,7 @@ import cn.xeblog.commons.enums.Game;
 import cn.xeblog.plugin.action.GameAction;
 import cn.xeblog.plugin.cache.DataCache;
 import cn.xeblog.plugin.game.AbstractGame;
+import cn.xeblog.plugin.game.dograce.DogRace;
 import cn.xeblog.plugin.game.quickquiz.QuickQuiz;
 import cn.xeblog.plugin.game.turtlesoup.TurtleSoup;
 import org.junit.Assert;
@@ -38,6 +39,11 @@ public class GameFactoryTest {
     @Test
     public void shouldCreateDrawGuessGame() {
         Assert.assertNotNull(GameFactory.produce(Game.DRAW_GUESS));
+    }
+
+    @Test
+    public void shouldCreateDogRaceGame() {
+        Assert.assertTrue(GameFactory.produce(Game.DOG_RACE) instanceof DogRace);
     }
 
     @Test
