@@ -78,7 +78,8 @@ public final class MinesweeperService {
 
     private static void handleRoomAction(User user, GameRoom room, MinesweeperDTO dto) {
         String key = roomKey(room.getId());
-        RoomState state = STATES.computeIfAbsent(key, ignored -> createState(dto, room.getId(), firstPlayerKey(room)));
+        RoomState state = STATES.compute(key, (ignored, oldState) ->
+                shouldRecreateState(oldState, dto) ? createState(dto, room.getId(), firstPlayerKey(room)) : oldState);
         String actorKey = dto.getActorKey() == null ? user.getIdentityKey() : dto.getActorKey();
         if (state.nextTurnPlayerKey != null && !state.nextTurnPlayerKey.equals(actorKey)) {
             return;
