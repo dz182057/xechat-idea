@@ -27,4 +27,8 @@ public class QuickQuizRecordDTO implements Serializable {
 
     private List<QuickQuizAnswerViewDTO> answers;
 
+    private String opponentKey;
+
+    private String opponentName;
+
 }
