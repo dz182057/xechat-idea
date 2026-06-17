@@ -96,7 +96,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
     private void roomClose(User user, GameRoom gameRoom) {
         GameRoomCache.removeRoom(gameRoom.getId());
-        QuickQuizService.clearRoom(gameRoom.getId());
+        QuickQuizService.clearRoom(gameRoom);
         MinesweeperService.clearRoom(gameRoom.getId());
         TurtleSoupService.clearRoom(gameRoom.getId());
 
@@ -193,7 +193,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         ChannelAction.updateUserStatus(user);
 
         if (GameRoomCache.leftRoom(gameRoom.getId(), user)) {
-            QuickQuizService.clearRoom(gameRoom.getId());
+            QuickQuizService.clearRoom(gameRoom);
             MinesweeperService.clearRoom(gameRoom.getId());
             TurtleSoupService.clearRoom(gameRoom.getId());
             Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);

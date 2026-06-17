@@ -14,7 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
 
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 快问快答题库、轮次和答题记录。
@@ -22,12 +22,6 @@ import java.util.concurrent.*;
 @Slf4j
 public final class QuickQuizService {
 
-    private static final int ANSWER_SECONDS = 10;
-    private static final ScheduledExecutorService TIMER = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "quick-quiz-timer");
-        t.setDaemon(true);
-        return t;
-    });
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
 
     private QuickQuizService() {
@@ -92,62 +86,64 @@ public final class QuickQuizService {
             throw new IllegalArgumentException("需要双方都在房间内才能出题");
         }
 
+        return nextQuestion(room, players, QuickQuizService::randomAvailableQuestion);
+    }
+
+    static QuickQuizQuestionDTO nextQuestion(GameRoom room, List<User> players, QuestionPicker questionPicker) {
         RoomState state = ROOM_STATES.computeIfAbsent(room.getId(), id -> new RoomState(room.getId()));
-        if (state.roundNo >= room.getQuickQuizQuestionCount()) {
-            throw new IllegalArgumentException("本局题目已经答完");
+        synchronized (state) {
+            if (state.currentQuestion != null && !state.revealed) {
+                return state.currentQuestion;
+            }
+            if (state.roundNo >= room.getQuickQuizQuestionCount()) {
+                throw new IllegalArgumentException("本局题目已经答完");
+            }
+            return startNextQuestion(room, state, players, questionPicker);
         }
-
-        QuickQuizQuestion question;
-        try (SqlSession session = DbInitializer.factory().openSession(true)) {
-            question = session.getMapper(QuickQuizMapper.class).randomAvailableQuestion(
-                    playerKey(players.get(0)),
-                    playerKey(players.get(1)),
-                    new ArrayList<>(state.usedQuestionIds));
-        }
-        if (question == null) {
-            throw new IllegalArgumentException("剩余可用题数不足");
-        }
-
-        long startedAt = System.currentTimeMillis();
-        QuickQuizQuestionDTO dto = toQuestionDTO(question);
-        dto.setStartedAt(startedAt);
-        dto.setDeadlineAt(startedAt + ANSWER_SECONDS * 1000L);
-        dto.setRoundNo(state.roundNo + 1);
-        dto.setTotalRounds(room.getQuickQuizQuestionCount());
-
-        state.start(dto, players);
-        TIMER.schedule(() -> revealIfNeeded(room, state), ANSWER_SECONDS, TimeUnit.SECONDS);
-        sendToRoom(room, ResponseBuilder.build(null, dto, MessageType.QUICK_QUIZ_QUESTION));
-        return dto;
     }
 
     public static void submitAnswer(User user, GameRoom room, QuickQuizSubmitAnswerDTO body) {
+        submitAnswer(user, room, body, QuickQuizService::randomAvailableQuestion, QuickQuizService::saveAnswers);
+    }
+
+    static void submitAnswer(User user, GameRoom room, QuickQuizSubmitAnswerDTO body, QuestionPicker questionPicker) {
+        submitAnswer(user, room, body, questionPicker, QuickQuizService::saveAnswers);
+    }
+
+    static void submitAnswer(User user, GameRoom room, QuickQuizSubmitAnswerDTO body, QuestionPicker questionPicker,
+                             AnswerRecorder answerRecorder) {
         RoomState state = ROOM_STATES.get(room.getId());
-        if (state == null || state.currentQuestion == null || state.revealed) {
+        if (state == null) {
             throw new IllegalArgumentException("当前没有可提交的题目");
         }
-        if (body.getQuestionId() != state.currentQuestion.getId()) {
-            throw new IllegalArgumentException("题目已变化，请等待下一题");
-        }
-        String key = playerKey(user);
-        if (!state.expectedPlayerKeys.contains(key)) {
-            throw new IllegalArgumentException("你不在当前答题房间内");
-        }
-        int choiceIndex = body.getChoiceIndex();
-        List<String> options = state.currentQuestion.getOptions();
-        if (choiceIndex < 0 || choiceIndex >= options.size()) {
-            throw new IllegalArgumentException("请选择有效答案");
-        }
-        state.answers.putIfAbsent(key, new QuickQuizAnswerViewDTO(
-                key, user.getUsername(), choiceIndex, options.get(choiceIndex), System.currentTimeMillis()));
-        if (state.answers.size() >= state.expectedPlayerKeys.size()) {
-            revealIfNeeded(room, state);
+        synchronized (state) {
+            if (state.closed || state.currentQuestion == null || state.revealed) {
+                throw new IllegalArgumentException("当前没有可提交的题目");
+            }
+            if (body.getQuestionId() != state.currentQuestion.getId()) {
+                throw new IllegalArgumentException("题目已变化，请等待下一题");
+            }
+            String key = playerKey(user);
+            if (!state.expectedPlayerKeys.contains(key)) {
+                throw new IllegalArgumentException("你不在当前答题房间内");
+            }
+            int choiceIndex = body.getChoiceIndex();
+            List<String> options = state.currentQuestion.getOptions();
+            if (choiceIndex < 0 || choiceIndex >= options.size()) {
+                throw new IllegalArgumentException("请选择有效答案");
+            }
+            state.answers.putIfAbsent(key, new QuickQuizAnswerViewDTO(
+                    key, user.getUsername(), choiceIndex, options.get(choiceIndex), System.currentTimeMillis()));
+            if (state.answers.size() >= state.expectedPlayerKeys.size()) {
+                revealIfNeededLocked(room, state, body.getQuestionId(), questionPicker, answerRecorder);
+            }
         }
     }
 
     public static List<QuickQuizRecordDTO> myRecords(User user) {
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
-            return toRecordDTOs(session.getMapper(QuickQuizMapper.class).listRecordsByPlayer(playerKey(user)));
+            String currentPlayerKey = playerKey(user);
+            return toRecordDTOs(session.getMapper(QuickQuizMapper.class).listRecordsByPlayer(currentPlayerKey), currentPlayerKey);
         }
     }
 
@@ -158,60 +154,186 @@ public final class QuickQuizService {
     }
 
     public static void clearRoom(String roomId) {
-        ROOM_STATES.remove(roomId);
+        RoomState state = ROOM_STATES.remove(roomId);
+        if (state != null) {
+            synchronized (state) {
+                state.closed = true;
+            }
+        }
+    }
+
+    public static void clearRoom(GameRoom room) {
+        clearRoom(room, QuickQuizService::saveAnswers);
+    }
+
+    static void clearRoom(GameRoom room, AnswerRecorder answerRecorder) {
+        if (room == null) {
+            return;
+        }
+        RoomState state = ROOM_STATES.get(room.getId());
+        if (state == null) {
+            return;
+        }
+        synchronized (state) {
+            if (!state.closed && state.currentQuestion != null && !state.revealed) {
+                answerRecorder.save(room, state.currentQuestion, fillMissingAnswers(state));
+            }
+            state.closed = true;
+            ROOM_STATES.remove(room.getId(), state);
+        }
     }
 
     public static String playerKey(User user) {
         return user.getIdentityKey();
     }
 
-    private static void revealIfNeeded(GameRoom room, RoomState state) {
-        synchronized (state) {
-            if (state.revealed || state.currentQuestion == null) {
-                return;
-            }
-            long now = System.currentTimeMillis();
-            List<QuickQuizAnswerViewDTO> answers = new ArrayList<>();
-            for (User player : state.players) {
-                String key = playerKey(player);
-                QuickQuizAnswerViewDTO answer = state.answers.get(key);
-                if (answer == null) {
-                    answer = new QuickQuizAnswerViewDTO(key, player.getUsername(), -1, "未作答", now);
-                    state.answers.put(key, answer);
-                }
-                answers.add(answer);
-            }
-
-            try (SqlSession session = DbInitializer.factory().openSession(false)) {
-                QuickQuizMapper mapper = session.getMapper(QuickQuizMapper.class);
-                for (QuickQuizAnswerViewDTO answer : answers) {
-                    mapper.insertRecord(QuickQuizRecord.builder()
-                            .roomId(room.getId())
-                            .questionId(state.currentQuestion.getId())
-                            .playerKey(answer.getPlayerKey())
-                            .username(answer.getUsername())
-                            .choiceIndex(answer.getChoiceIndex())
-                            .choiceText(answer.getChoiceText())
-                            .createdAt(answer.getAnsweredAt())
-                            .build());
-                }
-                session.commit();
-            } catch (Exception e) {
-                log.error("保存快问快答答题记录失败", e);
-            }
-
-            state.revealed = true;
-            state.usedQuestionIds.add(state.currentQuestion.getId());
-            state.roundNo++;
-            boolean finished = state.roundNo >= room.getQuickQuizQuestionCount();
-            QuickQuizAnswerResultDTO result = new QuickQuizAnswerResultDTO(
-                    room.getId(), state.currentQuestion, answers, state.roundNo,
-                    room.getQuickQuizQuestionCount(), finished);
-            sendToRoom(room, ResponseBuilder.build(null, result, MessageType.QUICK_QUIZ_ANSWER_RESULT));
-            if (finished) {
-                ROOM_STATES.remove(room.getId());
+    static boolean shouldExcludeQuestion(List<QuickQuizRecord> recordsForQuestion) {
+        if (recordsForQuestion == null || recordsForQuestion.size() < 2) {
+            return false;
+        }
+        Set<String> answeredPlayerKeys = new HashSet<>();
+        for (QuickQuizRecord record : recordsForQuestion) {
+            if (record != null && record.getChoiceIndex() >= 0) {
+                answeredPlayerKeys.add(record.getPlayerKey());
             }
         }
+        return answeredPlayerKeys.size() >= 2;
+    }
+
+    private static void revealIfNeeded(GameRoom room, RoomState state) {
+        QuickQuizQuestionDTO currentQuestion = state.currentQuestion;
+        if (currentQuestion == null) {
+            return;
+        }
+        revealIfNeeded(room, state, currentQuestion.getId(), QuickQuizService::randomAvailableQuestion,
+                QuickQuizService::saveAnswers);
+    }
+
+    private static void revealIfNeeded(GameRoom room, RoomState state, long expectedQuestionId,
+                                       QuestionPicker questionPicker, AnswerRecorder answerRecorder) {
+        synchronized (state) {
+            revealIfNeededLocked(room, state, expectedQuestionId, questionPicker, answerRecorder);
+        }
+    }
+
+    private static void revealIfNeededLocked(GameRoom room, RoomState state, long expectedQuestionId,
+                                             QuestionPicker questionPicker, AnswerRecorder answerRecorder) {
+        if (state.closed || state.revealed || state.currentQuestion == null
+                || !Objects.equals(state.currentQuestion.getId(), expectedQuestionId)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        List<QuickQuizAnswerViewDTO> answers = new ArrayList<>();
+        for (User player : state.players) {
+            String key = playerKey(player);
+            QuickQuizAnswerViewDTO answer = state.answers.get(key);
+            if (answer == null) {
+                answer = new QuickQuizAnswerViewDTO(key, player.getUsername(), -1, "未作答", now);
+                state.answers.put(key, answer);
+            }
+            answers.add(answer);
+        }
+
+        answerRecorder.save(room, state.currentQuestion, answers);
+
+        state.revealed = true;
+        if (shouldExcludeAnswers(answers)) {
+            state.usedQuestionIds.add(state.currentQuestion.getId());
+        }
+        state.roundNo++;
+        boolean finished = state.roundNo >= room.getQuickQuizQuestionCount();
+        List<User> nextPlayers = Collections.emptyList();
+        if (!finished) {
+            nextPlayers = getRoomUsers(room);
+            finished = nextPlayers.size() < 2;
+        }
+        QuickQuizAnswerResultDTO result = new QuickQuizAnswerResultDTO(
+                room.getId(), state.currentQuestion, answers, state.roundNo,
+                room.getQuickQuizQuestionCount(), finished);
+        sendToRoom(room, ResponseBuilder.build(null, result, MessageType.QUICK_QUIZ_ANSWER_RESULT));
+        if (finished) {
+            state.closed = true;
+            ROOM_STATES.remove(room.getId(), state);
+        } else {
+            startNextQuestion(room, state, nextPlayers, questionPicker);
+        }
+    }
+
+    private static List<QuickQuizAnswerViewDTO> fillMissingAnswers(RoomState state) {
+        long now = System.currentTimeMillis();
+        List<QuickQuizAnswerViewDTO> answers = new ArrayList<>();
+        for (User player : state.players) {
+            String key = playerKey(player);
+            QuickQuizAnswerViewDTO answer = state.answers.get(key);
+            if (answer == null) {
+                answer = new QuickQuizAnswerViewDTO(key, player.getUsername(), -1, "未作答", now);
+            }
+            answers.add(answer);
+        }
+        return answers;
+    }
+
+    private static void saveAnswers(GameRoom room, QuickQuizQuestionDTO question, List<QuickQuizAnswerViewDTO> answers) {
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            QuickQuizMapper mapper = session.getMapper(QuickQuizMapper.class);
+            for (QuickQuizAnswerViewDTO answer : answers) {
+                mapper.insertRecord(QuickQuizRecord.builder()
+                        .roomId(room.getId())
+                        .questionId(question.getId())
+                        .playerKey(answer.getPlayerKey())
+                        .username(answer.getUsername())
+                        .choiceIndex(answer.getChoiceIndex())
+                        .choiceText(answer.getChoiceText())
+                        .createdAt(answer.getAnsweredAt())
+                        .build());
+            }
+            session.commit();
+        } catch (Exception e) {
+            log.error("保存快问快答答题记录失败", e);
+        }
+    }
+
+    private static QuickQuizQuestionDTO startNextQuestion(GameRoom room, RoomState state, List<User> players,
+                                                          QuestionPicker questionPicker) {
+        QuickQuizQuestion question = questionPicker.pick(
+                playerKey(players.get(0)),
+                playerKey(players.get(1)),
+                new ArrayList<>(state.usedQuestionIds));
+        if (question == null) {
+            throw new IllegalArgumentException("剩余可用题数不足");
+        }
+
+        long startedAt = System.currentTimeMillis();
+        QuickQuizQuestionDTO dto = toQuestionDTO(question);
+        dto.setStartedAt(startedAt);
+        dto.setDeadlineAt(0);
+        dto.setRoundNo(state.roundNo + 1);
+        dto.setTotalRounds(room.getQuickQuizQuestionCount());
+
+        state.start(dto, players);
+        sendToRoom(room, ResponseBuilder.build(null, dto, MessageType.QUICK_QUIZ_QUESTION));
+        return dto;
+    }
+
+    private static QuickQuizQuestion randomAvailableQuestion(String playerAKey, String playerBKey,
+                                                             List<Long> usedQuestionIds) {
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            return session.getMapper(QuickQuizMapper.class).randomAvailableQuestion(
+                    playerAKey, playerBKey, usedQuestionIds);
+        }
+    }
+
+    private static boolean shouldExcludeAnswers(List<QuickQuizAnswerViewDTO> answers) {
+        if (answers == null || answers.size() < 2) {
+            return false;
+        }
+        Set<String> answeredPlayerKeys = new HashSet<>();
+        for (QuickQuizAnswerViewDTO answer : answers) {
+            if (answer != null && answer.getChoiceIndex() >= 0) {
+                answeredPlayerKeys.add(answer.getPlayerKey());
+            }
+        }
+        return answeredPlayerKeys.size() >= 2;
     }
 
     private static void sendToRoom(GameRoom room, Response response) {
@@ -281,6 +403,10 @@ public final class QuickQuizService {
     }
 
     private static List<QuickQuizRecordDTO> toRecordDTOs(List<QuickQuizRecord> rows) {
+        return toRecordDTOs(rows, null);
+    }
+
+    static List<QuickQuizRecordDTO> toRecordDTOs(List<QuickQuizRecord> rows, String currentPlayerKey) {
         Map<String, QuickQuizRecordDTO> map = new LinkedHashMap<>();
         for (QuickQuizRecord row : rows) {
             String key = row.getRoomId() + "#" + row.getQuestionId();
@@ -292,17 +418,52 @@ public final class QuickQuizService {
                         row.getQuestion(),
                         JSONUtil.toList(row.getOptionsJson(), String.class),
                         row.getCreatedAt(),
-                        new ArrayList<>());
+                        new ArrayList<>(),
+                        null,
+                        null);
                 map.put(key, dto);
             }
-            dto.getAnswers().add(new QuickQuizAnswerViewDTO(
+            QuickQuizAnswerViewDTO answer = new QuickQuizAnswerViewDTO(
                     row.getPlayerKey(),
                     row.getUsername(),
                     row.getChoiceIndex(),
                     row.getChoiceText(),
-                    row.getCreatedAt()));
+                    row.getCreatedAt());
+            dto.getAnswers().add(answer);
+            if (currentPlayerKey != null && !currentPlayerKey.equals(answer.getPlayerKey())) {
+                dto.setOpponentKey(answer.getPlayerKey());
+                dto.setOpponentName(answer.getUsername());
+            }
         }
         return new ArrayList<>(map.values());
+    }
+
+    static int answerCount(String roomId) {
+        RoomState state = ROOM_STATES.get(roomId);
+        if (state == null) {
+            return 0;
+        }
+        synchronized (state) {
+            return state.answers.size();
+        }
+    }
+
+    static int roundNo(String roomId) {
+        RoomState state = ROOM_STATES.get(roomId);
+        if (state == null) {
+            return 0;
+        }
+        synchronized (state) {
+            return state.roundNo;
+        }
+    }
+
+    interface QuestionPicker {
+        QuickQuizQuestion pick(String playerAKey, String playerBKey, List<Long> usedQuestionIds);
+    }
+
+    interface AnswerRecorder {
+        void save(GameRoom room, QuickQuizQuestionDTO question, List<QuickQuizAnswerViewDTO> answers);
     }
 
     private static class RoomState {
@@ -314,12 +475,13 @@ public final class QuickQuizService {
         private QuickQuizQuestionDTO currentQuestion;
         private int roundNo;
         private boolean revealed;
+        private boolean closed;
 
         private RoomState(String roomId) {
             this.roomId = roomId;
         }
 
-        private synchronized void start(QuickQuizQuestionDTO question, List<User> users) {
+        private void start(QuickQuizQuestionDTO question, List<User> users) {
             this.currentQuestion = question;
             this.answers.clear();
             this.expectedPlayerKeys.clear();

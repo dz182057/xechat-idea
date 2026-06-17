@@ -9,6 +9,7 @@ import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.factory.ObjectFactory;
 import cn.xeblog.server.friend.FriendService;
+import cn.xeblog.server.game.quickquiz.QuickQuizService;
 import cn.xeblog.server.service.AbstractResponseHistoryService;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -127,6 +128,7 @@ public class ChannelAction {
                     player.send(ResponseBuilder.build(user, new GameRoomMsgDTO(GameRoomMsgDTO.MsgType.PLAYER_LEFT, null), MessageType.GAME_ROOM));
                 }
             });
+            QuickQuizService.clearRoom(gameRoom);
             GameRoomCache.leftRoom(gameRoom.getId(), user);
         }
 

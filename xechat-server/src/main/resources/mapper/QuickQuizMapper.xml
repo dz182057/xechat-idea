@@ -46,10 +46,12 @@
             EXISTS (
                 SELECT 1 FROM quick_quiz_records r1
                 WHERE r1.question_id = q.id AND r1.player_key = #{playerAKey}
+                  AND r1.choice_index >= 0
             )
             AND EXISTS (
                 SELECT 1 FROM quick_quiz_records r2
                 WHERE r2.question_id = q.id AND r2.player_key = #{playerBKey}
+                  AND r2.choice_index >= 0
             )
         )
         ORDER BY RANDOM()
@@ -70,10 +72,12 @@
             EXISTS (
                 SELECT 1 FROM quick_quiz_records r1
                 WHERE r1.question_id = q.id AND r1.player_key = #{playerAKey}
+                  AND r1.choice_index >= 0
             )
             AND EXISTS (
                 SELECT 1 FROM quick_quiz_records r2
                 WHERE r2.question_id = q.id AND r2.player_key = #{playerBKey}
+                  AND r2.choice_index >= 0
             )
         )
     </select>
