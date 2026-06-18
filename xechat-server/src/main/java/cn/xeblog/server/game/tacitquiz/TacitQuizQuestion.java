@@ -1,4 +1,4 @@
-package cn.xeblog.server.game.quickquiz;
+package cn.xeblog.server.game.tacitquiz;
 
 import lombok.Builder;
 import lombok.Data;
@@ -8,17 +8,13 @@ import lombok.Data;
  */
 @Data
 @Builder
-public class QuickQuizQuestion {
+public class TacitQuizQuestion {
 
     private long id;
 
     private String question;
 
     private String optionsJson;
-
-    private int correctAnswerIndex;
-
-    private int score;
 
     private int sortOrder;
 

@@ -92,6 +92,26 @@ public enum MessageType {
      */
     DRAW_GUESS_WORD,
     /**
+     * 默契问答题库列表响应
+     */
+    TACIT_QUIZ_QUESTION_BANK,
+    /**
+     * 默契问答当前剩余可用题数
+     */
+    TACIT_QUIZ_AVAILABLE_COUNT,
+    /**
+     * 默契问答题目下发
+     */
+    TACIT_QUIZ_QUESTION,
+    /**
+     * 默契问答答案揭示
+     */
+    TACIT_QUIZ_ANSWER_RESULT,
+    /**
+     * 默契问答答题记录
+     */
+    TACIT_QUIZ_RECORDS,
+    /**
      * 快问快答题库列表响应
      */
     QUICK_QUIZ_QUESTION_BANK,
@@ -104,9 +124,13 @@ public enum MessageType {
      */
     QUICK_QUIZ_QUESTION,
     /**
-     * 快问快答答案揭示
+     * 快问快答单题结果
      */
-    QUICK_QUIZ_ANSWER_RESULT,
+    QUICK_QUIZ_ROUND_RESULT,
+    /**
+     * 快问快答整局结果
+     */
+    QUICK_QUIZ_MATCH_RESULT,
     /**
      * 快问快答答题记录
      */

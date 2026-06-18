@@ -1,4 +1,4 @@
-package cn.xeblog.commons.entity.game.quickquiz;
+package cn.xeblog.commons.entity.game.tacitquiz;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -8,22 +8,18 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * 快问快答题目。
+ * 默契问答题目。
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class QuickQuizQuestionDTO implements Serializable {
+public class TacitQuizQuestionDTO implements Serializable {
 
     private long id;
 
     private String question;
 
     private List<String> options;
-
-    private int correctAnswerIndex;
-
-    private int score;
 
     private long startedAt;
 

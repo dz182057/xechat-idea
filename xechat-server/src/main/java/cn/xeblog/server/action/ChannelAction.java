@@ -13,6 +13,7 @@ import cn.xeblog.server.game.dogbattle.DogBattleService;
 import cn.xeblog.server.game.dograce.DogRaceService;
 import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
+import cn.xeblog.server.game.tacitquiz.TacitQuizService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
 import cn.xeblog.server.service.AbstractResponseHistoryService;
 import io.netty.channel.Channel;
@@ -175,6 +176,7 @@ public class ChannelAction {
 
     private static void clearGameRoomState(GameRoom gameRoom) {
         QuickQuizService.clearRoom(gameRoom);
+        TacitQuizService.clearRoom(gameRoom);
         MinesweeperService.clearRoom(gameRoom.getId());
         TurtleSoupService.clearRoom(gameRoom.getId());
         DogRaceService.clearRoom(gameRoom.getId());

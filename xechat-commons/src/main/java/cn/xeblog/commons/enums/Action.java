@@ -142,6 +142,41 @@ public enum Action {
     DRAW_GUESS_RANDOM_WORD,
 
     /**
+     * 管理员:查看默契问答题库
+     */
+    ADMIN_LIST_TACIT_QUIZ_QUESTIONS,
+
+    /**
+     * 管理员:保存默契问答题库
+     */
+    ADMIN_SAVE_TACIT_QUIZ_QUESTIONS,
+
+    /**
+     * 默契问答:查询当前房间剩余可用题数
+     */
+    TACIT_QUIZ_AVAILABLE_COUNT,
+
+    /**
+     * 默契问答:房主请求下一题
+     */
+    TACIT_QUIZ_NEXT_QUESTION,
+
+    /**
+     * 默契问答:提交答案
+     */
+    TACIT_QUIZ_SUBMIT_ANSWER,
+
+    /**
+     * 默契问答:查看我的答题记录
+     */
+    TACIT_QUIZ_MY_RECORDS,
+
+    /**
+     * 管理员:查看全部默契问答答题记录
+     */
+    ADMIN_LIST_TACIT_QUIZ_RECORDS,
+
+    /**
      * 管理员:查看快问快答题库
      */
     ADMIN_LIST_QUICK_QUIZ_QUESTIONS,

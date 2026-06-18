@@ -10,10 +10,10 @@ import cn.xeblog.plugin.game.AbstractGame;
 import cn.xeblog.plugin.game.quickquiz.QuickQuiz;
 
 /**
- * 快问快答单题结果。
+ * 快问快答整局结果。
  */
-@DoMessage(MessageType.QUICK_QUIZ_ROUND_RESULT)
-public class QuickQuizAnswerResultMessageHandler extends AbstractMessageHandler<Object> {
+@DoMessage(MessageType.QUICK_QUIZ_MATCH_RESULT)
+public class QuickQuizMatchResultMessageHandler extends AbstractMessageHandler<Object> {
 
     @Override
     protected void process(Response<Object> response) {

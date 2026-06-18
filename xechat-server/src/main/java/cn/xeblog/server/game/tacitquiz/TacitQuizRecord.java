@@ -1,4 +1,4 @@
-package cn.xeblog.server.game.quickquiz;
+package cn.xeblog.server.game.tacitquiz;
 
 import lombok.Builder;
 import lombok.Data;
@@ -8,7 +8,7 @@ import lombok.Data;
  */
 @Data
 @Builder
-public class QuickQuizRecord {
+public class TacitQuizRecord {
 
     private long id;
 
@@ -23,12 +23,6 @@ public class QuickQuizRecord {
     private int choiceIndex;
 
     private String choiceText;
-
-    private int correct;
-
-    private int pointsDelta;
-
-    private int totalScore;
 
     private long createdAt;
 

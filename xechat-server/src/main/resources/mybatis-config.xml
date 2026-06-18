@@ -34,6 +34,7 @@
         <mapper resource="mapper/FriendMapper.xml"/>
         <mapper resource="mapper/DrawGuessWordMapper.xml"/>
         <mapper resource="mapper/QuickQuizMapper.xml"/>
+        <mapper resource="mapper/TacitQuizMapper.xml"/>
         <mapper resource="mapper/TurtleSoupMapper.xml"/>
         <mapper resource="mapper/PetDogMapper.xml"/>
         <mapper resource="mapper/PetAssetsMapper.xml"/>

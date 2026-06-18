@@ -10,6 +10,7 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
 
@@ -17,12 +18,16 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 快问快答题库、轮次和答题记录。
+ * 快问快答知识题、轮次计分和报名奖池。
  */
 @Slf4j
 public final class QuickQuizService {
 
+    private static final int MAX_PLAYERS = 8;
+
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
+
+    private static Economy economy = PetService::changeBones;
 
     private QuickQuizService() {
     }
@@ -32,7 +37,7 @@ public final class QuickQuizService {
             List<QuickQuizQuestion> rows = session.getMapper(QuickQuizMapper.class).listActiveQuestions();
             List<QuickQuizQuestionDTO> result = new ArrayList<>(rows.size());
             for (QuickQuizQuestion row : rows) {
-                result.add(toQuestionDTO(row));
+                result.add(toQuestionDTO(row, true));
             }
             return result;
         }
@@ -53,6 +58,8 @@ public final class QuickQuizService {
                 mapper.upsertQuestion(QuickQuizQuestion.builder()
                         .question(dto.getQuestion())
                         .optionsJson(JSONUtil.toJsonStr(dto.getOptions()))
+                        .correctAnswerIndex(dto.getCorrectAnswerIndex())
+                        .score(dto.getScore())
                         .sortOrder(i)
                         .active(1)
                         .createdAt(now)
@@ -65,35 +72,33 @@ public final class QuickQuizService {
     }
 
     public static int availableCount(GameRoom room) {
-        List<User> players = getRoomUsers(room);
-        if (players.size() < 2) {
-            return totalActiveCount();
-        }
-        RoomState state = ROOM_STATES.get(room.getId());
+        RoomState state = room == null ? null : ROOM_STATES.get(room.getId());
         List<Long> usedQuestionIds = state == null ? Collections.emptyList() : new ArrayList<>(state.usedQuestionIds);
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
-            return session.getMapper(QuickQuizMapper.class).countAvailableQuestions(
-                    playerKey(players.get(0)), playerKey(players.get(1)), usedQuestionIds);
+            return session.getMapper(QuickQuizMapper.class).countAvailableQuestions(usedQuestionIds);
         }
     }
 
     public static QuickQuizQuestionDTO nextQuestion(User user, GameRoom room) {
+        return nextQuestion(user, room, QuickQuizService::randomAvailableQuestion);
+    }
+
+    static QuickQuizQuestionDTO nextQuestion(User user, GameRoom room, QuestionPicker questionPicker) {
         if (!room.isHomeowner(user)) {
             throw new IllegalArgumentException("仅房主可以开始下一题");
         }
         List<User> players = getRoomUsers(room);
-        if (players.size() < 2) {
-            throw new IllegalArgumentException("需要双方都在房间内才能出题");
-        }
+        validatePlayers(players);
 
-        return nextQuestion(room, players, QuickQuizService::randomAvailableQuestion);
-    }
-
-    static QuickQuizQuestionDTO nextQuestion(GameRoom room, List<User> players, QuestionPicker questionPicker) {
         RoomState state = ROOM_STATES.computeIfAbsent(room.getId(), id -> new RoomState(room.getId()));
         synchronized (state) {
-            if (state.currentQuestion != null && !state.revealed) {
-                return state.currentQuestion;
+            chargeEntryFeeIfNeeded(room, state, players);
+            long now = System.currentTimeMillis();
+            if (state.currentQuestion != null) {
+                if (now <= state.currentQuestion.getDeadlineAt()) {
+                    return copyQuestion(state.currentQuestion, false);
+                }
+                revealLocked(room, state, now);
             }
             if (state.roundNo >= room.getQuickQuizQuestionCount()) {
                 throw new IllegalArgumentException("本局题目已经答完");
@@ -102,22 +107,13 @@ public final class QuickQuizService {
         }
     }
 
-    public static void submitAnswer(User user, GameRoom room, QuickQuizSubmitAnswerDTO body) {
-        submitAnswer(user, room, body, QuickQuizService::randomAvailableQuestion, QuickQuizService::saveAnswers);
-    }
-
-    static void submitAnswer(User user, GameRoom room, QuickQuizSubmitAnswerDTO body, QuestionPicker questionPicker) {
-        submitAnswer(user, room, body, questionPicker, QuickQuizService::saveAnswers);
-    }
-
-    static void submitAnswer(User user, GameRoom room, QuickQuizSubmitAnswerDTO body, QuestionPicker questionPicker,
-                             AnswerRecorder answerRecorder) {
+    public static QuickQuizAnswerResultDTO submitAnswer(User user, GameRoom room, QuickQuizSubmitAnswerDTO body) {
         RoomState state = ROOM_STATES.get(room.getId());
         if (state == null) {
             throw new IllegalArgumentException("当前没有可提交的题目");
         }
         synchronized (state) {
-            if (state.closed || state.currentQuestion == null || state.revealed) {
+            if (state.closed || state.currentQuestion == null) {
                 throw new IllegalArgumentException("当前没有可提交的题目");
             }
             if (body.getQuestionId() != state.currentQuestion.getId()) {
@@ -127,16 +123,16 @@ public final class QuickQuizService {
             if (!state.expectedPlayerKeys.contains(key)) {
                 throw new IllegalArgumentException("你不在当前答题房间内");
             }
-            int choiceIndex = body.getChoiceIndex();
-            List<String> options = state.currentQuestion.getOptions();
-            if (choiceIndex < 0 || choiceIndex >= options.size()) {
-                throw new IllegalArgumentException("请选择有效答案");
+            long now = System.currentTimeMillis();
+            if (now > state.currentQuestion.getDeadlineAt()) {
+                return revealLocked(room, state, now);
             }
-            state.answers.putIfAbsent(key, new QuickQuizAnswerViewDTO(
-                    key, user.getUsername(), choiceIndex, options.get(choiceIndex), System.currentTimeMillis()));
+            QuickQuizAnswerViewDTO answer = buildAnswer(user, state.currentQuestion, body, now, state);
+            state.answers.putIfAbsent(key, answer);
             if (state.answers.size() >= state.expectedPlayerKeys.size()) {
-                revealIfNeededLocked(room, state, body.getQuestionId(), questionPicker, answerRecorder);
+                return revealLocked(room, state, now);
             }
+            return null;
         }
     }
 
@@ -158,28 +154,14 @@ public final class QuickQuizService {
         if (state != null) {
             synchronized (state) {
                 state.closed = true;
+                state.prizePool = 0;
             }
         }
     }
 
     public static void clearRoom(GameRoom room) {
-        clearRoom(room, QuickQuizService::saveAnswers);
-    }
-
-    static void clearRoom(GameRoom room, AnswerRecorder answerRecorder) {
-        if (room == null) {
-            return;
-        }
-        RoomState state = ROOM_STATES.get(room.getId());
-        if (state == null) {
-            return;
-        }
-        synchronized (state) {
-            if (!state.closed && state.currentQuestion != null && !state.revealed) {
-                answerRecorder.save(room, state.currentQuestion, fillMissingAnswers(state));
-            }
-            state.closed = true;
-            ROOM_STATES.remove(room.getId(), state);
+        if (room != null) {
+            clearRoom(room.getId());
         }
     }
 
@@ -187,90 +169,188 @@ public final class QuickQuizService {
         return user.getIdentityKey();
     }
 
-    static boolean shouldExcludeQuestion(List<QuickQuizRecord> recordsForQuestion) {
-        if (recordsForQuestion == null || recordsForQuestion.size() < 2) {
-            return false;
-        }
-        Set<String> answeredPlayerKeys = new HashSet<>();
-        for (QuickQuizRecord record : recordsForQuestion) {
-            if (record != null && record.getChoiceIndex() >= 0) {
-                answeredPlayerKeys.add(record.getPlayerKey());
-            }
-        }
-        return answeredPlayerKeys.size() >= 2;
+    static int poolOf(String roomId) {
+        RoomState state = ROOM_STATES.get(roomId);
+        return state == null ? 0 : state.prizePool;
     }
 
-    private static void revealIfNeeded(GameRoom room, RoomState state) {
-        QuickQuizQuestionDTO currentQuestion = state.currentQuestion;
-        if (currentQuestion == null) {
-            return;
-        }
-        revealIfNeeded(room, state, currentQuestion.getId(), QuickQuizService::randomAvailableQuestion,
-                QuickQuizService::saveAnswers);
+    static void setEconomyForTest(Economy testEconomy) {
+        economy = testEconomy == null ? PetService::changeBones : testEconomy;
     }
 
-    private static void revealIfNeeded(GameRoom room, RoomState state, long expectedQuestionId,
-                                       QuestionPicker questionPicker, AnswerRecorder answerRecorder) {
-        synchronized (state) {
-            revealIfNeededLocked(room, state, expectedQuestionId, questionPicker, answerRecorder);
-        }
+    static void resetEconomy() {
+        economy = PetService::changeBones;
     }
 
-    private static void revealIfNeededLocked(GameRoom room, RoomState state, long expectedQuestionId,
-                                             QuestionPicker questionPicker, AnswerRecorder answerRecorder) {
-        if (state.closed || state.revealed || state.currentQuestion == null
-                || !Objects.equals(state.currentQuestion.getId(), expectedQuestionId)) {
-            return;
+    private static QuickQuizAnswerViewDTO buildAnswer(User user, QuickQuizQuestionDTO question,
+                                                       QuickQuizSubmitAnswerDTO body, long answeredAt,
+                                                       RoomState state) {
+        int choiceIndex = body.getChoiceIndex();
+        boolean skipped = choiceIndex < 0;
+        String choiceText = skipped ? "不作答" : optionText(question, choiceIndex);
+        boolean correct = !skipped && choiceIndex == question.getCorrectAnswerIndex();
+        int delta = skipped ? 0 : (correct ? question.getScore() : -wrongPenalty(question.getScore()));
+        String key = playerKey(user);
+        int totalScore = state.scores.getOrDefault(key, 0) + delta;
+        state.scores.put(key, totalScore);
+        return new QuickQuizAnswerViewDTO(key, user.getUsername(), choiceIndex, choiceText, answeredAt,
+                correct, skipped, delta, totalScore);
+    }
+
+    private static String optionText(QuickQuizQuestionDTO question, int choiceIndex) {
+        List<String> options = question.getOptions();
+        if (choiceIndex < 0 || choiceIndex >= options.size()) {
+            throw new IllegalArgumentException("请选择有效答案");
         }
-        long now = System.currentTimeMillis();
-        List<QuickQuizAnswerViewDTO> answers = new ArrayList<>();
+        return options.get(choiceIndex);
+    }
+
+    private static int wrongPenalty(int score) {
+        return Math.max(1, score / 2);
+    }
+
+    private static QuickQuizAnswerResultDTO revealLocked(GameRoom room, RoomState state, long now) {
+        if (state.closed || state.currentQuestion == null) {
+            return null;
+        }
         for (User player : state.players) {
             String key = playerKey(player);
-            QuickQuizAnswerViewDTO answer = state.answers.get(key);
-            if (answer == null) {
-                answer = new QuickQuizAnswerViewDTO(key, player.getUsername(), -1, "未作答", now);
-                state.answers.put(key, answer);
+            if (!state.answers.containsKey(key)) {
+                QuickQuizSubmitAnswerDTO skip = new QuickQuizSubmitAnswerDTO(room.getId(), state.currentQuestion.getId(), -1, "不作答");
+                state.answers.put(key, buildAnswer(player, state.currentQuestion, skip, now, state));
             }
-            answers.add(answer);
         }
 
-        answerRecorder.save(room, state.currentQuestion, answers);
-
-        state.revealed = true;
-        if (shouldExcludeAnswers(answers)) {
-            state.usedQuestionIds.add(state.currentQuestion.getId());
+        List<QuickQuizAnswerViewDTO> answers = new ArrayList<>();
+        for (User player : state.players) {
+            answers.add(state.answers.get(playerKey(player)));
         }
+        saveAnswers(room, state.currentQuestion, answers);
+
         state.roundNo++;
         boolean finished = state.roundNo >= room.getQuickQuizQuestionCount();
-        List<User> nextPlayers = Collections.emptyList();
-        if (!finished) {
-            nextPlayers = getRoomUsers(room);
-            finished = nextPlayers.size() < 2;
-        }
-        QuickQuizAnswerResultDTO result = new QuickQuizAnswerResultDTO(
-                room.getId(), state.currentQuestion, answers, state.roundNo,
-                room.getQuickQuizQuestionCount(), finished);
-        sendToRoom(room, ResponseBuilder.build(null, result, MessageType.QUICK_QUIZ_ANSWER_RESULT));
+        List<QuickQuizPlayerScoreDTO> rankings = rankings(state, finished);
+        int rewardPerWinner = finished ? applyRewards(state, rankings) : 0;
+        QuickQuizQuestionDTO resultQuestion = copyQuestion(state.currentQuestion, true);
+        QuickQuizAnswerResultDTO result = new QuickQuizAnswerResultDTO(room.getId(), resultQuestion, answers, rankings,
+                state.roundNo, room.getQuickQuizQuestionCount(), finished, state.prizePool, rewardPerWinner,
+                finished && state.economyApplied);
+        sendToRoom(room, ResponseBuilder.build(null, result,
+                finished ? MessageType.QUICK_QUIZ_MATCH_RESULT : MessageType.QUICK_QUIZ_ROUND_RESULT));
+
+        state.currentQuestion = null;
+        state.answers.clear();
+        state.expectedPlayerKeys.clear();
         if (finished) {
             state.closed = true;
+            state.prizePool = 0;
             ROOM_STATES.remove(room.getId(), state);
-        } else {
-            startNextQuestion(room, state, nextPlayers, questionPicker);
+        }
+        return result;
+    }
+
+    private static QuickQuizQuestionDTO startNextQuestion(GameRoom room, RoomState state, List<User> players,
+                                                          QuestionPicker questionPicker) {
+        QuickQuizQuestion question = questionPicker.pick(new ArrayList<>(state.usedQuestionIds));
+        if (question == null) {
+            throw new IllegalArgumentException("剩余可用题数不足");
+        }
+        state.usedQuestionIds.add(question.getId());
+        long startedAt = System.currentTimeMillis();
+        QuickQuizQuestionDTO dto = toQuestionDTO(question, true);
+        dto.setStartedAt(startedAt);
+        dto.setDeadlineAt(startedAt + resolveTimeLimitSeconds(room) * 1000L);
+        dto.setRoundNo(state.roundNo + 1);
+        dto.setTotalRounds(room.getQuickQuizQuestionCount());
+
+        state.start(dto, players);
+        QuickQuizQuestionDTO visibleQuestion = copyQuestion(dto, false);
+        sendToRoom(room, ResponseBuilder.build(null, visibleQuestion, MessageType.QUICK_QUIZ_QUESTION));
+        return visibleQuestion;
+    }
+
+    private static int resolveTimeLimitSeconds(GameRoom room) {
+        return room.getQuickQuizTimeLimitSeconds() > 0 ? room.getQuickQuizTimeLimitSeconds() : 15;
+    }
+
+    private static void validatePlayers(List<User> players) {
+        if (players.size() < 2) {
+            throw new IllegalArgumentException("快问快答至少需要 2 人");
+        }
+        if (players.size() > MAX_PLAYERS) {
+            throw new IllegalArgumentException("快问快答最多支持 8 人");
         }
     }
 
-    private static List<QuickQuizAnswerViewDTO> fillMissingAnswers(RoomState state) {
-        long now = System.currentTimeMillis();
-        List<QuickQuizAnswerViewDTO> answers = new ArrayList<>();
+    private static void chargeEntryFeeIfNeeded(GameRoom room, RoomState state, List<User> players) {
+        if (state.economyApplied) {
+            return;
+        }
+        int entryFee = Math.max(0, room.getQuickQuizEntryFee());
+        if (entryFee == 0) {
+            state.economyApplied = true;
+            return;
+        }
+        List<User> charged = new ArrayList<>();
+        try {
+            for (User player : players) {
+                economy.change(player.getAccountId(), -entryFee);
+                charged.add(player);
+            }
+        } catch (RuntimeException e) {
+            for (User player : charged) {
+                try {
+                    economy.change(player.getAccountId(), entryFee);
+                } catch (RuntimeException rollbackError) {
+                    log.error("快问快答报名费回滚失败 -> accountId: {}", player.getAccountId(), rollbackError);
+                }
+            }
+            throw e;
+        }
+        state.prizePool = entryFee * players.size();
+        state.economyApplied = true;
+    }
+
+    private static int applyRewards(RoomState state, List<QuickQuizPlayerScoreDTO> rankings) {
+        if (!state.economyApplied || state.rewardApplied || state.prizePool <= 0 || rankings.isEmpty()) {
+            return 0;
+        }
+        int winners = 0;
+        for (QuickQuizPlayerScoreDTO ranking : rankings) {
+            if (ranking.isWinner()) {
+                winners++;
+            }
+        }
+        if (winners <= 0) {
+            return 0;
+        }
+        int reward = (state.prizePool + winners - 1) / winners;
+        for (QuickQuizPlayerScoreDTO ranking : rankings) {
+            if (ranking.isWinner()) {
+                long accountId = state.accountIds.getOrDefault(ranking.getPlayerKey(), 0L);
+                if (accountId > 0L) {
+                    economy.change(accountId, reward);
+                    ranking.setRewardBones(reward);
+                }
+            }
+        }
+        state.rewardApplied = true;
+        return reward;
+    }
+
+    private static List<QuickQuizPlayerScoreDTO> rankings(RoomState state, boolean markWinners) {
+        int best = Integer.MIN_VALUE;
+        for (Integer score : state.scores.values()) {
+            best = Math.max(best, score == null ? 0 : score);
+        }
+        List<QuickQuizPlayerScoreDTO> rankings = new ArrayList<>();
         for (User player : state.players) {
             String key = playerKey(player);
-            QuickQuizAnswerViewDTO answer = state.answers.get(key);
-            if (answer == null) {
-                answer = new QuickQuizAnswerViewDTO(key, player.getUsername(), -1, "未作答", now);
-            }
-            answers.add(answer);
+            int score = state.scores.getOrDefault(key, 0);
+            rankings.add(new QuickQuizPlayerScoreDTO(key, player.getUsername(), score, markWinners && score == best, 0));
         }
-        return answers;
+        rankings.sort((a, b) -> Integer.compare(b.getScore(), a.getScore()));
+        return rankings;
     }
 
     private static void saveAnswers(GameRoom room, QuickQuizQuestionDTO question, List<QuickQuizAnswerViewDTO> answers) {
@@ -284,6 +364,9 @@ public final class QuickQuizService {
                         .username(answer.getUsername())
                         .choiceIndex(answer.getChoiceIndex())
                         .choiceText(answer.getChoiceText())
+                        .correct(answer.isCorrect() ? 1 : 0)
+                        .pointsDelta(answer.getPointsDelta())
+                        .totalScore(answer.getTotalScore())
                         .createdAt(answer.getAnsweredAt())
                         .build());
             }
@@ -293,47 +376,10 @@ public final class QuickQuizService {
         }
     }
 
-    private static QuickQuizQuestionDTO startNextQuestion(GameRoom room, RoomState state, List<User> players,
-                                                          QuestionPicker questionPicker) {
-        QuickQuizQuestion question = questionPicker.pick(
-                playerKey(players.get(0)),
-                playerKey(players.get(1)),
-                new ArrayList<>(state.usedQuestionIds));
-        if (question == null) {
-            throw new IllegalArgumentException("剩余可用题数不足");
-        }
-
-        long startedAt = System.currentTimeMillis();
-        QuickQuizQuestionDTO dto = toQuestionDTO(question);
-        dto.setStartedAt(startedAt);
-        dto.setDeadlineAt(0);
-        dto.setRoundNo(state.roundNo + 1);
-        dto.setTotalRounds(room.getQuickQuizQuestionCount());
-
-        state.start(dto, players);
-        sendToRoom(room, ResponseBuilder.build(null, dto, MessageType.QUICK_QUIZ_QUESTION));
-        return dto;
-    }
-
-    private static QuickQuizQuestion randomAvailableQuestion(String playerAKey, String playerBKey,
-                                                             List<Long> usedQuestionIds) {
+    private static QuickQuizQuestion randomAvailableQuestion(List<Long> usedQuestionIds) {
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
-            return session.getMapper(QuickQuizMapper.class).randomAvailableQuestion(
-                    playerAKey, playerBKey, usedQuestionIds);
+            return session.getMapper(QuickQuizMapper.class).randomAvailableQuestion(usedQuestionIds);
         }
-    }
-
-    private static boolean shouldExcludeAnswers(List<QuickQuizAnswerViewDTO> answers) {
-        if (answers == null || answers.size() < 2) {
-            return false;
-        }
-        Set<String> answeredPlayerKeys = new HashSet<>();
-        for (QuickQuizAnswerViewDTO answer : answers) {
-            if (answer != null && answer.getChoiceIndex() >= 0) {
-                answeredPlayerKeys.add(answer.getPlayerKey());
-            }
-        }
-        return answeredPlayerKeys.size() >= 2;
     }
 
     private static void sendToRoom(GameRoom room, Response response) {
@@ -343,10 +389,6 @@ public final class QuickQuizService {
                 player.send(response);
             }
         });
-    }
-
-    private static int totalActiveCount() {
-        return listQuestions().size();
     }
 
     private static List<User> getRoomUsers(GameRoom room) {
@@ -360,15 +402,23 @@ public final class QuickQuizService {
         return players;
     }
 
-    private static QuickQuizQuestionDTO toQuestionDTO(QuickQuizQuestion row) {
+    private static QuickQuizQuestionDTO toQuestionDTO(QuickQuizQuestion row, boolean includeAnswer) {
         return new QuickQuizQuestionDTO(
                 row.getId(),
                 row.getQuestion(),
                 JSONUtil.toList(row.getOptionsJson(), String.class),
+                includeAnswer ? row.getCorrectAnswerIndex() : -1,
+                Math.max(1, row.getScore()),
                 0,
                 0,
                 0,
                 0);
+    }
+
+    private static QuickQuizQuestionDTO copyQuestion(QuickQuizQuestionDTO question, boolean includeAnswer) {
+        return new QuickQuizQuestionDTO(question.getId(), question.getQuestion(), question.getOptions(),
+                includeAnswer ? question.getCorrectAnswerIndex() : -1, question.getScore(),
+                question.getStartedAt(), question.getDeadlineAt(), question.getRoundNo(), question.getTotalRounds());
     }
 
     private static List<QuickQuizQuestionDTO> normalizeQuestions(List<QuickQuizQuestionDTO> questions) {
@@ -394,10 +444,12 @@ public final class QuickQuizService {
                     options.add(text);
                 }
             }
-            if (options.size() < 2) {
+            int correctAnswerIndex = item.getCorrectAnswerIndex();
+            if (options.size() < 2 || options.size() > 4 || correctAnswerIndex < 0 || correctAnswerIndex >= options.size()) {
                 continue;
             }
-            map.put(question, new QuickQuizQuestionDTO(0, question, options, 0, 0, 0, 0));
+            map.put(question, new QuickQuizQuestionDTO(0, question, options, correctAnswerIndex,
+                    Math.max(1, item.getScore()), 0, 0, 0, 0));
         }
         return new ArrayList<>(map.values());
     }
@@ -428,7 +480,11 @@ public final class QuickQuizService {
                     row.getUsername(),
                     row.getChoiceIndex(),
                     row.getChoiceText(),
-                    row.getCreatedAt());
+                    row.getCreatedAt(),
+                    row.getCorrect() > 0,
+                    row.getChoiceIndex() < 0,
+                    row.getPointsDelta(),
+                    row.getTotalScore());
             dto.getAnswers().add(answer);
             if (currentPlayerKey != null && !currentPlayerKey.equals(answer.getPlayerKey())) {
                 dto.setOpponentKey(answer.getPlayerKey());
@@ -438,43 +494,27 @@ public final class QuickQuizService {
         return new ArrayList<>(map.values());
     }
 
-    static int answerCount(String roomId) {
-        RoomState state = ROOM_STATES.get(roomId);
-        if (state == null) {
-            return 0;
-        }
-        synchronized (state) {
-            return state.answers.size();
-        }
-    }
-
-    static int roundNo(String roomId) {
-        RoomState state = ROOM_STATES.get(roomId);
-        if (state == null) {
-            return 0;
-        }
-        synchronized (state) {
-            return state.roundNo;
-        }
-    }
-
     interface QuestionPicker {
-        QuickQuizQuestion pick(String playerAKey, String playerBKey, List<Long> usedQuestionIds);
+        QuickQuizQuestion pick(List<Long> usedQuestionIds);
     }
 
-    interface AnswerRecorder {
-        void save(GameRoom room, QuickQuizQuestionDTO question, List<QuickQuizAnswerViewDTO> answers);
+    interface Economy {
+        void change(long accountId, int delta);
     }
 
     private static class RoomState {
         private final String roomId;
         private final Set<Long> usedQuestionIds = new HashSet<>();
         private final Map<String, QuickQuizAnswerViewDTO> answers = new ConcurrentHashMap<>();
+        private final Map<String, Integer> scores = new HashMap<>();
+        private final Map<String, Long> accountIds = new HashMap<>();
         private final Set<String> expectedPlayerKeys = new HashSet<>();
         private final List<User> players = new ArrayList<>();
         private QuickQuizQuestionDTO currentQuestion;
         private int roundNo;
-        private boolean revealed;
+        private int prizePool;
+        private boolean economyApplied;
+        private boolean rewardApplied;
         private boolean closed;
 
         private RoomState(String roomId) {
@@ -488,9 +528,11 @@ public final class QuickQuizService {
             this.players.clear();
             this.players.addAll(users);
             for (User user : users) {
-                this.expectedPlayerKeys.add(playerKey(user));
+                String key = playerKey(user);
+                this.expectedPlayerKeys.add(key);
+                this.scores.putIfAbsent(key, 0);
+                this.accountIds.put(key, user.getAccountId());
             }
-            this.revealed = false;
         }
     }
 

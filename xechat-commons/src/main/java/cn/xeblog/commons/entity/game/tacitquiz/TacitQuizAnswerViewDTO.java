@@ -1,4 +1,4 @@
-package cn.xeblog.commons.entity.game.quickquiz;
+package cn.xeblog.commons.entity.game.tacitquiz;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -7,12 +7,12 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 
 /**
- * 快问快答单个玩家答案。
+ * 默契问答单个玩家答案。
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class QuickQuizAnswerViewDTO implements Serializable {
+public class TacitQuizAnswerViewDTO implements Serializable {
 
     private String playerKey;
 
@@ -23,13 +23,5 @@ public class QuickQuizAnswerViewDTO implements Serializable {
     private String choiceText;
 
     private long answeredAt;
-
-    private boolean correct;
-
-    private boolean skipped;
-
-    private int pointsDelta;
-
-    private int totalScore;
 
 }

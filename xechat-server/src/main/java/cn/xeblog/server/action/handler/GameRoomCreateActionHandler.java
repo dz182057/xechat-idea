@@ -41,6 +41,9 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
         gameRoom.setNums(body.getNums());
         gameRoom.setGameMode(body.getGameMode());
         gameRoom.setQuickQuizQuestionCount(body.getQuickQuizQuestionCount());
+        gameRoom.setQuickQuizTimeLimitSeconds(body.getQuickQuizTimeLimitSeconds());
+        gameRoom.setQuickQuizEntryFee(body.getQuickQuizEntryFee());
+        gameRoom.setTacitQuizQuestionCount(resolveTacitQuizQuestionCount(body));
         gameRoom.setTurtleSoupGuessLimit(body.getTurtleSoupGuessLimit());
         gameRoom.setTurtleSoupHostMode(body.getTurtleSoupHostMode());
         gameRoom.setDogRaceMode(body.getDogRaceMode());
@@ -69,6 +72,10 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
 
     public static boolean resolveDogBattleAllowSkill(CreateGameRoomDTO body) {
         return body.getDogBattleAllowSkill() == null || body.getDogBattleAllowSkill();
+    }
+
+    public static int resolveTacitQuizQuestionCount(CreateGameRoomDTO body) {
+        return body.getTacitQuizQuestionCount() > 0 ? body.getTacitQuizQuestionCount() : body.getQuickQuizQuestionCount();
     }
 
 }

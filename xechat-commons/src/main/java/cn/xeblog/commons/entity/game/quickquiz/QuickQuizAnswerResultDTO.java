@@ -8,7 +8,7 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * 快问快答答案揭示。
+ * 快问快答单题/整局结果。
  */
 @Data
 @NoArgsConstructor
@@ -21,10 +21,18 @@ public class QuickQuizAnswerResultDTO implements Serializable {
 
     private List<QuickQuizAnswerViewDTO> answers;
 
+    private List<QuickQuizPlayerScoreDTO> rankings;
+
     private int roundNo;
 
     private int totalRounds;
 
     private boolean finished;
+
+    private int prizePool;
+
+    private int rewardPerWinner;
+
+    private boolean economyApplied;
 
 }

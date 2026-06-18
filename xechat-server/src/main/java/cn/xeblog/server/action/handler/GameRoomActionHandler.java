@@ -20,6 +20,7 @@ import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.game.dogbattle.DogBattleService;
 import cn.xeblog.server.game.dograce.DogRaceService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
+import cn.xeblog.server.game.tacitquiz.TacitQuizService;
 import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
 
@@ -110,6 +111,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
     private void roomClose(User user, GameRoom gameRoom) {
         GameRoomCache.removeRoom(gameRoom.getId());
         QuickQuizService.clearRoom(gameRoom);
+        TacitQuizService.clearRoom(gameRoom);
         MinesweeperService.clearRoom(gameRoom.getId());
         TurtleSoupService.clearRoom(gameRoom.getId());
         DogRaceService.clearRoom(gameRoom.getId());
@@ -215,6 +217,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
 
         if (GameRoomCache.leftRoom(gameRoom.getId(), user)) {
             QuickQuizService.clearRoom(gameRoom);
+            TacitQuizService.clearRoom(gameRoom);
             MinesweeperService.clearRoom(gameRoom.getId());
             TurtleSoupService.clearRoom(gameRoom.getId());
             DogRaceService.clearRoom(gameRoom.getId());

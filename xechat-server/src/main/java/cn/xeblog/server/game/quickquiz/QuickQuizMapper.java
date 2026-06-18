@@ -15,13 +15,9 @@ public interface QuickQuizMapper {
 
     List<QuickQuizQuestion> listActiveQuestions();
 
-    QuickQuizQuestion randomAvailableQuestion(@Param("playerAKey") String playerAKey,
-                                              @Param("playerBKey") String playerBKey,
-                                              @Param("usedQuestionIds") List<Long> usedQuestionIds);
+    QuickQuizQuestion randomAvailableQuestion(@Param("usedQuestionIds") List<Long> usedQuestionIds);
 
-    int countAvailableQuestions(@Param("playerAKey") String playerAKey,
-                                @Param("playerBKey") String playerBKey,
-                                @Param("usedQuestionIds") List<Long> usedQuestionIds);
+    int countAvailableQuestions(@Param("usedQuestionIds") List<Long> usedQuestionIds);
 
     void insertRecord(QuickQuizRecord record);
 

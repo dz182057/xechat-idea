@@ -2,22 +2,20 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="cn.xeblog.server.game.quickquiz.QuickQuizMapper">
+<mapper namespace="cn.xeblog.server.game.tacitquiz.TacitQuizMapper">
 
     <sql id="questionCols">
-        id, question, options_json, correct_answer_index, score, sort_order, active, created_at, updated_at
+        id, question, options_json, sort_order, active, created_at, updated_at
     </sql>
 
-    <insert id="upsertQuestion" parameterType="cn.xeblog.server.game.quickquiz.QuickQuizQuestion">
+    <insert id="upsertQuestion" parameterType="cn.xeblog.server.game.tacitquiz.TacitQuizQuestion">
         INSERT INTO quick_quiz_questions (
-            question, options_json, correct_answer_index, score, sort_order, active, created_at, updated_at
+            question, options_json, sort_order, active, created_at, updated_at
         ) VALUES (
-            #{question}, #{optionsJson}, #{correctAnswerIndex}, #{score}, #{sortOrder}, #{active}, #{createdAt}, #{updatedAt}
+            #{question}, #{optionsJson}, #{sortOrder}, #{active}, #{createdAt}, #{updatedAt}
         )
         ON CONFLICT(question) DO UPDATE SET
             options_json = excluded.options_json,
-            correct_answer_index = excluded.correct_answer_index,
-            score = excluded.score,
             sort_order = excluded.sort_order,
             active = excluded.active,
             updated_at = excluded.updated_at
@@ -27,14 +25,14 @@
         UPDATE quick_quiz_questions SET active = 0, updated_at = strftime('%s','now') * 1000
     </update>
 
-    <select id="listActiveQuestions" resultType="cn.xeblog.server.game.quickquiz.QuickQuizQuestion">
+    <select id="listActiveQuestions" resultType="cn.xeblog.server.game.tacitquiz.TacitQuizQuestion">
         SELECT <include refid="questionCols"/>
         FROM quick_quiz_questions
         WHERE active = 1
         ORDER BY sort_order ASC, id ASC
     </select>
 
-    <select id="randomAvailableQuestion" resultType="cn.xeblog.server.game.quickquiz.QuickQuizQuestion">
+    <select id="randomAvailableQuestion" resultType="cn.xeblog.server.game.tacitquiz.TacitQuizQuestion">
         SELECT <include refid="questionCols"/>
         FROM quick_quiz_questions q
         WHERE q.active = 1
@@ -44,6 +42,18 @@
                 #{id}
             </foreach>
         </if>
+        AND NOT (
+            EXISTS (
+                SELECT 1 FROM quick_quiz_records r1
+                WHERE r1.question_id = q.id AND r1.player_key = #{playerAKey}
+                  AND r1.choice_index >= 0
+            )
+            AND EXISTS (
+                SELECT 1 FROM quick_quiz_records r2
+                WHERE r2.question_id = q.id AND r2.player_key = #{playerBKey}
+                  AND r2.choice_index >= 0
+            )
+        )
         ORDER BY RANDOM()
         LIMIT 1
     </select>
@@ -58,22 +68,32 @@
                 #{id}
             </foreach>
         </if>
+        AND NOT (
+            EXISTS (
+                SELECT 1 FROM quick_quiz_records r1
+                WHERE r1.question_id = q.id AND r1.player_key = #{playerAKey}
+                  AND r1.choice_index >= 0
+            )
+            AND EXISTS (
+                SELECT 1 FROM quick_quiz_records r2
+                WHERE r2.question_id = q.id AND r2.player_key = #{playerBKey}
+                  AND r2.choice_index >= 0
+            )
+        )
     </select>
 
-    <insert id="insertRecord" parameterType="cn.xeblog.server.game.quickquiz.QuickQuizRecord">
+    <insert id="insertRecord" parameterType="cn.xeblog.server.game.tacitquiz.TacitQuizRecord">
         INSERT INTO quick_quiz_records (
-            room_id, question_id, player_key, username, choice_index, choice_text,
-            correct, points_delta, total_score, created_at
+            room_id, question_id, player_key, username, choice_index, choice_text, created_at
         ) VALUES (
-            #{roomId}, #{questionId}, #{playerKey}, #{username}, #{choiceIndex}, #{choiceText},
-            #{correct}, #{pointsDelta}, #{totalScore}, #{createdAt}
+            #{roomId}, #{questionId}, #{playerKey}, #{username}, #{choiceIndex}, #{choiceText}, #{createdAt}
         )
     </insert>
 
-    <select id="listRecordsByPlayer" resultType="cn.xeblog.server.game.quickquiz.QuickQuizRecord">
+    <select id="listRecordsByPlayer" resultType="cn.xeblog.server.game.tacitquiz.TacitQuizRecord">
         SELECT r.id, r.room_id, r.question_id, r.player_key, r.username,
-               r.choice_index, r.choice_text, r.correct, r.points_delta, r.total_score, r.created_at,
-               q.question, q.options_json, q.correct_answer_index, q.score
+               r.choice_index, r.choice_text, r.created_at,
+               q.question, q.options_json
         FROM quick_quiz_records r
         JOIN quick_quiz_questions q ON q.id = r.question_id
         WHERE EXISTS (
@@ -85,10 +105,10 @@
         ORDER BY r.created_at DESC, r.id ASC
     </select>
 
-    <select id="listAllRecords" resultType="cn.xeblog.server.game.quickquiz.QuickQuizRecord">
+    <select id="listAllRecords" resultType="cn.xeblog.server.game.tacitquiz.TacitQuizRecord">
         SELECT r.id, r.room_id, r.question_id, r.player_key, r.username,
-               r.choice_index, r.choice_text, r.correct, r.points_delta, r.total_score, r.created_at,
-               q.question, q.options_json, q.correct_answer_index, q.score
+               r.choice_index, r.choice_text, r.created_at,
+               q.question, q.options_json
         FROM quick_quiz_records r
         JOIN quick_quiz_questions q ON q.id = r.question_id
         ORDER BY r.created_at DESC, r.id ASC

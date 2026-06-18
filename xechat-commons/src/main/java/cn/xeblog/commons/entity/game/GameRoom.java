@@ -42,6 +42,21 @@ public class GameRoom implements Serializable {
     private int quickQuizQuestionCount;
 
     /**
+     * 快问快答每题限时秒数
+     */
+    private int quickQuizTimeLimitSeconds;
+
+    /**
+     * 快问快答报名骨头币
+     */
+    private int quickQuizEntryFee;
+
+    /**
+     * 默契问答本局答题数
+     */
+    private int tacitQuizQuestionCount;
+
+    /**
      * 海龟汤猜底机会
      */
     private int turtleSoupGuessLimit;

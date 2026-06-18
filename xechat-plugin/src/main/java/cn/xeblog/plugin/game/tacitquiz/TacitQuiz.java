@@ -1,7 +1,7 @@
-package cn.xeblog.plugin.game.quickquiz;
+package cn.xeblog.plugin.game.tacitquiz;
 
 import cn.xeblog.commons.entity.User;
-import cn.xeblog.commons.entity.game.quickquiz.*;
+import cn.xeblog.commons.entity.game.tacitquiz.*;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.plugin.action.MessageAction;
@@ -17,10 +17,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 快问快答。
+ * 默契问答。
  */
-@DoGame(Game.QUICK_QUIZ)
-public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
+@DoGame(Game.TACIT_QUIZ)
+public class TacitQuiz extends AbstractGame<TacitQuizNextQuestionDTO> {
 
     private static final int DEFAULT_QUESTION_COUNT = 5;
     private static final String UNKNOWN_OPPONENT_KEY = "__UNKNOWN_OPPONENT__";
@@ -31,12 +31,9 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
     private JPanel optionPanel;
     private JTextArea resultArea;
     private JTextArea recordArea;
-    private QuickQuizQuestionDTO currentQuestion;
+    private TacitQuizQuestionDTO currentQuestion;
     private boolean submitted;
     private int selectedQuestionCount = DEFAULT_QUESTION_COUNT;
-    private int selectedPlayerCount = 2;
-    private int selectedTimeLimitSeconds = 15;
-    private int selectedEntryFee = 0;
 
     @Override
     protected void init() {
@@ -53,7 +50,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
         if (!isHomeowner() || getRoom() == null) {
             return;
         }
-        MessageAction.send(new QuickQuizNextQuestionDTO(getRoom().getId()), Action.QUICK_QUIZ_NEXT_QUESTION);
+        MessageAction.send(new TacitQuizNextQuestionDTO(getRoom().getId()), Action.TACIT_QUIZ_NEXT_QUESTION);
     }
 
     @Override
@@ -70,19 +67,19 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
     private void showStartPanel() {
         mainPanel = new JPanel();
         mainPanel.setLayout(null);
-        mainPanel.setMinimumSize(new Dimension(260, 320));
-        mainPanel.setPreferredSize(new Dimension(340, 380));
+        mainPanel.setMinimumSize(new Dimension(240, 220));
+        mainPanel.setPreferredSize(new Dimension(320, 260));
 
         JPanel panel = new JPanel();
-        panel.setBounds(10, 10, 300, 340);
+        panel.setBounds(10, 10, 220, 180);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
-        JLabel title = new JLabel("快问快答");
+        JLabel title = new JLabel("默契问答");
         title.setFont(new Font("", Font.BOLD, 15));
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
         panel.add(title);
         panel.add(Box.createVerticalStrut(12));
-        panel.add(new JLabel("限时答题，答对加分，答错扣分，不作答不扣分。"));
+        panel.add(new JLabel("不限时选择答案，答完后查看双方选择。"));
         panel.add(Box.createVerticalStrut(12));
 
         if (DataCache.isOnline) {
@@ -95,37 +92,10 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
             panel.add(countPanel);
             panel.add(Box.createVerticalStrut(8));
 
-            JPanel playerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-            playerPanel.add(new JLabel("房间人数："));
-            JSpinner playerSpinner = new JSpinner(new SpinnerNumberModel(selectedPlayerCount, 2, 8, 1));
-            playerSpinner.addChangeListener(e -> selectedPlayerCount = (Integer) playerSpinner.getValue());
-            playerPanel.add(playerSpinner);
-            panel.add(playerPanel);
-            panel.add(Box.createVerticalStrut(8));
-
-            JPanel timePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-            timePanel.add(new JLabel("每题秒数："));
-            JSpinner timeSpinner = new JSpinner(new SpinnerNumberModel(selectedTimeLimitSeconds, 5, 120, 5));
-            timeSpinner.addChangeListener(e -> selectedTimeLimitSeconds = (Integer) timeSpinner.getValue());
-            timePanel.add(timeSpinner);
-            panel.add(timePanel);
-            panel.add(Box.createVerticalStrut(8));
-
-            JPanel feePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-            feePanel.add(new JLabel("报名骨头："));
-            JSpinner feeSpinner = new JSpinner(new SpinnerNumberModel(selectedEntryFee, 0, 9999, 1));
-            feeSpinner.addChangeListener(e -> selectedEntryFee = (Integer) feeSpinner.getValue());
-            feePanel.add(feeSpinner);
-            panel.add(feePanel);
-            panel.add(Box.createVerticalStrut(8));
-
             JButton createRoomButton = new JButton("创建房间");
             createRoomButton.addActionListener(e -> {
                 cn.xeblog.commons.entity.game.CreateGameRoomDTO dto =
-                        new cn.xeblog.commons.entity.game.CreateGameRoomDTO(Game.QUICK_QUIZ,
-                                selectedPlayerCount, "知识问答", selectedQuestionCount);
-                dto.setQuickQuizTimeLimitSeconds(selectedTimeLimitSeconds);
-                dto.setQuickQuizEntryFee(selectedEntryFee);
+                        new cn.xeblog.commons.entity.game.CreateGameRoomDTO(Game.TACIT_QUIZ, 2, "在线PK", selectedQuestionCount);
                 MessageAction.send(dto, Action.CREATE_GAME_ROOM);
             });
             panel.add(createRoomButton);
@@ -172,7 +142,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
 
         JPanel buttons = new JPanel();
         JButton recordButton = new JButton("查看我的记录");
-        recordButton.addActionListener(e -> MessageAction.send(new Object(), Action.QUICK_QUIZ_MY_RECORDS));
+        recordButton.addActionListener(e -> MessageAction.send(new Object(), Action.TACIT_QUIZ_MY_RECORDS));
         buttons.add(recordButton);
         bottom.add(buttons, BorderLayout.SOUTH);
 
@@ -180,7 +150,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
         mainPanel.updateUI();
     }
 
-    public void onQuestion(QuickQuizQuestionDTO question) {
+    public void onQuestion(TacitQuizQuestionDTO question) {
         SwingUtilities.invokeLater(() -> {
             currentQuestion = question;
             submitted = false;
@@ -190,51 +160,25 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
             List<String> options = question.getOptions() == null ? new ArrayList<>() : question.getOptions();
             for (int i = 0; i < options.size(); i++) {
                 int index = i;
-                JButton button = new JButton((char) ('A' + i) + ". " + options.get(i));
+                JButton button = new JButton(options.get(i));
                 button.setAlignmentX(Component.LEFT_ALIGNMENT);
                 button.addActionListener(e -> submit(index));
                 optionPanel.add(button);
                 optionPanel.add(Box.createVerticalStrut(8));
             }
-            JButton skipButton = new JButton("不作答");
-            skipButton.setAlignmentX(Component.LEFT_ALIGNMENT);
-            skipButton.addActionListener(e -> submit(-1));
-            optionPanel.add(skipButton);
             optionPanel.updateUI();
         });
     }
 
-    public void onResult(QuickQuizAnswerResultDTO result) {
+    public void onResult(TacitQuizAnswerResultDTO result) {
         SwingUtilities.invokeLater(() -> {
             StringBuilder sb = new StringBuilder();
             sb.append(result.getQuestion().getQuestion()).append("\n\n");
-            List<String> options = result.getQuestion().getOptions();
-            int correctIndex = result.getQuestion().getCorrectAnswerIndex();
-            if (options != null && correctIndex >= 0 && correctIndex < options.size()) {
-                sb.append("正确答案：").append((char) ('A' + correctIndex)).append(". ")
-                        .append(options.get(correctIndex)).append("\n\n");
-            }
-            for (QuickQuizAnswerViewDTO answer : result.getAnswers()) {
-                sb.append(answer.getUsername()).append("：").append(answer.getChoiceText())
-                        .append("（").append(answer.getPointsDelta() >= 0 ? "+" : "")
-                        .append(answer.getPointsDelta()).append("，总分 ")
-                        .append(answer.getTotalScore()).append("）\n");
-            }
-            if (result.getRankings() != null && !result.getRankings().isEmpty()) {
-                sb.append("\n排行：\n");
-                result.getRankings().forEach(ranking -> sb.append(ranking.getUsername())
-                        .append("：").append(ranking.getScore()).append(" 分")
-                        .append(ranking.isWinner() ? "，胜者 +" + ranking.getRewardBones() + "🦴" : "")
-                        .append("\n"));
+            for (TacitQuizAnswerViewDTO answer : result.getAnswers()) {
+                sb.append(answer.getUsername()).append("：").append(answer.getChoiceText()).append("\n");
             }
             if (!result.isFinished()) {
                 sb.append("\n等待下一题...");
-                if (isHomeowner()) {
-                    MessageAction.send(new QuickQuizNextQuestionDTO(getRoom().getId()), Action.QUICK_QUIZ_NEXT_QUESTION);
-                }
-            } else if (result.getPrizePool() > 0) {
-                sb.append("\n奖池：").append(result.getPrizePool()).append("🦴，胜者每人 ")
-                        .append(result.getRewardPerWinner()).append("🦴");
             }
             resultArea.setText(sb.toString());
             setTitle(result.isFinished() ? "本局已完成" : "本题结束，等待下一题...");
@@ -244,7 +188,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
         });
     }
 
-    public void onRecords(List<QuickQuizRecordDTO> records) {
+    public void onRecords(List<TacitQuizRecordDTO> records) {
         SwingUtilities.invokeLater(() -> {
             List<RecordGroup> groups = groupRecordsByOpponent(records);
             if (groups.isEmpty()) {
@@ -276,20 +220,20 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
             return;
         }
         List<String> options = currentQuestion.getOptions();
-        if (choiceIndex >= options.size()) {
+        if (choiceIndex < 0 || choiceIndex >= options.size()) {
             return;
         }
         submitted = true;
         for (Component component : optionPanel.getComponents()) {
             component.setEnabled(false);
         }
-        QuickQuizSubmitAnswerDTO dto = new QuickQuizSubmitAnswerDTO(
+        TacitQuizSubmitAnswerDTO dto = new TacitQuizSubmitAnswerDTO(
                 getRoom().getId(),
                 currentQuestion.getId(),
                 choiceIndex,
-                choiceIndex < 0 ? "不作答" : options.get(choiceIndex));
-        MessageAction.send(dto, Action.QUICK_QUIZ_SUBMIT_ANSWER);
-        resultArea.setText("已提交，等待所有玩家答案揭示...");
+                options.get(choiceIndex));
+        MessageAction.send(dto, Action.TACIT_QUIZ_SUBMIT_ANSWER);
+        resultArea.setText("已提交，等待双方答案揭示...");
     }
 
     private void setTitle(String text) {
@@ -298,12 +242,12 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
         }
     }
 
-    static List<RecordGroup> groupRecordsByOpponent(List<QuickQuizRecordDTO> records) {
+    static List<RecordGroup> groupRecordsByOpponent(List<TacitQuizRecordDTO> records) {
         Map<String, RecordGroup> groupMap = new LinkedHashMap<>();
         if (records == null) {
             return new ArrayList<>();
         }
-        for (QuickQuizRecordDTO record : records) {
+        for (TacitQuizRecordDTO record : records) {
             String opponentKey = normalizeOpponentKey(record.getOpponentKey());
             String opponentName = normalizeOpponentName(record.getOpponentName());
             RecordGroup group = groupMap.get(opponentKey);
@@ -319,14 +263,13 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
         return new ArrayList<>(groupMap.values());
     }
 
-    private static String formatRecords(List<QuickQuizRecordDTO> records) {
+    private static String formatRecords(List<TacitQuizRecordDTO> records) {
         StringBuilder sb = new StringBuilder();
-        for (QuickQuizRecordDTO record : records) {
+        for (TacitQuizRecordDTO record : records) {
             sb.append(record.getQuestion()).append("\n");
-            List<QuickQuizAnswerViewDTO> answers = record.getAnswers() == null ? new ArrayList<>() : record.getAnswers();
-            for (QuickQuizAnswerViewDTO answer : answers) {
-                sb.append("  ").append(answer.getUsername()).append("：").append(answer.getChoiceText())
-                        .append("（").append(answer.getPointsDelta()).append("）\n");
+            List<TacitQuizAnswerViewDTO> answers = record.getAnswers() == null ? new ArrayList<>() : record.getAnswers();
+            for (TacitQuizAnswerViewDTO answer : answers) {
+                sb.append("  ").append(answer.getUsername()).append("：").append(answer.getChoiceText()).append("\n");
             }
             sb.append("----------\n");
         }
@@ -348,7 +291,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
     static class RecordGroup {
         private final String opponentKey;
         private String opponentName;
-        private final List<QuickQuizRecordDTO> records = new ArrayList<>();
+        private final List<TacitQuizRecordDTO> records = new ArrayList<>();
 
         RecordGroup(String opponentKey, String opponentName) {
             this.opponentKey = opponentKey;
@@ -363,7 +306,7 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
             this.opponentName = opponentName;
         }
 
-        List<QuickQuizRecordDTO> getRecords() {
+        List<TacitQuizRecordDTO> getRecords() {
             return records;
         }
 

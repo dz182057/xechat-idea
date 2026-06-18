@@ -236,12 +236,17 @@ public final class DbInitializer {
                             "id INTEGER PRIMARY KEY AUTOINCREMENT," +
                             "question TEXT NOT NULL UNIQUE," +
                             "options_json TEXT NOT NULL," +
+                            "correct_answer_index INTEGER NOT NULL DEFAULT 0," +
+                            "score INTEGER NOT NULL DEFAULT 1," +
                             "sort_order INTEGER NOT NULL DEFAULT 0," +
                             "active INTEGER NOT NULL DEFAULT 1," +
                             "created_at INTEGER NOT NULL," +
                             "updated_at INTEGER NOT NULL" +
                             ")");
                     log.info("数据库迁移: 创建 quick_quiz_questions 表");
+                } else {
+                    addColumnIfMissing(conn, st, "quick_quiz_questions", "correct_answer_index", "INTEGER NOT NULL DEFAULT 0");
+                    addColumnIfMissing(conn, st, "quick_quiz_questions", "score", "INTEGER NOT NULL DEFAULT 1");
                 }
                 if (!tableExists(conn, "quick_quiz_records")) {
                     st.execute("CREATE TABLE quick_quiz_records (" +
@@ -252,6 +257,9 @@ public final class DbInitializer {
                             "username TEXT NOT NULL," +
                             "choice_index INTEGER NOT NULL," +
                             "choice_text TEXT NOT NULL," +
+                            "correct INTEGER NOT NULL DEFAULT 0," +
+                            "points_delta INTEGER NOT NULL DEFAULT 0," +
+                            "total_score INTEGER NOT NULL DEFAULT 0," +
                             "created_at INTEGER NOT NULL" +
                             ")");
                     st.execute("CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_player " +
@@ -259,6 +267,10 @@ public final class DbInitializer {
                     st.execute("CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question " +
                             "ON quick_quiz_records(room_id, question_id)");
                     log.info("数据库迁移: 创建 quick_quiz_records 表");
+                } else {
+                    addColumnIfMissing(conn, st, "quick_quiz_records", "correct", "INTEGER NOT NULL DEFAULT 0");
+                    addColumnIfMissing(conn, st, "quick_quiz_records", "points_delta", "INTEGER NOT NULL DEFAULT 0");
+                    addColumnIfMissing(conn, st, "quick_quiz_records", "total_score", "INTEGER NOT NULL DEFAULT 0");
                 }
             }
         }
