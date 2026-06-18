@@ -303,8 +303,15 @@ public class DogRaceServiceTest {
                     .findFirst()
                     .orElseThrow(() -> new AssertionError("真实狗应参与排名"))
                     .getRewardBones();
+            int weeklyPoints = settle.getRankings().stream()
+                    .filter(ranking -> realDogId.equals(ranking.getDogId()))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("真实狗应参与排名"))
+                    .getWeeklyPoints();
 
-            Assert.assertEquals(100 + rewardBones, PetService.profile(user).getAssets().getBones());
+            PetProfileDTO afterSettle = PetService.profile(user);
+            Assert.assertEquals(100 + rewardBones, afterSettle.getAssets().getBones());
+            Assert.assertEquals(weeklyPoints, afterSettle.getDogs().get(0).getWeeklyPoints());
             Assert.assertTrue(settle.getBroadcasts().stream().anyMatch(line -> line.contains("名次奖")));
         } finally {
             resetDbFactory();

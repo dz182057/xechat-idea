@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS pet_dogs (
     status           TEXT NOT NULL,
     race_count       INTEGER NOT NULL DEFAULT 0,
     race_first_count INTEGER NOT NULL DEFAULT 0,
+    weekly_points    INTEGER NOT NULL DEFAULT 0,
     created_at       INTEGER NOT NULL,
     updated_at       INTEGER NOT NULL
 );

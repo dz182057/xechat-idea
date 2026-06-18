@@ -6,4 +6,5 @@ import lombok.Data;
 public class PetRaceResultDTO {
     private String dogId;
     private int rank;
+    private int weeklyPoints;
 }

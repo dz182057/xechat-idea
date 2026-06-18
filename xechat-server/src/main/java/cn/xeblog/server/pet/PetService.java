@@ -101,15 +101,17 @@ public final class PetService {
             }
             int raceCount = dog.getRaceCount() + 1;
             int firstCount = dog.getRaceFirstCount() + (result.getRank() == 1 ? 1 : 0);
+            int weeklyPoints = dog.getWeeklyPoints() + Math.max(result.getWeeklyPoints(), 0);
             String stage = nextStage(dog, raceCount, firstCount);
             try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE pet_dogs SET race_count=?, race_first_count=?, stage=?, updated_at=? WHERE id=? AND account_id=?")) {
+                    "UPDATE pet_dogs SET race_count=?, race_first_count=?, weekly_points=?, stage=?, updated_at=? WHERE id=? AND account_id=?")) {
                 ps.setInt(1, raceCount);
                 ps.setInt(2, firstCount);
-                ps.setString(3, stage);
-                ps.setLong(4, System.currentTimeMillis());
-                ps.setString(5, result.getDogId());
-                ps.setLong(6, accountId);
+                ps.setInt(3, weeklyPoints);
+                ps.setString(4, stage);
+                ps.setLong(5, System.currentTimeMillis());
+                ps.setString(6, result.getDogId());
+                ps.setLong(7, accountId);
                 ps.executeUpdate();
             }
             session.commit();
@@ -313,7 +315,8 @@ public final class PetService {
                 rs.getInt("energy"),
                 rs.getString("status"),
                 rs.getInt("race_count"),
-                rs.getInt("race_first_count"));
+                rs.getInt("race_first_count"),
+                rs.getInt("weekly_points"));
     }
 
     private static PetProfileDTO.CheckinStatus todayCheckinStatus() {

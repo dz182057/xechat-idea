@@ -47,6 +47,7 @@ public class PetProfileDTO {
         private String status;
         private int raceCount;
         private int raceFirstCount;
+        private int weeklyPoints;
     }
 
     @Data

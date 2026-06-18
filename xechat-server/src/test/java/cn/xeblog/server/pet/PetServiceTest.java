@@ -57,6 +57,7 @@ public class PetServiceTest {
         Assert.assertEquals("shiba", dog.getBreed());
         Assert.assertEquals("puppy", dog.getStage());
         Assert.assertEquals(10, dog.getEnergy());
+        Assert.assertEquals(0, dog.getWeeklyPoints());
 
         try {
             PetService.adopt(user, adopt("corgi", "小黄"));
@@ -115,6 +116,18 @@ public class PetServiceTest {
         Assert.assertEquals(1, afterFailure.getDogs().get(0).getEnergy());
     }
 
+    @Test
+    public void raceWeeklyPointsShouldAccumulateOnDog() {
+        User user = accountUser(990006L);
+        PetProfileDTO profile = PetService.adopt(user, adopt("native", "周榜狗"));
+        String dogId = profile.getDogs().get(0).getId();
+
+        PetService.applyRaceResult(user, raceResult(dogId, 2, 6));
+        PetProfileDTO afterSecond = PetService.applyRaceResult(user, raceResult(dogId, 1, 10));
+
+        Assert.assertEquals(16, afterSecond.getDogs().get(0).getWeeklyPoints());
+    }
+
     private static User accountUser(long accountId) {
         User user = new User();
         user.setId("test-" + accountId);
@@ -133,9 +146,14 @@ public class PetServiceTest {
     }
 
     private static PetRaceResultDTO raceResult(String dogId, int rank) {
+        return raceResult(dogId, rank, 0);
+    }
+
+    private static PetRaceResultDTO raceResult(String dogId, int rank, int weeklyPoints) {
         PetRaceResultDTO dto = new PetRaceResultDTO();
         dto.setDogId(dogId);
         dto.setRank(rank);
+        dto.setWeeklyPoints(weeklyPoints);
         return dto;
     }
 

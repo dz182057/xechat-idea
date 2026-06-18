@@ -752,6 +752,7 @@ public final class DogRaceService {
             PetRaceResultDTO result = new PetRaceResultDTO();
             result.setDogId(dog.id);
             result.setRank(ranking.getRank());
+            result.setWeeklyPoints(ranking.getWeeklyPoints() == null ? 0 : ranking.getWeeklyPoints());
             try {
                 PetProfileDTO profile = PetService.applyRaceResult(dog.ownerAccountId, result);
                 int rewardBones = ranking.getRewardBones() == null ? 0 : ranking.getRewardBones();
