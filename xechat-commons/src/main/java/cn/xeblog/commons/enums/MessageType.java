@@ -162,7 +162,7 @@ public enum MessageType {
     FRIEND_UPDATED,
 
     /**
-     * 狗狗宇宙个人数据响应
+     * 狗狗宇宙个人数据
      */
     PET;
 }

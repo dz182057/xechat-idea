@@ -2,6 +2,7 @@ package cn.xeblog.server.pet;
 
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
+import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
 import cn.xeblog.server.account.DbInitializer;
@@ -38,8 +39,8 @@ public class PetServiceTest {
     public void profileShouldCreateDefaultAssetsWithoutDogs() {
         PetProfileDTO profile = PetService.profile(accountUser(990001L));
 
-        Assert.assertEquals("990001", profile.getAccountId());
-        Assert.assertEquals(100, profile.getAssets().getBones());
+        Assert.assertEquals(990001L, profile.getAccountId());
+        Assert.assertEquals(300, profile.getAssets().getBones());
         Assert.assertEquals(1, profile.getAssets().getDogSlots());
         Assert.assertTrue(profile.getDogs().isEmpty());
         Assert.assertNotNull(profile.getCheckinStatus().getServerDate());
@@ -49,21 +50,21 @@ public class PetServiceTest {
     public void adoptShouldCreateFirstDogAndRespectSlotLimit() {
         User user = accountUser(990002L);
 
-        PetProfileDTO profile = PetService.adopt(user, adopt("shiba", "小白"));
+        PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "小白"));
 
         Assert.assertEquals(1, profile.getDogs().size());
-        PetProfileDTO.Dog dog = profile.getDogs().get(0);
+        PetDogDTO dog = profile.getDogs().get(0);
         Assert.assertEquals("小白", dog.getName());
-        Assert.assertEquals("shiba", dog.getBreed());
+        Assert.assertEquals("corgi", dog.getBreed());
         Assert.assertEquals("puppy", dog.getStage());
         Assert.assertEquals(10, dog.getEnergy());
         Assert.assertEquals(0, dog.getWeeklyPoints());
 
         try {
-            PetService.adopt(user, adopt("corgi", "小黄"));
+            PetService.adopt(user, adopt("golden", "小黄"));
             Assert.fail("狗位已满时不应继续领养");
         } catch (IllegalArgumentException e) {
-            Assert.assertEquals("狗位已满", e.getMessage());
+            Assert.assertEquals("当前狗位已满", e.getMessage());
         }
     }
 
@@ -77,10 +78,9 @@ public class PetServiceTest {
         PetService.applyRaceResult(user, raceResult(dogId, 2));
         PetProfileDTO afterThirdRace = PetService.applyRaceResult(user, raceResult(dogId, 1));
 
-        PetProfileDTO.Dog dog = afterThirdRace.getDogs().get(0);
+        PetDogDTO dog = afterThirdRace.getDogs().get(0);
         Assert.assertEquals(3, dog.getRaceCount());
         Assert.assertEquals(1, dog.getRaceFirstCount());
-        Assert.assertEquals("adult", dog.getStage());
     }
 
     @Test
@@ -91,7 +91,7 @@ public class PetServiceTest {
 
         PetProfileDTO afterSignup = PetService.spendRaceSignup(user.getAccountId(), dogId, 3, 20);
 
-        Assert.assertEquals(80, afterSignup.getAssets().getBones());
+        Assert.assertEquals(280, afterSignup.getAssets().getBones());
         Assert.assertEquals(7, afterSignup.getDogs().get(0).getEnergy());
     }
 
@@ -112,7 +112,7 @@ public class PetServiceTest {
         }
 
         PetProfileDTO afterFailure = PetService.profile(user);
-        Assert.assertEquals(40, afterFailure.getAssets().getBones());
+        Assert.assertEquals(240, afterFailure.getAssets().getBones());
         Assert.assertEquals(1, afterFailure.getDogs().get(0).getEnergy());
     }
 

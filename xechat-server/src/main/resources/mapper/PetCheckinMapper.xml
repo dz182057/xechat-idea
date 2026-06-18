@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetCheckinMapper">
+
+    <insert id="insert" parameterType="cn.xeblog.server.pet.PetCheckinRecord">
+        INSERT INTO pet_checkins (
+            account_id, checkin_date, cycle_day, created_at
+        ) VALUES (
+            #{accountId}, #{checkinDate}, #{cycleDay}, #{createdAt}
+        )
+    </insert>
+
+    <select id="findByAccountIdAndDate" resultType="cn.xeblog.server.pet.PetCheckinRecord">
+        SELECT account_id, checkin_date, cycle_day, created_at
+        FROM pet_checkins
+        WHERE account_id = #{accountId}
+          AND checkin_date = #{checkinDate}
+    </select>
+
+    <select id="countByAccountId" resultType="int">
+        SELECT COUNT(1)
+        FROM pet_checkins
+        WHERE account_id = #{accountId}
+    </select>
+
+    <select id="listDatesByAccountIdAndMonthPrefix" resultType="string">
+        SELECT checkin_date
+        FROM pet_checkins
+        WHERE account_id = #{accountId}
+          AND checkin_date LIKE #{monthPrefix} || '%'
+        ORDER BY checkin_date ASC
+    </select>
+
+</mapper>

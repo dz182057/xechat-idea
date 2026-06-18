@@ -51,6 +51,16 @@ public class CreateGameRoomDTO implements Serializable {
      */
     private String dogRaceMode;
 
+    /**
+     * 狗狗大战赛制：1 / 3 / 5 / 7
+     */
+    private int dogBattleRoundCount;
+
+    /**
+     * 狗狗大战是否允许技能
+     */
+    private Boolean dogBattleAllowSkill;
+
     public CreateGameRoomDTO(Game game, int nums, String gameMode) {
         this.game = game;
         this.nums = nums;

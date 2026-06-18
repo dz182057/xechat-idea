@@ -81,6 +81,7 @@ public final class DbInitializer {
             ensureDrawGuessWordTable();
             ensureQuickQuizTables();
             ensureTurtleSoupTables();
+            ensurePetTables();
             ensurePushSubscriptionTable();
             ensurePetTables();
 
@@ -341,45 +342,104 @@ public final class DbInitializer {
     }
 
     /**
-     * 给已有数据库补齐狗狗宇宙最小资料表。
+     * 给已有数据库补齐狗狗宇宙个人数据表。
      */
     private static void ensurePetTables() throws Exception {
         try (SqlSession session = FACTORY.openSession(true)) {
             Connection conn = session.getConnection();
             try (Statement st = conn.createStatement()) {
-                st.execute("CREATE TABLE IF NOT EXISTS pet_assets (" +
-                        "account_id INTEGER PRIMARY KEY," +
-                        "bones INTEGER NOT NULL DEFAULT 100," +
-                        "food INTEGER NOT NULL DEFAULT 0," +
-                        "makeup_cards INTEGER NOT NULL DEFAULT 0," +
-                        "dog_slots INTEGER NOT NULL DEFAULT 1," +
-                        "energy_limit INTEGER NOT NULL DEFAULT 10," +
-                        "created_at INTEGER NOT NULL," +
-                        "updated_at INTEGER NOT NULL" +
-                        ")");
-                st.execute("CREATE TABLE IF NOT EXISTS pet_dogs (" +
+                st.execute("CREATE TABLE IF NOT EXISTS dogs (" +
                         "id TEXT PRIMARY KEY," +
-                        "account_id INTEGER NOT NULL," +
+                        "owner_id INTEGER NOT NULL," +
                         "name TEXT NOT NULL," +
                         "breed TEXT NOT NULL," +
-                        "stage TEXT NOT NULL," +
+                        "stage TEXT NOT NULL DEFAULT 'puppy'," +
                         "speed INTEGER NOT NULL," +
                         "stamina INTEGER NOT NULL," +
                         "burst INTEGER NOT NULL," +
                         "wisdom INTEGER NOT NULL," +
                         "bond INTEGER NOT NULL," +
-                        "energy INTEGER NOT NULL," +
-                        "status TEXT NOT NULL," +
+                        "energy INTEGER NOT NULL DEFAULT 10," +
+                        "energy_date TEXT NOT NULL DEFAULT '1970-01-01'," +
+                        "status TEXT NOT NULL DEFAULT 'idle'," +
+                        "explore_location TEXT," +
+                        "explore_ends_at INTEGER," +
+                        "explore_duration_hours INTEGER," +
                         "race_count INTEGER NOT NULL DEFAULT 0," +
                         "race_first_count INTEGER NOT NULL DEFAULT 0," +
                         "weekly_points INTEGER NOT NULL DEFAULT 0," +
                         "created_at INTEGER NOT NULL," +
                         "updated_at INTEGER NOT NULL" +
                         ")");
-                addColumnIfMissing(conn, st, "pet_dogs", "weekly_points", "INTEGER NOT NULL DEFAULT 0");
-                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_dogs_account ON pet_dogs(account_id)");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_dogs_owner ON dogs(owner_id, created_at)");
+                addColumnIfMissing(conn, st, "dogs", "energy_date", "TEXT NOT NULL DEFAULT '1970-01-01'");
+                addColumnIfMissing(conn, st, "dogs", "explore_location", "TEXT");
+                addColumnIfMissing(conn, st, "dogs", "explore_ends_at", "INTEGER");
+                addColumnIfMissing(conn, st, "dogs", "explore_duration_hours", "INTEGER");
+                addColumnIfMissing(conn, st, "dogs", "race_count", "INTEGER NOT NULL DEFAULT 0");
+                addColumnIfMissing(conn, st, "dogs", "race_first_count", "INTEGER NOT NULL DEFAULT 0");
+                addColumnIfMissing(conn, st, "dogs", "weekly_points", "INTEGER NOT NULL DEFAULT 0");
+                migrateLegacyPetDogs(conn, st);
+                st.execute("CREATE TABLE IF NOT EXISTS pet_assets (" +
+                        "account_id INTEGER PRIMARY KEY," +
+                        "bones INTEGER NOT NULL DEFAULT 300," +
+                        "food INTEGER NOT NULL DEFAULT 6," +
+                        "makeup_cards INTEGER NOT NULL DEFAULT 0," +
+                        "dog_slots INTEGER NOT NULL DEFAULT 1," +
+                        "energy_limit INTEGER NOT NULL DEFAULT 10," +
+                        "companion_dog_id TEXT," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                addColumnIfMissing(conn, st, "pet_assets", "companion_dog_id", "TEXT");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_items (" +
+                        "account_id INTEGER NOT NULL," +
+                        "item_id TEXT NOT NULL," +
+                        "count INTEGER NOT NULL DEFAULT 0," +
+                        "updated_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (account_id, item_id)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_collections (" +
+                        "account_id INTEGER NOT NULL," +
+                        "item_id TEXT NOT NULL," +
+                        "count INTEGER NOT NULL DEFAULT 0," +
+                        "discovered INTEGER NOT NULL DEFAULT 1," +
+                        "updated_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (account_id, item_id)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_checkins (" +
+                        "account_id INTEGER NOT NULL," +
+                        "checkin_date TEXT NOT NULL," +
+                        "cycle_day INTEGER NOT NULL," +
+                        "created_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (account_id, checkin_date)" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_checkins_account " +
+                        "ON pet_checkins(account_id, created_at)");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_daily_counters (" +
+                        "account_id INTEGER NOT NULL," +
+                        "counter_date TEXT NOT NULL," +
+                        "counter TEXT NOT NULL," +
+                        "value INTEGER NOT NULL DEFAULT 0," +
+                        "updated_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (account_id, counter_date, counter)" +
+                        ")");
             }
         }
+    }
+
+    private static void migrateLegacyPetDogs(Connection conn, Statement st) throws Exception {
+        if (!tableExists(conn, "pet_dogs")) {
+            return;
+        }
+        String weeklyPointsExpr = columnExists(conn, "pet_dogs", "weekly_points") ? "weekly_points" : "0";
+        st.execute("INSERT OR IGNORE INTO dogs (" +
+                "id, owner_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, energy_date, status, " +
+                "explore_location, explore_ends_at, explore_duration_hours, race_count, race_first_count, weekly_points, " +
+                "created_at, updated_at) " +
+                "SELECT id, account_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, " +
+                "'1970-01-01', status, NULL, NULL, NULL, race_count, race_first_count, " + weeklyPointsExpr + ", " +
+                "created_at, updated_at FROM pet_dogs");
     }
 
     private static void addColumnIfMissing(Connection conn, Statement st, String tableName,

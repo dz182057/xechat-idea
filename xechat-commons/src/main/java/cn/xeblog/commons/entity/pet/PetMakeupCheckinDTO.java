@@ -7,19 +7,15 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 
 /**
- * 狗狗赛跑结算请求。
+ * 狗狗补签请求。
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class PetRaceResultDTO implements Serializable {
+public class PetMakeupCheckinDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    private String dogId;
-
-    private int rank;
-
-    private int weeklyPoints;
+    private String checkinDate;
 
 }

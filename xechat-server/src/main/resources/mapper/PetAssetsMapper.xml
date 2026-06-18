@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetAssetsMapper">
+
+    <sql id="cols">
+        account_id, bones, food, makeup_cards, dog_slots, energy_limit, companion_dog_id, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.pet.PetAssetsRecord">
+        INSERT OR IGNORE INTO pet_assets (
+            account_id, bones, food, makeup_cards, dog_slots, energy_limit, companion_dog_id, created_at, updated_at
+        ) VALUES (
+            #{accountId}, #{bones}, #{food}, #{makeupCards}, #{dogSlots}, #{energyLimit}, #{companionDogId},
+            #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <update id="update" parameterType="cn.xeblog.server.pet.PetAssetsRecord">
+        UPDATE pet_assets
+        SET bones = #{bones},
+            food = #{food},
+            makeup_cards = #{makeupCards},
+            dog_slots = #{dogSlots},
+            energy_limit = #{energyLimit},
+            companion_dog_id = #{companionDogId},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+    </update>
+
+    <update id="decrementFoodIfEnough">
+        UPDATE pet_assets
+        SET food = food - 1,
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND food > 0
+    </update>
+
+    <update id="decrementMakeupCardsIfEnough">
+        UPDATE pet_assets
+        SET makeup_cards = makeup_cards - 1,
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND makeup_cards > 0
+    </update>
+
+    <update id="buySecondDogSlotIfAffordable">
+        UPDATE pet_assets
+        SET bones = bones - #{price},
+            dog_slots = dog_slots + 1,
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND dog_slots &lt; 2
+          AND bones &gt;= #{price}
+    </update>
+
+    <update id="buyFoodIfAffordableAndUnderLimit">
+        UPDATE pet_assets
+        SET bones = bones - #{price},
+            food = food + #{quantity},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND bones &gt;= #{price}
+          AND food + #{quantity} &lt;= #{maxFood}
+    </update>
+
+    <update id="buyMakeupCardsIfAffordableAndUnderLimit">
+        UPDATE pet_assets
+        SET bones = bones - #{price},
+            makeup_cards = makeup_cards + #{quantity},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND bones &gt;= #{price}
+          AND makeup_cards + #{quantity} &lt;= #{maxMakeupCards}
+    </update>
+
+    <update id="decrementBonesIfEnough">
+        UPDATE pet_assets
+        SET bones = bones - #{amount},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND bones &gt;= #{amount}
+    </update>
+
+    <update id="updateCompanionDogId">
+        UPDATE pet_assets
+        SET companion_dog_id = #{companionDogId},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+    </update>
+
+    <update id="addBones">
+        UPDATE pet_assets
+        SET bones = bones + #{amount},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+    </update>
+
+    <update id="addFood">
+        UPDATE pet_assets
+        SET food = food + #{amount},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+    </update>
+
+    <select id="findByAccountId" resultType="cn.xeblog.server.pet.PetAssetsRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_assets
+        WHERE account_id = #{accountId}
+    </select>
+
+</mapper>

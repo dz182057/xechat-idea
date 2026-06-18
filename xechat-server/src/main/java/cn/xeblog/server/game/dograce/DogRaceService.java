@@ -5,9 +5,9 @@ import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameDTO;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.dograce.DogRaceDTO;
+import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
-import cn.xeblog.commons.entity.pet.PetRequestDTO;
 import cn.xeblog.commons.entity.pet.PetResponseDTO;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.PetAction;
@@ -332,7 +332,7 @@ public final class DogRaceService {
                 if (slot > DOG_COUNT || player.getAccountId() <= 0L) {
                     continue;
                 }
-                PetProfileDTO.Dog petDog = PetService.findRaceDog(player.getAccountId());
+                PetDogDTO petDog = PetService.findRaceDog(player.getAccountId());
                 if (petDog == null) {
                     continue;
                 }
@@ -508,7 +508,7 @@ public final class DogRaceService {
         }
     }
 
-    private static int skillStatValue(PetProfileDTO.Dog dog) {
+    private static int skillStatValue(PetDogDTO dog) {
         if (dog == null || dog.getBreed() == null) {
             return 0;
         }
@@ -781,9 +781,7 @@ public final class DogRaceService {
         if (user == null) {
             return;
         }
-        PetRequestDTO request = new PetRequestDTO();
-        request.setPetAction(PetAction.RACE_RESULT);
-        user.send(ResponseBuilder.build(null, PetResponseDTO.ok(request, profile), MessageType.PET));
+        user.send(ResponseBuilder.build(null, PetResponseDTO.ok(PetAction.RACE_RESULT, profile), MessageType.PET));
     }
 
     private static List<String> settleLegBets(GameRoom room, RaceState state, List<DogRaceDTO.Ranking> rankings) {

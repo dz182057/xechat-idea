@@ -7,19 +7,19 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 
 /**
- * 狗狗赛跑结算请求。
+ * 狗狗宇宙收藏品快照。
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class PetRaceResultDTO implements Serializable {
+public class PetCollectionItemDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    private String dogId;
+    private String itemId;
 
-    private int rank;
+    private int count;
 
-    private int weeklyPoints;
+    private boolean discovered;
 
 }

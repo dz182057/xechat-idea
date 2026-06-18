@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetCollectionMapper">
+
+    <sql id="cols">
+        account_id, item_id, count, discovered, updated_at
+    </sql>
+
+    <select id="listByAccountId" resultType="cn.xeblog.server.pet.PetCollectionRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_collections
+        WHERE account_id = #{accountId}
+          AND discovered = 1
+          AND count &gt; 0
+        ORDER BY item_id ASC
+    </select>
+
+    <select id="findCount" resultType="int">
+        SELECT count
+        FROM pet_collections
+        WHERE account_id = #{accountId}
+          AND item_id = #{itemId}
+    </select>
+
+    <insert id="addCollection">
+        INSERT INTO pet_collections (
+            account_id, item_id, count, discovered, updated_at
+        ) VALUES (
+            #{accountId}, #{itemId}, 1, 1, #{updatedAt}
+        )
+        ON CONFLICT(account_id, item_id) DO UPDATE
+        SET count = count + 1,
+            discovered = 1,
+            updated_at = #{updatedAt}
+    </insert>
+
+</mapper>

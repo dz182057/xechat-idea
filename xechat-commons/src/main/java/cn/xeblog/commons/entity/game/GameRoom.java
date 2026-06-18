@@ -57,6 +57,16 @@ public class GameRoom implements Serializable {
     private String dogRaceMode;
 
     /**
+     * 狗狗大战赛制：1 / 3 / 5 / 7
+     */
+    private int dogBattleRoundCount;
+
+    /**
+     * 狗狗大战是否允许技能
+     */
+    private boolean dogBattleAllowSkill;
+
+    /**
      * 房主
      */
     private User homeowner;

@@ -1,6 +1,7 @@
 package cn.xeblog.server.action.handler;
 
 import cn.xeblog.commons.entity.game.GameRoom;
+import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.annotation.DoAction;
@@ -9,6 +10,7 @@ import cn.xeblog.commons.entity.game.GameDTO;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.game.dogbattle.DogBattleService;
 import cn.xeblog.server.game.dograce.DogRaceService;
 import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
@@ -34,6 +36,18 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
         }
         if (gameRoom.getGame() == Game.DOG_RACE) {
             DogRaceService.handle(user, gameRoom, body);
+            return;
+        }
+        if (gameRoom.getGame() == Game.DOG_BATTLE) {
+            DogBattleDTO result = DogBattleService.handleInput(user, gameRoom, (DogBattleDTO) body);
+            if (result != null) {
+                gameRoom.getUsers().forEach((k, v) -> {
+                    User player = UserCache.get(v.getChannelId());
+                    if (player != null) {
+                        player.send(ResponseBuilder.build(user, result, MessageType.GAME));
+                    }
+                });
+            }
             return;
         }
 

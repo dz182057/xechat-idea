@@ -9,6 +9,7 @@ import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.factory.ObjectFactory;
 import cn.xeblog.server.friend.FriendService;
+import cn.xeblog.server.game.dogbattle.DogBattleService;
 import cn.xeblog.server.game.dograce.DogRaceService;
 import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
@@ -177,6 +178,7 @@ public class ChannelAction {
         MinesweeperService.clearRoom(gameRoom.getId());
         TurtleSoupService.clearRoom(gameRoom.getId());
         DogRaceService.clearRoom(gameRoom.getId());
+        DogBattleService.clearRoom(gameRoom.getId());
     }
 
 }

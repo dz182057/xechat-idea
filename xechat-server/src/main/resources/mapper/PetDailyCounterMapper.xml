@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetDailyCounterMapper">
+
+    <select id="findValue" resultType="int">
+        SELECT value
+        FROM pet_daily_counters
+        WHERE account_id = #{accountId}
+          AND counter_date = #{counterDate}
+          AND counter = #{counter}
+    </select>
+
+    <insert id="incrementIfUnderLimit">
+        INSERT INTO pet_daily_counters (
+            account_id, counter_date, counter, value, updated_at
+        ) VALUES (
+            #{accountId}, #{counterDate}, #{counter}, 1, #{updatedAt}
+        )
+        ON CONFLICT(account_id, counter_date, counter) DO UPDATE
+        SET value = value + 1,
+            updated_at = #{updatedAt}
+        WHERE value &lt; #{limit}
+    </insert>
+
+    <insert id="incrementByIfUnderLimit">
+        INSERT INTO pet_daily_counters (
+            account_id, counter_date, counter, value, updated_at
+        ) VALUES (
+            #{accountId}, #{counterDate}, #{counter}, #{amount}, #{updatedAt}
+        )
+        ON CONFLICT(account_id, counter_date, counter) DO UPDATE
+        SET value = value + #{amount},
+            updated_at = #{updatedAt}
+        WHERE value + #{amount} &lt;= #{limit}
+    </insert>
+
+</mapper>

@@ -4,59 +4,45 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 狗狗宇宙账号资料快照。
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class PetProfileDTO {
-    private String accountId;
-    private Assets assets = new Assets();
-    private List<Object> items = new ArrayList<>();
-    private List<Object> collections = new ArrayList<>();
-    private List<Dog> dogs = new ArrayList<>();
+public class PetProfileDTO implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    private long accountId;
+
+    private PetAssetsDTO assets;
+
+    private List<PetDogDTO> dogs;
+
+    private List<PetInventoryItemDTO> items;
+
+    private List<PetCollectionItemDTO> collections;
+
     private String companionDogId;
-    private CheckinStatus checkinStatus = new CheckinStatus();
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Assets {
-        private int bones = 100;
-        private int food = 0;
-        private int makeupCards = 0;
-        private int dogSlots = 1;
-        private int energyLimit = 10;
+    private PetCheckinStatusDTO checkinStatus;
+
+    private PetExploreStatusDTO exploreStatus;
+
+    public static PetProfileDTO empty(long accountId) {
+        PetProfileDTO profile = new PetProfileDTO();
+        profile.setAccountId(accountId);
+        profile.setAssets(new PetAssetsDTO(300, 6, 0, 1, 10));
+        profile.setDogs(new ArrayList<>());
+        profile.setItems(new ArrayList<>());
+        profile.setCollections(new ArrayList<>());
+        profile.setExploreStatus(new PetExploreStatusDTO(3, 0, 5, 0, 0, false));
+        return profile;
     }
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Dog {
-        private String id;
-        private String name;
-        private String breed;
-        private String stage;
-        private int speed;
-        private int stamina;
-        private int burst;
-        private int wisdom;
-        private int bond;
-        private int energy;
-        private String status;
-        private int raceCount;
-        private int raceFirstCount;
-        private int weeklyPoints;
-    }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class CheckinStatus {
-        private String serverDate;
-        private boolean todayCheckedIn;
-        private int cycleDay;
-        private List<String> checkedDatesInMonth = new ArrayList<>();
-    }
 }

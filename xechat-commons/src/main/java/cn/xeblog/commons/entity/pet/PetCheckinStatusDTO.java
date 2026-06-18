@@ -5,21 +5,24 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
- * 狗狗赛跑结算请求。
+ * 狗狗宇宙签到状态快照。
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class PetRaceResultDTO implements Serializable {
+public class PetCheckinStatusDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    private String dogId;
+    private String serverDate;
 
-    private int rank;
+    private boolean todayCheckedIn;
 
-    private int weeklyPoints;
+    private int cycleDay;
+
+    private List<String> checkedDatesInMonth;
 
 }

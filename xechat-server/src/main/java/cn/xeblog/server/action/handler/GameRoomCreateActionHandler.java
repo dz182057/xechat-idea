@@ -44,6 +44,8 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
         gameRoom.setTurtleSoupGuessLimit(body.getTurtleSoupGuessLimit());
         gameRoom.setTurtleSoupHostMode(body.getTurtleSoupHostMode());
         gameRoom.setDogRaceMode(body.getDogRaceMode());
+        gameRoom.setDogBattleRoundCount(resolveDogBattleRoundCount(body));
+        gameRoom.setDogBattleAllowSkill(resolveDogBattleAllowSkill(body));
         gameRoom.setHomeowner(user);
         if (!GameRoomCache.joinRoom(roomId, user)) {
             GameRoomCache.removeRoom(roomId);
@@ -58,6 +60,15 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
 
     private static String generateRoomId() {
         return LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmssSSS"));
+    }
+
+    public static int resolveDogBattleRoundCount(CreateGameRoomDTO body) {
+        int roundCount = body.getDogBattleRoundCount();
+        return roundCount == 1 || roundCount == 3 || roundCount == 5 || roundCount == 7 ? roundCount : 3;
+    }
+
+    public static boolean resolveDogBattleAllowSkill(CreateGameRoomDTO body) {
+        return body.getDogBattleAllowSkill() == null || body.getDogBattleAllowSkill();
     }
 
 }

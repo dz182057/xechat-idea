@@ -1,5 +1,8 @@
 package cn.xeblog.commons.enums;
 
+/**
+ * 狗狗宇宙个人数据动作。
+ */
 public enum PetAction {
     ADOPT,
     RENAME,

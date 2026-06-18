@@ -272,7 +272,7 @@ public class DogRaceServiceTest {
             PetProfileDTO afterSignup = PetService.profile(user);
 
             Assert.assertTrue(snapshot.getParticipants().stream().anyMatch(dog -> realDogId.equals(dog.getDogId())));
-            Assert.assertEquals(80, afterSignup.getAssets().getBones());
+            Assert.assertEquals(280, afterSignup.getAssets().getBones());
             Assert.assertEquals(7, afterSignup.getDogs().get(0).getEnergy());
         } finally {
             resetDbFactory();
@@ -310,7 +310,7 @@ public class DogRaceServiceTest {
                     .getWeeklyPoints();
 
             PetProfileDTO afterSettle = PetService.profile(user);
-            Assert.assertEquals(100 + rewardBones, afterSettle.getAssets().getBones());
+            Assert.assertEquals(300 + rewardBones, afterSettle.getAssets().getBones());
             Assert.assertEquals(weeklyPoints, afterSettle.getDogs().get(0).getWeeklyPoints());
             Assert.assertTrue(settle.getBroadcasts().stream().anyMatch(line -> line.contains("名次奖")));
         } finally {
@@ -388,7 +388,7 @@ public class DogRaceServiceTest {
                     request(room, DogRaceDTO.Event.BET_FINAL_REQ, championDogId, "champion", 0, null));
 
             Assert.assertEquals(DogRaceDTO.Event.BET_FINAL, bet.getEvent());
-            Assert.assertEquals(80, PetService.profile(user).getAssets().getBones());
+            Assert.assertEquals(280, PetService.profile(user).getAssets().getBones());
 
             DogRaceDTO last = null;
             for (int i = 0; i < 80; i++) {
@@ -404,7 +404,7 @@ public class DogRaceServiceTest {
 
             Assert.assertNotNull(last);
             Assert.assertEquals(DogRaceDTO.Event.RACE_SETTLE, last.getEvent());
-            Assert.assertEquals(180, PetService.profile(user).getAssets().getBones());
+            Assert.assertEquals(380, PetService.profile(user).getAssets().getBones());
             Assert.assertTrue(last.getBroadcasts().stream().anyMatch(line -> line.contains("暗注命中，获得 🦴100")));
         } finally {
             resetDbFactory();
@@ -422,7 +422,7 @@ public class DogRaceServiceTest {
         try {
             cn.xeblog.commons.entity.User user = accountUser(990104L);
             PetService.profile(user);
-            PetService.changeBones(user.getAccountId(), -90);
+            PetService.changeBones(user.getAccountId(), -290);
             GameRoom room = pureBettingRoom("dog-race-final-bet-insufficient", user);
             DogRaceDTO snapshot = DogRaceService.startRaceForTest(room, 20260617L);
             String dogId = snapshot.getParticipants().get(0).getDogId();
@@ -469,7 +469,7 @@ public class DogRaceServiceTest {
 
             Assert.assertEquals(DogRaceDTO.Event.PLACE_TILE, tile.getEvent());
             Assert.assertNotEquals(DogRaceDTO.Event.ERROR, roll.getEvent());
-            Assert.assertEquals(105, PetService.profile(user).getAssets().getBones());
+            Assert.assertEquals(305, PetService.profile(user).getAssets().getBones());
         } finally {
             resetDbFactory();
             System.clearProperty(GlobalConfig.DATA_PATH_PROPERTY);
@@ -503,7 +503,7 @@ public class DogRaceServiceTest {
 
             Assert.assertEquals(DogRaceDTO.Event.PLACE_TILE, tile.getEvent());
             Assert.assertNotEquals(DogRaceDTO.Event.ERROR, roll.getEvent());
-            Assert.assertEquals(105, PetService.profile(user).getAssets().getBones());
+            Assert.assertEquals(305, PetService.profile(user).getAssets().getBones());
             Assert.assertTrue(roll.getBroadcast().contains("泥坑"));
         } finally {
             resetDbFactory();
@@ -537,7 +537,7 @@ public class DogRaceServiceTest {
                     request(room, DogRaceDTO.Event.ROLL_REQ, null, null, 0, null));
 
             Assert.assertNotEquals(DogRaceDTO.Event.ERROR, roll.getEvent());
-            Assert.assertEquals(105, PetService.profile(user).getAssets().getBones());
+            Assert.assertEquals(305, PetService.profile(user).getAssets().getBones());
             Assert.assertTrue(roll.getBroadcast().contains("捡球高手"));
             Assert.assertTrue(roll.getParticipants().stream()
                     .anyMatch(dog -> "golden".equals(dog.getBreed()) && dog.getPosition() == scenario.cell + 2));
@@ -573,7 +573,7 @@ public class DogRaceServiceTest {
                     request(room, DogRaceDTO.Event.ROLL_REQ, null, null, 0, null));
 
             Assert.assertNotEquals(DogRaceDTO.Event.ERROR, roll.getEvent());
-            Assert.assertEquals(100, PetService.profile(user).getAssets().getBones());
+            Assert.assertEquals(300, PetService.profile(user).getAssets().getBones());
             Assert.assertTrue(roll.getBroadcast().contains("识破"));
             Assert.assertTrue(roll.getParticipants().stream()
                     .anyMatch(dog -> "border_collie".equals(dog.getBreed()) && dog.getPosition() == scenario.cell));

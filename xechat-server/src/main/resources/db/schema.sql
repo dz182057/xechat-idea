@@ -174,33 +174,73 @@ CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question ON quick_quiz_re
 -- 狗狗宇宙个人资产
 CREATE TABLE IF NOT EXISTS pet_assets (
     account_id     INTEGER PRIMARY KEY,
-    bones          INTEGER NOT NULL DEFAULT 100,
-    food           INTEGER NOT NULL DEFAULT 0,
+    bones          INTEGER NOT NULL DEFAULT 300,
+    food           INTEGER NOT NULL DEFAULT 6,
     makeup_cards   INTEGER NOT NULL DEFAULT 0,
     dog_slots      INTEGER NOT NULL DEFAULT 1,
     energy_limit   INTEGER NOT NULL DEFAULT 10,
+    companion_dog_id TEXT,
     created_at     INTEGER NOT NULL,
     updated_at     INTEGER NOT NULL
 );
 
 -- 狗狗宇宙狗狗资料
-CREATE TABLE IF NOT EXISTS pet_dogs (
-    id               TEXT PRIMARY KEY,
-    account_id       INTEGER NOT NULL,
-    name             TEXT NOT NULL,
-    breed            TEXT NOT NULL,
-    stage            TEXT NOT NULL,
-    speed            INTEGER NOT NULL,
-    stamina          INTEGER NOT NULL,
-    burst            INTEGER NOT NULL,
-    wisdom           INTEGER NOT NULL,
-    bond             INTEGER NOT NULL,
-    energy           INTEGER NOT NULL,
-    status           TEXT NOT NULL,
-    race_count       INTEGER NOT NULL DEFAULT 0,
-    race_first_count INTEGER NOT NULL DEFAULT 0,
-    weekly_points    INTEGER NOT NULL DEFAULT 0,
-    created_at       INTEGER NOT NULL,
-    updated_at       INTEGER NOT NULL
+CREATE TABLE IF NOT EXISTS dogs (
+    id                     TEXT PRIMARY KEY,
+    owner_id               INTEGER NOT NULL,
+    name                   TEXT NOT NULL,
+    breed                  TEXT NOT NULL,
+    stage                  TEXT NOT NULL DEFAULT 'puppy',
+    speed                  INTEGER NOT NULL,
+    stamina                INTEGER NOT NULL,
+    burst                  INTEGER NOT NULL,
+    wisdom                 INTEGER NOT NULL,
+    bond                   INTEGER NOT NULL,
+    energy                 INTEGER NOT NULL DEFAULT 10,
+    energy_date            TEXT NOT NULL DEFAULT '1970-01-01',
+    status                 TEXT NOT NULL DEFAULT 'idle',
+    explore_location       TEXT,
+    explore_ends_at        INTEGER,
+    explore_duration_hours INTEGER,
+    race_count             INTEGER NOT NULL DEFAULT 0,
+    race_first_count       INTEGER NOT NULL DEFAULT 0,
+    weekly_points          INTEGER NOT NULL DEFAULT 0,
+    created_at             INTEGER NOT NULL,
+    updated_at             INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_pet_dogs_account ON pet_dogs(account_id);
+CREATE INDEX IF NOT EXISTS idx_dogs_owner ON dogs(owner_id, created_at);
+
+CREATE TABLE IF NOT EXISTS pet_items (
+    account_id INTEGER NOT NULL,
+    item_id    TEXT NOT NULL,
+    count      INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (account_id, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS pet_collections (
+    account_id INTEGER NOT NULL,
+    item_id    TEXT NOT NULL,
+    count      INTEGER NOT NULL DEFAULT 0,
+    discovered INTEGER NOT NULL DEFAULT 1,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (account_id, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS pet_checkins (
+    account_id   INTEGER NOT NULL,
+    checkin_date TEXT NOT NULL,
+    cycle_day    INTEGER NOT NULL,
+    created_at   INTEGER NOT NULL,
+    PRIMARY KEY (account_id, checkin_date)
+);
+CREATE INDEX IF NOT EXISTS idx_pet_checkins_account ON pet_checkins(account_id, created_at);
+
+CREATE TABLE IF NOT EXISTS pet_daily_counters (
+    account_id   INTEGER NOT NULL,
+    counter_date TEXT NOT NULL,
+    counter      TEXT NOT NULL,
+    value        INTEGER NOT NULL DEFAULT 0,
+    updated_at   INTEGER NOT NULL,
+    PRIMARY KEY (account_id, counter_date, counter)
+);
