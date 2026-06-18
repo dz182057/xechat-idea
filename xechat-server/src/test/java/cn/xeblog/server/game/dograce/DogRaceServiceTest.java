@@ -269,6 +269,38 @@ public class DogRaceServiceTest {
     }
 
     @Test
+    public void ownedDogRaceShouldGrantRankRewardBones() throws Exception {
+        Path tempDir = Files.createTempDirectory("xechat-dog-race-rank-reward-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());
+        GlobalConfig.initDataPath(tempDir.toString());
+        resetDbFactory();
+        try {
+            cn.xeblog.commons.entity.User user = accountUser(990107L);
+            PetProfileDTO profile = PetService.adopt(user, adopt("native", "领奖狗"));
+            String realDogId = profile.getDogs().get(0).getId();
+            GameRoom room = ownedDogRoom("dog-race-owned-rank-reward", user);
+
+            DogRaceDTO settle = DogRaceService.simulateRace(room, 20260617L)
+                    .stream()
+                    .filter(event -> event.getEvent() == DogRaceDTO.Event.RACE_SETTLE)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("赛跑应完成"));
+            int rewardBones = settle.getRankings().stream()
+                    .filter(ranking -> realDogId.equals(ranking.getDogId()))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("真实狗应参与排名"))
+                    .getRewardBones();
+
+            Assert.assertEquals(100 + rewardBones, PetService.profile(user).getAssets().getBones());
+            Assert.assertTrue(settle.getBroadcasts().stream().anyMatch(line -> line.contains("名次奖")));
+        } finally {
+            resetDbFactory();
+            System.clearProperty(GlobalConfig.DATA_PATH_PROPERTY);
+            GlobalConfig.initDataPath(null);
+        }
+    }
+
+    @Test
     public void ownedDogRaceShouldBroadcastRealDogSkillWhenTriggered() throws Exception {
         Path tempDir = Files.createTempDirectory("xechat-dog-race-skill-test");
         System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());

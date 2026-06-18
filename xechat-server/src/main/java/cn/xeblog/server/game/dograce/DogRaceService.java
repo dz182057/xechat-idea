@@ -624,6 +624,11 @@ public final class DogRaceService {
             result.setRank(ranking.getRank());
             try {
                 PetProfileDTO profile = PetService.applyRaceResult(dog.ownerAccountId, result);
+                int rewardBones = ranking.getRewardBones() == null ? 0 : ranking.getRewardBones();
+                if (rewardBones > 0) {
+                    profile = PetService.changeBones(dog.ownerAccountId, rewardBones);
+                    broadcasts.add("🏆 " + dog.name + " 第 " + ranking.getRank() + " 名，名次奖获得 🦴" + rewardBones + "。");
+                }
                 sendPetProfileUpdate(room, dog.ownerPlayerKey, profile);
                 broadcasts.add("🐾 " + dog.name + " 的赛跑成长记录已更新。");
             } catch (Exception e) {
