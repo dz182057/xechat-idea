@@ -104,6 +104,14 @@
         WHERE account_id = #{accountId}
     </update>
 
+    <update id="addMakeupCardsIfUnderLimit">
+        UPDATE pet_assets
+        SET makeup_cards = makeup_cards + #{amount},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND makeup_cards + #{amount} &lt;= #{maxMakeupCards}
+    </update>
+
     <select id="findByAccountId" resultType="cn.xeblog.server.pet.PetAssetsRecord">
         SELECT <include refid="cols"/>
         FROM pet_assets

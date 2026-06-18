@@ -65,6 +65,20 @@
           AND owner_id = #{ownerId}
     </update>
 
+    <update id="updateTrainingStats">
+        UPDATE dogs
+        SET speed = #{speed},
+            stamina = #{stamina},
+            burst = #{burst},
+            wisdom = #{wisdom},
+            bond = #{bond},
+            energy = #{energy},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+          AND status = 'idle'
+    </update>
+
     <update id="updateStage">
         UPDATE dogs
         SET stage = #{stage},

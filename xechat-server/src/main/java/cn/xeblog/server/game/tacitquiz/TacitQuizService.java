@@ -6,15 +6,18 @@ import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.tacitquiz.*;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 /**
  * 默契问答题库、轮次和答题记录。
@@ -23,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class TacitQuizService {
 
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
+    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
+    private static LongSupplier nowSupplier = System::currentTimeMillis;
 
     private TacitQuizService() {
     }
@@ -44,7 +49,7 @@ public final class TacitQuizService {
             throw new IllegalArgumentException("默契问答题库不能为空");
         }
 
-        long now = System.currentTimeMillis();
+        long now = now();
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             TacitQuizMapper mapper = session.getMapper(TacitQuizMapper.class);
             mapper.deactivateAllQuestions();
@@ -133,7 +138,7 @@ public final class TacitQuizService {
                 throw new IllegalArgumentException("请选择有效答案");
             }
             state.answers.putIfAbsent(key, new TacitQuizAnswerViewDTO(
-                    key, user.getUsername(), choiceIndex, options.get(choiceIndex), System.currentTimeMillis()));
+                    key, user.getUsername(), choiceIndex, options.get(choiceIndex), now()));
             if (state.answers.size() >= state.expectedPlayerKeys.size()) {
                 revealIfNeededLocked(room, state, body.getQuestionId(), questionPicker, answerRecorder);
             }
@@ -187,6 +192,22 @@ public final class TacitQuizService {
         return user.getIdentityKey();
     }
 
+    static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
+        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+    }
+
+    static void resetMiniGameRewards() {
+        miniGameRewards = PetService::applyMiniGameResult;
+    }
+
+    static void setNowSupplierForTest(LongSupplier testNowSupplier) {
+        nowSupplier = testNowSupplier == null ? System::currentTimeMillis : testNowSupplier;
+    }
+
+    static void resetNowSupplier() {
+        nowSupplier = System::currentTimeMillis;
+    }
+
     static boolean shouldExcludeQuestion(List<TacitQuizRecord> recordsForQuestion) {
         if (recordsForQuestion == null || recordsForQuestion.size() < 2) {
             return false;
@@ -222,7 +243,7 @@ public final class TacitQuizService {
                 || !Objects.equals(state.currentQuestion.getId(), expectedQuestionId)) {
             return;
         }
-        long now = System.currentTimeMillis();
+        long now = now();
         List<TacitQuizAnswerViewDTO> answers = new ArrayList<>();
         for (User player : state.players) {
             String key = playerKey(player);
@@ -252,6 +273,7 @@ public final class TacitQuizService {
                 room.getTacitQuizQuestionCount(), finished);
         sendToRoom(room, ResponseBuilder.build(null, result, MessageType.TACIT_QUIZ_ANSWER_RESULT));
         if (finished) {
+            applyMiniGameRewards(state, answers, now);
             state.closed = true;
             ROOM_STATES.remove(room.getId(), state);
         } else {
@@ -260,7 +282,7 @@ public final class TacitQuizService {
     }
 
     private static List<TacitQuizAnswerViewDTO> fillMissingAnswers(RoomState state) {
-        long now = System.currentTimeMillis();
+        long now = now();
         List<TacitQuizAnswerViewDTO> answers = new ArrayList<>();
         for (User player : state.players) {
             String key = playerKey(player);
@@ -303,7 +325,7 @@ public final class TacitQuizService {
             throw new IllegalArgumentException("剩余可用题数不足");
         }
 
-        long startedAt = System.currentTimeMillis();
+        long startedAt = now();
         TacitQuizQuestionDTO dto = toQuestionDTO(question);
         dto.setStartedAt(startedAt);
         dto.setDeadlineAt(0);
@@ -334,6 +356,34 @@ public final class TacitQuizService {
             }
         }
         return answeredPlayerKeys.size() >= 2;
+    }
+
+    private static void applyMiniGameRewards(RoomState state, List<TacitQuizAnswerViewDTO> answers, long now) {
+        boolean matched = isMatchedRound(answers);
+        long durationSeconds = Math.max(0L, (now - state.matchStartedAt + 999L) / 1000L);
+        for (User player : state.players) {
+            long accountId = player.getAccountId();
+            if (accountId <= 0L) {
+                continue;
+            }
+            try {
+                miniGameRewards.apply(accountId, Game.TACIT_QUIZ, matched, durationSeconds);
+            } catch (RuntimeException e) {
+                log.error("默契问答小游戏产出结算失败 -> accountId: {}", accountId, e);
+            }
+        }
+    }
+
+    private static boolean isMatchedRound(List<TacitQuizAnswerViewDTO> answers) {
+        Set<Integer> choices = new HashSet<>();
+        int answeredCount = 0;
+        for (TacitQuizAnswerViewDTO answer : answers) {
+            if (answer != null && answer.getChoiceIndex() >= 0) {
+                choices.add(answer.getChoiceIndex());
+                answeredCount++;
+            }
+        }
+        return answeredCount >= 2 && choices.size() == 1;
     }
 
     private static void sendToRoom(GameRoom room, Response response) {
@@ -466,6 +516,14 @@ public final class TacitQuizService {
         void save(GameRoom room, TacitQuizQuestionDTO question, List<TacitQuizAnswerViewDTO> answers);
     }
 
+    interface MiniGameRewards {
+        void apply(long accountId, Game game, boolean win, long durationSeconds);
+    }
+
+    private static long now() {
+        return nowSupplier.getAsLong();
+    }
+
     private static class RoomState {
         private final String roomId;
         private final Set<Long> usedQuestionIds = new HashSet<>();
@@ -474,6 +532,7 @@ public final class TacitQuizService {
         private final List<User> players = new ArrayList<>();
         private TacitQuizQuestionDTO currentQuestion;
         private int roundNo;
+        private long matchStartedAt;
         private boolean revealed;
         private boolean closed;
 
@@ -483,6 +542,9 @@ public final class TacitQuizService {
 
         private void start(TacitQuizQuestionDTO question, List<User> users) {
             this.currentQuestion = question;
+            if (this.matchStartedAt <= 0L) {
+                this.matchStartedAt = question.getStartedAt();
+            }
             this.answers.clear();
             this.expectedPlayerKeys.clear();
             this.players.clear();

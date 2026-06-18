@@ -6,6 +6,7 @@ import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.quickquiz.*;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.builder.ResponseBuilder;
@@ -16,6 +17,7 @@ import org.apache.ibatis.session.SqlSession;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 /**
  * 快问快答知识题、轮次计分和报名奖池。
@@ -28,6 +30,8 @@ public final class QuickQuizService {
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
 
     private static Economy economy = PetService::changeBones;
+    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
+    private static LongSupplier nowSupplier = System::currentTimeMillis;
 
     private QuickQuizService() {
     }
@@ -49,7 +53,7 @@ public final class QuickQuizService {
             throw new IllegalArgumentException("快问快答题库不能为空");
         }
 
-        long now = System.currentTimeMillis();
+        long now = now();
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             QuickQuizMapper mapper = session.getMapper(QuickQuizMapper.class);
             mapper.deactivateAllQuestions();
@@ -93,7 +97,7 @@ public final class QuickQuizService {
         RoomState state = ROOM_STATES.computeIfAbsent(room.getId(), id -> new RoomState(room.getId()));
         synchronized (state) {
             chargeEntryFeeIfNeeded(room, state, players);
-            long now = System.currentTimeMillis();
+            long now = now();
             if (state.currentQuestion != null) {
                 if (now <= state.currentQuestion.getDeadlineAt()) {
                     return copyQuestion(state.currentQuestion, false);
@@ -123,7 +127,7 @@ public final class QuickQuizService {
             if (!state.expectedPlayerKeys.contains(key)) {
                 throw new IllegalArgumentException("你不在当前答题房间内");
             }
-            long now = System.currentTimeMillis();
+            long now = now();
             if (now > state.currentQuestion.getDeadlineAt()) {
                 return revealLocked(room, state, now);
             }
@@ -182,6 +186,22 @@ public final class QuickQuizService {
         economy = PetService::changeBones;
     }
 
+    static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
+        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+    }
+
+    static void resetMiniGameRewards() {
+        miniGameRewards = PetService::applyMiniGameResult;
+    }
+
+    static void setNowSupplierForTest(LongSupplier testNowSupplier) {
+        nowSupplier = testNowSupplier == null ? System::currentTimeMillis : testNowSupplier;
+    }
+
+    static void resetNowSupplier() {
+        nowSupplier = System::currentTimeMillis;
+    }
+
     private static QuickQuizAnswerViewDTO buildAnswer(User user, QuickQuizQuestionDTO question,
                                                        QuickQuizSubmitAnswerDTO body, long answeredAt,
                                                        RoomState state) {
@@ -230,6 +250,9 @@ public final class QuickQuizService {
         state.roundNo++;
         boolean finished = state.roundNo >= room.getQuickQuizQuestionCount();
         List<QuickQuizPlayerScoreDTO> rankings = rankings(state, finished);
+        if (finished) {
+            applyMiniGameRewards(state, rankings, now);
+        }
         int rewardPerWinner = finished ? applyRewards(state, rankings) : 0;
         QuickQuizQuestionDTO resultQuestion = copyQuestion(state.currentQuestion, true);
         QuickQuizAnswerResultDTO result = new QuickQuizAnswerResultDTO(room.getId(), resultQuestion, answers, rankings,
@@ -256,7 +279,7 @@ public final class QuickQuizService {
             throw new IllegalArgumentException("剩余可用题数不足");
         }
         state.usedQuestionIds.add(question.getId());
-        long startedAt = System.currentTimeMillis();
+        long startedAt = now();
         QuickQuizQuestionDTO dto = toQuestionDTO(question, true);
         dto.setStartedAt(startedAt);
         dto.setDeadlineAt(startedAt + resolveTimeLimitSeconds(room) * 1000L);
@@ -309,6 +332,31 @@ public final class QuickQuizService {
         }
         state.prizePool = entryFee * players.size();
         state.economyApplied = true;
+    }
+
+    private static void applyMiniGameRewards(RoomState state, List<QuickQuizPlayerScoreDTO> rankings, long now) {
+        if (rankings.isEmpty()) {
+            return;
+        }
+        Set<String> winnerKeys = new HashSet<>();
+        for (QuickQuizPlayerScoreDTO ranking : rankings) {
+            if (ranking.isWinner()) {
+                winnerKeys.add(ranking.getPlayerKey());
+            }
+        }
+        long durationSeconds = Math.max(0L, (now - state.matchStartedAt + 999L) / 1000L);
+        for (User player : state.players) {
+            long accountId = player.getAccountId();
+            if (accountId <= 0L) {
+                continue;
+            }
+            try {
+                miniGameRewards.apply(accountId, Game.QUICK_QUIZ,
+                        winnerKeys.contains(playerKey(player)), durationSeconds);
+            } catch (RuntimeException e) {
+                log.error("快问快答小游戏产出结算失败 -> accountId: {}", accountId, e);
+            }
+        }
     }
 
     private static int applyRewards(RoomState state, List<QuickQuizPlayerScoreDTO> rankings) {
@@ -502,6 +550,14 @@ public final class QuickQuizService {
         void change(long accountId, int delta);
     }
 
+    interface MiniGameRewards {
+        void apply(long accountId, Game game, boolean win, long durationSeconds);
+    }
+
+    private static long now() {
+        return nowSupplier.getAsLong();
+    }
+
     private static class RoomState {
         private final String roomId;
         private final Set<Long> usedQuestionIds = new HashSet<>();
@@ -513,6 +569,7 @@ public final class QuickQuizService {
         private QuickQuizQuestionDTO currentQuestion;
         private int roundNo;
         private int prizePool;
+        private long matchStartedAt;
         private boolean economyApplied;
         private boolean rewardApplied;
         private boolean closed;
@@ -523,6 +580,9 @@ public final class QuickQuizService {
 
         private void start(QuickQuizQuestionDTO question, List<User> users) {
             this.currentQuestion = question;
+            if (this.matchStartedAt <= 0L) {
+                this.matchStartedAt = question.getStartedAt();
+            }
             this.answers.clear();
             this.expectedPlayerKeys.clear();
             this.players.clear();

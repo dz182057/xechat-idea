@@ -87,6 +87,9 @@ public class QuickQuiz extends AbstractGame<QuickQuizNextQuestionDTO> {
 
         if (DataCache.isOnline) {
             selectedQuestionCount = selectedQuestionCount <= 0 ? DEFAULT_QUESTION_COUNT : selectedQuestionCount;
+            selectedPlayerCount = selectedPlayerCount < 2 ? 2 : selectedPlayerCount;
+            selectedTimeLimitSeconds = selectedTimeLimitSeconds < 5 ? 15 : selectedTimeLimitSeconds;
+            selectedEntryFee = Math.max(0, selectedEntryFee);
             JPanel countPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
             countPanel.add(new JLabel("本局题数："));
             JSpinner countSpinner = new JSpinner(new SpinnerNumberModel(selectedQuestionCount, 1, 50, 1));

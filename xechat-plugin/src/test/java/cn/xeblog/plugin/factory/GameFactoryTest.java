@@ -47,6 +47,11 @@ public class GameFactoryTest {
     }
 
     @Test
+    public void shouldNotCreateDogBattleGameBeforePluginSupport() {
+        Assert.assertNull(GameFactory.produce(Game.DOG_BATTLE));
+    }
+
+    @Test
     public void dogRaceShouldExposeCostHint() {
         DogRace dogRace = new DogRace();
 

@@ -28,6 +28,16 @@ public interface PetDogMapper {
                         @Param("energy") int energy,
                         @Param("updatedAt") long updatedAt);
 
+    int updateTrainingStats(@Param("id") String id,
+                            @Param("ownerId") long ownerId,
+                            @Param("speed") int speed,
+                            @Param("stamina") int stamina,
+                            @Param("burst") int burst,
+                            @Param("wisdom") int wisdom,
+                            @Param("bond") int bond,
+                            @Param("energy") int energy,
+                            @Param("updatedAt") long updatedAt);
+
     int updateStage(@Param("id") String id,
                     @Param("ownerId") long ownerId,
                     @Param("stage") String stage,

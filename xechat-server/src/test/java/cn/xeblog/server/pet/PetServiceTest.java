@@ -5,6 +5,7 @@ import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.config.GlobalConfig;
 import org.junit.After;
@@ -15,6 +16,7 @@ import org.junit.Test;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -137,8 +139,91 @@ public class PetServiceTest {
     }
 
     @Test
-    public void profileShouldSerializeExpiredEnergyRefreshForSameAccount() throws Exception {
+    public void profileShouldClampDogStatsToDesignRange() throws Exception {
         User user = accountUser(990007L);
+        PetProfileDTO profile = PetService.adopt(user, adopt("native", "上限狗"));
+        String dogId = profile.getDogs().get(0).getId();
+        updateDogStats(user.getAccountId(), dogId, 120, 101, 100, -5, 130);
+
+        PetDogDTO dog = PetService.profile(user).getDogs().get(0);
+
+        Assert.assertEquals(100, dog.getSpeed());
+        Assert.assertEquals(100, dog.getStamina());
+        Assert.assertEquals(100, dog.getBurst());
+        Assert.assertEquals(0, dog.getWisdom());
+        Assert.assertEquals(100, dog.getBond());
+    }
+
+    @Test
+    public void checkinShouldIncreaseCurrentDogBond() {
+        User user = accountUser(990008L);
+        PetProfileDTO profile = PetService.adopt(user, adopt("native", "签到狗"));
+        int beforeBond = profile.getDogs().get(0).getBond();
+
+        PetDogDTO dog = PetProfileService.checkin(user.getAccountId()).getDogs().get(0);
+
+        Assert.assertEquals(beforeBond + 10, dog.getBond());
+    }
+
+    @Test
+    public void gameTrainingShouldConvertCompanionExperienceAndSpendEnergy() {
+        User user = accountUser(990010L);
+        PetProfileDTO profile = PetService.adopt(user, adopt("native", "训练狗"));
+        PetDogDTO before = profile.getDogs().get(0);
+
+        PetService.applyGameTraining(user.getAccountId(), Game.GOBANG, true);
+        PetService.applyGameTraining(user.getAccountId(), Game.GOBANG, true);
+        PetProfileDTO afterThirdWin = PetService.applyGameTraining(user.getAccountId(), Game.GOBANG, true);
+
+        PetDogDTO dog = afterThirdWin.getDogs().get(0);
+        Assert.assertEquals(before.getWisdom() + 1, dog.getWisdom());
+        Assert.assertEquals(before.getEnergy() - 3, dog.getEnergy());
+    }
+
+    @Test
+    public void gameTrainingShouldRespectDailySingleStatLimit() {
+        User user = accountUser(990011L);
+        PetService.adopt(user, adopt("native", "训练上限狗"));
+
+        for (int i = 0; i < 6; i++) {
+            PetService.applyGameTraining(user.getAccountId(), Game.GOBANG, true);
+        }
+
+        PetDogDTO dog = PetService.profile(user).getDogs().get(0);
+        Assert.assertEquals(10, dog.getWisdom());
+    }
+
+    @Test
+    public void miniGameResultShouldApplyDailyRewardsAndTraining() {
+        User user = accountUser(990012L);
+        PetService.adopt(user, adopt("native", "小游戏狗"));
+
+        PetProfileDTO profile = PetService.applyMiniGameResult(user.getAccountId(), Game.GOBANG, true, 60);
+
+        Assert.assertEquals(330, profile.getAssets().getBones());
+        Assert.assertEquals(1, profile.getAssets().getMakeupCards());
+        Assert.assertEquals(9, profile.getDogs().get(0).getEnergy());
+    }
+
+    @Test
+    public void miniGameResultShouldRespectDailyRewardLimits() {
+        User user = accountUser(990013L);
+        PetService.adopt(user, adopt("native", "小游戏上限狗"));
+
+        PetProfileDTO profile = null;
+        for (int i = 0; i < 6; i++) {
+            profile = PetService.applyMiniGameResult(user.getAccountId(), Game.GOBANG, true, 60);
+        }
+
+        Assert.assertNotNull(profile);
+        Assert.assertEquals(410, profile.getAssets().getBones());
+        Assert.assertEquals(1, profile.getAssets().getMakeupCards());
+        Assert.assertEquals(5, profile.getDogs().get(0).getEnergy());
+    }
+
+    @Test
+    public void profileShouldSerializeExpiredEnergyRefreshForSameAccount() throws Exception {
+        User user = accountUser(990009L);
         PetService.adopt(user, adopt("corgi", "并发狗"));
         expireDogEnergy(user.getAccountId());
 
@@ -206,6 +291,22 @@ public class PetServiceTest {
         try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
              Statement statement = session.getConnection().createStatement()) {
             statement.executeUpdate("UPDATE dogs SET energy = 1, energy_date = '2000-01-01' WHERE owner_id = " + accountId);
+        }
+    }
+
+    private static void updateDogStats(long accountId, String dogId, int speed, int stamina, int burst,
+                                       int wisdom, int bond) throws Exception {
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "UPDATE dogs SET speed = ?, stamina = ?, burst = ?, wisdom = ?, bond = ? WHERE owner_id = ? AND id = ?")) {
+            statement.setInt(1, speed);
+            statement.setInt(2, stamina);
+            statement.setInt(3, burst);
+            statement.setInt(4, wisdom);
+            statement.setInt(5, bond);
+            statement.setLong(6, accountId);
+            statement.setString(7, dogId);
+            statement.executeUpdate();
         }
     }
 

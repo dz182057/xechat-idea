@@ -5,6 +5,7 @@ import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizAnswerResultDTO;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizQuestionDTO;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizSubmitAnswerDTO;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.cache.UserCache;
 import org.junit.After;
 import org.junit.Before;
@@ -23,15 +24,22 @@ import static org.junit.Assert.assertTrue;
 public class QuickQuizServiceTest {
 
     private final List<String> economyEvents = new ArrayList<>();
+    private final List<String> miniGameEvents = new ArrayList<>();
+    private final AtomicInteger nowSeconds = new AtomicInteger(1_000);
 
     @Before
     public void setUp() {
         QuickQuizService.setEconomyForTest((accountId, delta) -> economyEvents.add(accountId + ":" + delta));
+        QuickQuizService.setMiniGameRewardsForTest((accountId, game, win, durationSeconds) ->
+                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds));
+        QuickQuizService.setNowSupplierForTest(() -> nowSeconds.get() * 1000L);
     }
 
     @After
     public void tearDown() {
         QuickQuizService.resetEconomy();
+        QuickQuizService.resetMiniGameRewards();
+        QuickQuizService.resetNowSupplier();
         QuickQuizService.clearRoom("quick-quiz-test");
         UserCache.clear();
     }
@@ -80,12 +88,13 @@ public class QuickQuizServiceTest {
 
     @Test
     public void finalResultShouldSplitPrizeByCeilingForTiedWinners() {
-        GameRoom room = room(3, 5, 20);
+        GameRoom room = room(3, 5, 120);
         room.setQuickQuizQuestionCount(1);
         List<User> players = players(3);
         join(room, players);
         QuickQuizQuestionDTO question = QuickQuizService.nextQuestion(
                 players.get(0), room, (usedQuestionIds) -> question(301L, "1 + 1 = ?", 0, 10));
+        nowSeconds.addAndGet(61);
 
         QuickQuizService.submitAnswer(players.get(0), room,
                 new QuickQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "2"));
@@ -98,6 +107,10 @@ public class QuickQuizServiceTest {
         assertEquals(15, result.getPrizePool());
         assertEquals(8, result.getRewardPerWinner());
         assertEquals(Arrays.asList("1:-5", "2:-5", "3:-5", "1:8", "2:8"), economyEvents);
+        assertEquals(Arrays.asList(
+                "1:" + Game.QUICK_QUIZ + ":true:61",
+                "2:" + Game.QUICK_QUIZ + ":true:61",
+                "3:" + Game.QUICK_QUIZ + ":false:61"), miniGameEvents);
         assertEquals(0, QuickQuizService.poolOf(room.getId()));
     }
 

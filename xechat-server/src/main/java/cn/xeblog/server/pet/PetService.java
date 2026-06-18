@@ -5,6 +5,7 @@ import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
+import cn.xeblog.commons.enums.Game;
 
 /**
  * 兼容旧调用点的宠物服务门面。
@@ -37,6 +38,16 @@ public final class PetService {
     public static PetProfileDTO changeBones(long accountId, int delta) {
         ensureAccountId(accountId);
         return PetProfileService.changeBones(accountId, delta);
+    }
+
+    public static PetProfileDTO applyGameTraining(long accountId, Game game, boolean win) {
+        ensureAccountId(accountId);
+        return PetProfileService.applyGameTraining(accountId, game, win);
+    }
+
+    public static PetProfileDTO applyMiniGameResult(long accountId, Game game, boolean win, long durationSeconds) {
+        ensureAccountId(accountId);
+        return PetProfileService.applyMiniGameResult(accountId, game, win, durationSeconds);
     }
 
     public static PetProfileDTO spendRaceSignup(long accountId, String dogId, int energyCost, int bonesCost) {

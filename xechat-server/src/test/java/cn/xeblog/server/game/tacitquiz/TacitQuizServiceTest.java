@@ -6,7 +6,10 @@ import cn.xeblog.commons.entity.game.tacitquiz.TacitQuizAnswerViewDTO;
 import cn.xeblog.commons.entity.game.tacitquiz.TacitQuizQuestionDTO;
 import cn.xeblog.commons.entity.game.tacitquiz.TacitQuizRecordDTO;
 import cn.xeblog.commons.entity.game.tacitquiz.TacitQuizSubmitAnswerDTO;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.cache.UserCache;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.lang.reflect.Field;
@@ -27,6 +30,61 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class TacitQuizServiceTest {
+
+    private final List<String> miniGameEvents = new java.util.ArrayList<>();
+    private final AtomicInteger nowSeconds = new AtomicInteger(2_000);
+
+    @Before
+    public void setUp() {
+        TacitQuizService.setMiniGameRewardsForTest((accountId, game, win, durationSeconds) ->
+                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds));
+        TacitQuizService.setNowSupplierForTest(() -> nowSeconds.get() * 1000L);
+    }
+
+    @After
+    public void tearDown() {
+        TacitQuizService.resetMiniGameRewards();
+        TacitQuizService.resetNowSupplier();
+        UserCache.clear();
+    }
+
+    @Test
+    public void finishedMatchedRoundShouldApplyMiniGameRewardsForBothPlayers() {
+        String roomId = "tacit-quiz-mini-game-" + System.nanoTime();
+        GameRoom room = new GameRoom();
+        room.setId(roomId);
+        room.setTacitQuizQuestionCount(1);
+        List<User> players = Arrays.asList(
+                user("channel-alice-mini-game", 1L, "Alice"),
+                user("channel-bob-mini-game", 2L, "Bob")
+        );
+        room.getUsers().put(players.get(0).getIdentityKey(), new GameRoom.Player(players.get(0)));
+        room.getUsers().put(players.get(1).getIdentityKey(), new GameRoom.Player(players.get(1)));
+        UserCache.add(players.get(0).getId(), players.get(0));
+        UserCache.add(players.get(1).getId(), players.get(1));
+
+        try {
+            TacitQuizQuestionDTO first = TacitQuizService.nextQuestion(
+                    room, players, (playerAKey, playerBKey, usedQuestionIds) -> question(501L, "选一个"));
+            nowSeconds.addAndGet(61);
+            TacitQuizService.submitAnswer(players.get(0), room,
+                    new TacitQuizSubmitAnswerDTO(roomId, first.getId(), 0, "A"),
+                    (playerAKey, playerBKey, usedQuestionIds) -> question(502L, "不会抽到"),
+                    (targetRoom, targetQuestion, answers) -> {
+                    });
+            TacitQuizService.submitAnswer(players.get(1), room,
+                    new TacitQuizSubmitAnswerDTO(roomId, first.getId(), 0, "A"),
+                    (playerAKey, playerBKey, usedQuestionIds) -> question(502L, "不会抽到"),
+                    (targetRoom, targetQuestion, answers) -> {
+                    });
+
+            assertEquals(Arrays.asList(
+                    "1:" + Game.TACIT_QUIZ + ":true:61",
+                    "2:" + Game.TACIT_QUIZ + ":true:61"), miniGameEvents);
+        } finally {
+            TacitQuizService.clearRoom(roomId);
+        }
+    }
 
     @Test
     public void staleSubmitShouldNotWriteOldAnswerIntoAutoStartedNextQuestion() throws Exception {

@@ -83,9 +83,13 @@ public class QuickQuizTest {
         QuickQuizAnswerResultDTO result = new QuickQuizAnswerResultDTO(
                 "room-1",
                 question,
-                Arrays.asList(new QuickQuizAnswerViewDTO("p1", "我", 0, "北京", 1L)),
+                Arrays.asList(new QuickQuizAnswerViewDTO("p1", "我", 0, "北京", 1L, true, false, 1, 1)),
+                Arrays.asList(),
                 1,
                 2,
+                false,
+                0,
+                0,
                 false);
         game.onResult(result);
         flushEdt();
@@ -148,7 +152,7 @@ public class QuickQuizTest {
     }
 
     private QuickQuizQuestionDTO question(String text, String... options) {
-        return new QuickQuizQuestionDTO(1L, text, Arrays.asList(options), 0L, 0L, 1, 2);
+        return new QuickQuizQuestionDTO(1L, text, Arrays.asList(options), 0, 1, 0L, 0L, 1, 2);
     }
 
     private QuickQuizRecordDTO record(String roomId, String opponentKey, String opponentName) {
