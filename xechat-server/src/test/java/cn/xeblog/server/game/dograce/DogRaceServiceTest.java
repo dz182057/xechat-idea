@@ -71,6 +71,9 @@ public class DogRaceServiceTest {
 
         DogRaceDTO snapshot = DogRaceService.startRaceForTest(room, 20260617L);
         String dogId = snapshot.getParticipants().get(0).getDogId();
+        Assert.assertEquals(5, snapshot.getLegBetPools().size());
+        Assert.assertEquals(0, snapshot.getLegBetPools().get(0).getBetCount());
+        Assert.assertEquals(Integer.valueOf(5), snapshot.getLegBetPools().get(0).getNextOdds());
 
         DogRaceDTO legBet = DogRaceService.applyRequestForTest(
                 room,
@@ -79,6 +82,11 @@ public class DogRaceServiceTest {
                 request(room, DogRaceDTO.Event.BET_LEG_REQ, dogId, null, 0, null));
         Assert.assertEquals(DogRaceDTO.Event.BET_LEG, legBet.getEvent());
         Assert.assertTrue(legBet.getBroadcast().contains("赛段注"));
+        Assert.assertEquals(1, legBet.getLegBetPools().stream()
+                .filter(pool -> dogId.equals(pool.getDogId()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应下发赛段下注池"))
+                .getBetCount());
 
         DogRaceDTO finalBet = DogRaceService.applyRequestForTest(
                 room,
@@ -87,6 +95,11 @@ public class DogRaceServiceTest {
                 request(room, DogRaceDTO.Event.BET_FINAL_REQ, dogId, "champion", 0, null));
         Assert.assertEquals(DogRaceDTO.Event.BET_FINAL, finalBet.getEvent());
         Assert.assertTrue(finalBet.getBroadcast().contains("暗注"));
+        Assert.assertEquals(1, finalBet.getFinalBetPools().stream()
+                .filter(pool -> dogId.equals(pool.getDogId()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("应下发暗注奖池"))
+                .getChampionCount());
 
         DogRaceDTO tile = DogRaceService.applyRequestForTest(
                 room,

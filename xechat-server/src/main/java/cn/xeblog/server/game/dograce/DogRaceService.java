@@ -660,6 +660,8 @@ public final class DogRaceService {
         dto.setParticipants(participants);
         dto.setCats(cats);
         dto.setTiles(toTileDTOs(state.tiles));
+        dto.setLegBetPools(toLegBetPools(state));
+        dto.setFinalBetPools(toFinalBetPools(state));
     }
 
     private static List<DogRaceDTO.Tile> toTileDTOs(List<DogRaceTile> tiles) {
@@ -667,6 +669,49 @@ public final class DogRaceService {
         for (DogRaceTile tile : tiles) {
             result.add(new DogRaceDTO.Tile(tile.cell, tile.tileType, tile.ownerPlayerKey, tile.ownerName));
         }
+        return result;
+    }
+
+    private static List<DogRaceDTO.LegBetPool> toLegBetPools(RaceState state) {
+        List<DogRaceDTO.LegBetPool> result = new ArrayList<>();
+        for (RaceUnit unit : state.units.values()) {
+            if (!"dog".equals(unit.type)) {
+                continue;
+            }
+            int betCount = 0;
+            for (LegBet bet : state.legBets) {
+                if (bet.dogId.equals(unit.id)) {
+                    betCount++;
+                }
+            }
+            Integer nextOdds = betCount < LEG_BET_ODDS.length ? LEG_BET_ODDS[betCount] : null;
+            result.add(new DogRaceDTO.LegBetPool(unit.id, unit.slot, betCount, nextOdds));
+        }
+        result.sort(Comparator.comparingInt(DogRaceDTO.LegBetPool::getSlot));
+        return result;
+    }
+
+    private static List<DogRaceDTO.FinalBetPool> toFinalBetPools(RaceState state) {
+        List<DogRaceDTO.FinalBetPool> result = new ArrayList<>();
+        for (RaceUnit unit : state.units.values()) {
+            if (!"dog".equals(unit.type)) {
+                continue;
+            }
+            int championCount = 0;
+            int lastCount = 0;
+            for (FinalBet bet : state.finalBets) {
+                if (!bet.dogId.equals(unit.id)) {
+                    continue;
+                }
+                if ("last".equals(bet.betKind)) {
+                    lastCount++;
+                } else {
+                    championCount++;
+                }
+            }
+            result.add(new DogRaceDTO.FinalBetPool(unit.id, unit.slot, championCount, lastCount));
+        }
+        result.sort(Comparator.comparingInt(DogRaceDTO.FinalBetPool::getSlot));
         return result;
     }
 

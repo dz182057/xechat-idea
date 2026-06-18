@@ -34,6 +34,10 @@ public class DogRaceDTO extends GameDTO {
 
     private List<Tile> tiles = new ArrayList<>();
 
+    private List<LegBetPool> legBetPools = new ArrayList<>();
+
+    private List<FinalBetPool> finalBetPools = new ArrayList<>();
+
     private List<Ranking> rankings = new ArrayList<>();
 
     private String broadcast;
@@ -109,6 +113,26 @@ public class DogRaceDTO extends GameDTO {
         private String tileType;
         private String ownerPlayerKey;
         private String ownerName;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class LegBetPool {
+        private String dogId;
+        private int slot;
+        private int betCount;
+        private Integer nextOdds;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FinalBetPool {
+        private String dogId;
+        private int slot;
+        private int championCount;
+        private int lastCount;
     }
 
     @Data
