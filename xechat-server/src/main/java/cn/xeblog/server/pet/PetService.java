@@ -121,6 +121,35 @@ public final class PetService {
         return profile(accountId);
     }
 
+    public static PetProfileDTO changeBones(long accountId, int delta) {
+        ensureAccountId(accountId);
+        if (delta == 0) {
+            return profile(accountId);
+        }
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            Connection conn = session.getConnection();
+            ensureAssets(conn, accountId);
+            PetProfileDTO.Assets assets = loadAssets(conn, accountId);
+            int nextBones = assets.getBones() + delta;
+            if (nextBones < 0) {
+                throw new IllegalArgumentException("骨头币不足");
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE pet_assets SET bones=?, updated_at=? WHERE account_id=?")) {
+                ps.setInt(1, nextBones);
+                ps.setLong(2, System.currentTimeMillis());
+                ps.setLong(3, accountId);
+                ps.executeUpdate();
+            }
+            session.commit();
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("更新骨头币失败", e);
+        }
+        return profile(accountId);
+    }
+
     public static PetProfileDTO.Dog findRaceDog(long accountId) {
         ensureAccountId(accountId);
         try (SqlSession session = DbInitializer.factory().openSession(false)) {

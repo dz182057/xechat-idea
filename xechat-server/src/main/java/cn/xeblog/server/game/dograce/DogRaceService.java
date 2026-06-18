@@ -34,6 +34,8 @@ public final class DogRaceService {
     private static final int TRACK_LENGTH = 16;
     private static final int DOG_COUNT = 5;
     private static final int[] DOG_DICE_FACES = {1, 1, 2, 2, 3, 3};
+    private static final int LEG_BET_COST = 10;
+    private static final int FINAL_BET_COST = 20;
     private static final int[] LEG_BET_ODDS = {5, 3, 2, 2};
     private static final int[] FINAL_BET_REWARDS = {100, 60, 40, 20};
     private static final int[] RANK_REWARD_BONES = {80, 50, 30, 10, 10};
@@ -167,7 +169,7 @@ public final class DogRaceService {
             return error(room, "请选择有效的参赛狗下注");
         }
         String betKey = playerKey + ":" + state.legNo + ":" + dogId;
-        if (!state.legBetKeys.add(betKey)) {
+        if (state.legBetKeys.contains(betKey)) {
             return error(room, "本赛段已经押过这只狗");
         }
         int dogBetCount = 0;
@@ -177,14 +179,23 @@ public final class DogRaceService {
             }
         }
         if (dogBetCount >= LEG_BET_ODDS.length) {
-            state.legBetKeys.remove(betKey);
             return error(room, "这只狗本赛段下注牌已经被领完");
         }
+        Long accountId;
+        PetProfileDTO profile;
+        try {
+            accountId = resolveBetAccountId(room, playerKey);
+            profile = spendBetCost(accountId, LEG_BET_COST);
+        } catch (IllegalArgumentException e) {
+            return error(room, e.getMessage());
+        }
         int odds = LEG_BET_ODDS[dogBetCount];
-        state.legBets.add(new LegBet(playerKey, playerName, dogId, odds));
+        state.legBetKeys.add(betKey);
+        state.legBets.add(new LegBet(playerKey, playerName, accountId == null ? 0L : accountId, dogId, odds));
         DogRaceDTO dto = snapshot(room, state, DogRaceDTO.Event.BET_LEG);
-        dto.setBroadcast(playerName + " 下了 " + state.units.get(dogId).name + " 的赛段注，赔率 " + odds + "。");
+        dto.setBroadcast(playerName + " 下了 " + state.units.get(dogId).name + " 的赛段注（🦴" + LEG_BET_COST + "），赔率 " + odds + "。");
         dto.getBroadcasts().add(dto.getBroadcast());
+        sendPetProfileUpdate(room, playerKey, profile);
         return dto;
     }
 
@@ -194,13 +205,23 @@ public final class DogRaceService {
         }
         String kind = "last".equals(betKind) ? "last" : "champion";
         String betKey = playerKey + ":" + kind;
-        if (!state.finalBetKeys.add(betKey)) {
+        if (state.finalBetKeys.contains(betKey)) {
             return error(room, "本场已经下过这个暗注");
         }
-        state.finalBets.add(new FinalBet(playerKey, playerName, dogId, kind));
+        Long accountId;
+        PetProfileDTO profile;
+        try {
+            accountId = resolveBetAccountId(room, playerKey);
+            profile = spendBetCost(accountId, FINAL_BET_COST);
+        } catch (IllegalArgumentException e) {
+            return error(room, e.getMessage());
+        }
+        state.finalBetKeys.add(betKey);
+        state.finalBets.add(new FinalBet(playerKey, playerName, accountId == null ? 0L : accountId, dogId, kind));
         DogRaceDTO dto = snapshot(room, state, DogRaceDTO.Event.BET_FINAL);
-        dto.setBroadcast(playerName + " 下了一张" + ("last".equals(kind) ? "垫底" : "冠军") + "暗注。");
+        dto.setBroadcast(playerName + " 下了一张" + ("last".equals(kind) ? "垫底" : "冠军") + "暗注（🦴" + FINAL_BET_COST + "）。");
         dto.getBroadcasts().add(dto.getBroadcast());
+        sendPetProfileUpdate(room, playerKey, profile);
         return dto;
     }
 
@@ -255,7 +276,7 @@ public final class DogRaceService {
             settle.setPhase("raceSettle");
             settle.setRankings(rankings(state));
             settle.getBroadcasts().add(roll.getBroadcast());
-            settle.getBroadcasts().addAll(settleFinalBets(state, settle.getRankings()));
+            settle.getBroadcasts().addAll(settleFinalBets(room, state, settle.getRankings()));
             settle.getBroadcasts().addAll(applyOwnedDogRaceResults(room, state, settle.getRankings()));
             if (!settle.getRankings().isEmpty()) {
                 RaceUnit winner = state.units.get(settle.getRankings().get(0).getDogId());
@@ -276,7 +297,7 @@ public final class DogRaceService {
         settle.setPhase("legSettle");
         settle.setRankings(rankings(state));
         settle.getBroadcasts().add("第 " + state.legNo + " 赛段结算，地块和赛段下注牌已清空。");
-        settle.getBroadcasts().addAll(settleLegBets(state, settle.getRankings()));
+        settle.getBroadcasts().addAll(settleLegBets(room, state, settle.getRankings()));
         state.legNo++;
         state.diceBag = createDiceBag(state);
         state.tiles.clear();
@@ -571,7 +592,7 @@ public final class DogRaceService {
     }
 
     private static void sendPetProfileUpdate(GameRoom room, String playerKey, PetProfileDTO profile) {
-        if (playerKey == null) {
+        if (playerKey == null || profile == null) {
             return;
         }
         GameRoom.Player player = room.getUsers().get(playerKey);
@@ -587,7 +608,7 @@ public final class DogRaceService {
         user.send(ResponseBuilder.build(null, PetResponseDTO.ok(request, profile), MessageType.PET));
     }
 
-    private static List<String> settleLegBets(RaceState state, List<DogRaceDTO.Ranking> rankings) {
+    private static List<String> settleLegBets(GameRoom room, RaceState state, List<DogRaceDTO.Ranking> rankings) {
         List<String> broadcasts = new ArrayList<>();
         if (state.legBets.isEmpty() || rankings.isEmpty()) {
             return broadcasts;
@@ -596,9 +617,12 @@ public final class DogRaceService {
         String secondDogId = rankings.size() > 1 ? rankings.get(1).getDogId() : null;
         for (LegBet bet : state.legBets) {
             if (bet.dogId.equals(firstDogId)) {
-                broadcasts.add(bet.playerName + " 的赛段注押中第一，预计返还 🦴" + (10 + bet.odds * 10) + "。");
+                int reward = LEG_BET_COST + bet.odds * LEG_BET_COST;
+                grantBetReward(room, bet.playerKey, bet.accountId, reward);
+                broadcasts.add(bet.playerName + " 的赛段注押中第一，返还 🦴" + reward + "。");
             } else if (bet.dogId.equals(secondDogId)) {
-                broadcasts.add(bet.playerName + " 的赛段注押中第二，预计返还 🦴10。");
+                grantBetReward(room, bet.playerKey, bet.accountId, LEG_BET_COST);
+                broadcasts.add(bet.playerName + " 的赛段注押中第二，返还 🦴" + LEG_BET_COST + "。");
             } else {
                 broadcasts.add(bet.playerName + " 的赛段注未命中。");
             }
@@ -606,7 +630,7 @@ public final class DogRaceService {
         return broadcasts;
     }
 
-    private static List<String> settleFinalBets(RaceState state, List<DogRaceDTO.Ranking> rankings) {
+    private static List<String> settleFinalBets(GameRoom room, RaceState state, List<DogRaceDTO.Ranking> rankings) {
         List<String> broadcasts = new ArrayList<>();
         if (state.finalBets.isEmpty() || rankings.isEmpty()) {
             return broadcasts;
@@ -622,12 +646,40 @@ public final class DogRaceService {
                 int reward = hitIndex < FINAL_BET_REWARDS.length
                         ? FINAL_BET_REWARDS[hitIndex]
                         : FINAL_BET_REWARDS[FINAL_BET_REWARDS.length - 1];
-                broadcasts.add(bet.playerName + " 的" + ("last".equals(bet.betKind) ? "垫底" : "冠军") + "暗注命中，预计获得 🦴" + reward + "。");
+                grantBetReward(room, bet.playerKey, bet.accountId, reward);
+                broadcasts.add(bet.playerName + " 的" + ("last".equals(bet.betKind) ? "垫底" : "冠军") + "暗注命中，获得 🦴" + reward + "。");
             } else {
                 broadcasts.add(bet.playerName + " 的" + ("last".equals(bet.betKind) ? "垫底" : "冠军") + "暗注未命中。");
             }
         }
         return broadcasts;
+    }
+
+    private static Long resolveBetAccountId(GameRoom room, String playerKey) {
+        if (playerKey == null || room == null || room.getUsers() == null || !room.getUsers().containsKey(playerKey)) {
+            return null;
+        }
+        GameRoom.Player player = room.getUsers().get(playerKey);
+        long accountId = player == null ? 0L : player.getAccountId();
+        if (accountId <= 0L) {
+            throw new IllegalArgumentException("请先登录账号再下注");
+        }
+        return accountId;
+    }
+
+    private static PetProfileDTO spendBetCost(Long accountId, int cost) {
+        if (accountId == null) {
+            return null;
+        }
+        return PetService.changeBones(accountId, -cost);
+    }
+
+    private static void grantBetReward(GameRoom room, String playerKey, long accountId, int reward) {
+        if (accountId <= 0L || reward <= 0) {
+            return;
+        }
+        PetProfileDTO profile = PetService.changeBones(accountId, reward);
+        sendPetProfileUpdate(room, playerKey, profile);
     }
 
     private static DogRaceDTO error(GameRoom room, String message) {
@@ -788,12 +840,14 @@ public final class DogRaceService {
     private static class LegBet {
         private final String playerKey;
         private final String playerName;
+        private final long accountId;
         private final String dogId;
         private final int odds;
 
-        private LegBet(String playerKey, String playerName, String dogId, int odds) {
+        private LegBet(String playerKey, String playerName, long accountId, String dogId, int odds) {
             this.playerKey = playerKey;
             this.playerName = playerName;
+            this.accountId = accountId;
             this.dogId = dogId;
             this.odds = odds;
         }
@@ -802,12 +856,14 @@ public final class DogRaceService {
     private static class FinalBet {
         private final String playerKey;
         private final String playerName;
+        private final long accountId;
         private final String dogId;
         private final String betKind;
 
-        private FinalBet(String playerKey, String playerName, String dogId, String betKind) {
+        private FinalBet(String playerKey, String playerName, long accountId, String dogId, String betKind) {
             this.playerKey = playerKey;
             this.playerName = playerName;
+            this.accountId = accountId;
             this.dogId = dogId;
             this.betKind = betKind;
         }

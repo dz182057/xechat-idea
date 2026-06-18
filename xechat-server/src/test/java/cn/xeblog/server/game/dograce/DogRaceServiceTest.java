@@ -285,6 +285,87 @@ public class DogRaceServiceTest {
         }
     }
 
+    @Test
+    public void finalBetShouldSpendBonesAndPersistRewardWhenHit() throws Exception {
+        Path tempDir = Files.createTempDirectory("xechat-dog-race-bet-bones-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());
+        GlobalConfig.initDataPath(tempDir.toString());
+        resetDbFactory();
+        try {
+            cn.xeblog.commons.entity.User user = accountUser(990103L);
+            PetService.profile(user);
+            GameRoom previewRoom = pureBettingRoom("dog-race-final-bet-preview", user);
+            DogRaceDTO previewSettle = DogRaceService.simulateRace(previewRoom, 20260617L)
+                    .stream()
+                    .filter(event -> event.getEvent() == DogRaceDTO.Event.RACE_SETTLE)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("赛跑应完成"));
+            String championDogId = previewSettle.getRankings().get(0).getDogId();
+
+            GameRoom room = pureBettingRoom("dog-race-final-bet-bones", user);
+            DogRaceService.startRaceForTest(room, 20260617L);
+            DogRaceDTO bet = DogRaceService.applyRequestForTest(
+                    room,
+                    user.getIdentityKey(),
+                    user.getUsername(),
+                    request(room, DogRaceDTO.Event.BET_FINAL_REQ, championDogId, "champion", 0, null));
+
+            Assert.assertEquals(DogRaceDTO.Event.BET_FINAL, bet.getEvent());
+            Assert.assertEquals(80, PetService.profile(user).getAssets().getBones());
+
+            DogRaceDTO last = null;
+            for (int i = 0; i < 80; i++) {
+                last = DogRaceService.applyRequestForTest(
+                        room,
+                        user.getIdentityKey(),
+                        user.getUsername(),
+                        request(room, DogRaceDTO.Event.ROLL_REQ, null, null, 0, null));
+                if (last.getEvent() == DogRaceDTO.Event.RACE_SETTLE) {
+                    break;
+                }
+            }
+
+            Assert.assertNotNull(last);
+            Assert.assertEquals(DogRaceDTO.Event.RACE_SETTLE, last.getEvent());
+            Assert.assertEquals(180, PetService.profile(user).getAssets().getBones());
+            Assert.assertTrue(last.getBroadcasts().stream().anyMatch(line -> line.contains("暗注命中，获得 🦴100")));
+        } finally {
+            resetDbFactory();
+            System.clearProperty(GlobalConfig.DATA_PATH_PROPERTY);
+            GlobalConfig.initDataPath(null);
+        }
+    }
+
+    @Test
+    public void finalBetShouldRejectWhenBonesAreNotEnough() throws Exception {
+        Path tempDir = Files.createTempDirectory("xechat-dog-race-bet-insufficient-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());
+        GlobalConfig.initDataPath(tempDir.toString());
+        resetDbFactory();
+        try {
+            cn.xeblog.commons.entity.User user = accountUser(990104L);
+            PetService.profile(user);
+            PetService.changeBones(user.getAccountId(), -90);
+            GameRoom room = pureBettingRoom("dog-race-final-bet-insufficient", user);
+            DogRaceDTO snapshot = DogRaceService.startRaceForTest(room, 20260617L);
+            String dogId = snapshot.getParticipants().get(0).getDogId();
+
+            DogRaceDTO bet = DogRaceService.applyRequestForTest(
+                    room,
+                    user.getIdentityKey(),
+                    user.getUsername(),
+                    request(room, DogRaceDTO.Event.BET_FINAL_REQ, dogId, "champion", 0, null));
+
+            Assert.assertEquals(DogRaceDTO.Event.ERROR, bet.getEvent());
+            Assert.assertEquals("骨头币不足", bet.getMessage());
+            Assert.assertEquals(10, PetService.profile(user).getAssets().getBones());
+        } finally {
+            resetDbFactory();
+            System.clearProperty(GlobalConfig.DATA_PATH_PROPERTY);
+            GlobalConfig.initDataPath(null);
+        }
+    }
+
     private DogRaceDTO request(GameRoom room, DogRaceDTO.Event event, String dogId, String betKind, int cell, String tileType) {
         DogRaceDTO dto = new DogRaceDTO(room.getId());
         dto.setEvent(event);
@@ -318,6 +399,24 @@ public class DogRaceServiceTest {
         room.setGame(Game.DOG_RACE);
         room.setNums(6);
         room.setDogRaceMode("owned_dog");
+        room.getUsers().put(user.getIdentityKey(), new GameRoom.Player(
+                user.getIdentityKey(),
+                user.getId(),
+                user.getUsername(),
+                user.getAccountId(),
+                user.getAccount(),
+                user.getUuid(),
+                user.getNickname(),
+                false));
+        return room;
+    }
+
+    private static GameRoom pureBettingRoom(String roomId, cn.xeblog.commons.entity.User user) {
+        GameRoom room = new GameRoom();
+        room.setId(roomId);
+        room.setGame(Game.DOG_RACE);
+        room.setNums(6);
+        room.setDogRaceMode("pure_betting");
         room.getUsers().put(user.getIdentityKey(), new GameRoom.Player(
                 user.getIdentityKey(),
                 user.getId(),
