@@ -457,6 +457,113 @@ public class DogRaceServiceTest {
         }
     }
 
+    @Test
+    public void mudTileShouldRewardTileOwnerWhenDogStepsOnIt() throws Exception {
+        Path tempDir = Files.createTempDirectory("xechat-dog-race-mud-tile-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());
+        GlobalConfig.initDataPath(tempDir.toString());
+        resetDbFactory();
+        try {
+            cn.xeblog.commons.entity.User user = accountUser(990108L);
+            PetService.profile(user);
+            BoneTileScenario scenario = findTileScenario(user, null);
+            GameRoom room = pureBettingRoom("dog-race-mud-tile", user);
+            DogRaceService.startRaceForTest(room, scenario.seed);
+
+            DogRaceDTO tile = DogRaceService.applyRequestForTest(
+                    room,
+                    user.getIdentityKey(),
+                    user.getUsername(),
+                    request(room, DogRaceDTO.Event.PLACE_TILE_REQ, null, null, scenario.cell, "mud"));
+            DogRaceDTO roll = DogRaceService.applyRequestForTest(
+                    room,
+                    user.getIdentityKey(),
+                    user.getUsername(),
+                    request(room, DogRaceDTO.Event.ROLL_REQ, null, null, 0, null));
+
+            Assert.assertEquals(DogRaceDTO.Event.PLACE_TILE, tile.getEvent());
+            Assert.assertNotEquals(DogRaceDTO.Event.ERROR, roll.getEvent());
+            Assert.assertEquals(105, PetService.profile(user).getAssets().getBones());
+            Assert.assertTrue(roll.getBroadcast().contains("泥坑"));
+        } finally {
+            resetDbFactory();
+            System.clearProperty(GlobalConfig.DATA_PATH_PROPERTY);
+            GlobalConfig.initDataPath(null);
+        }
+    }
+
+    @Test
+    public void goldenShouldGainTwoStepsFromBoneTile() throws Exception {
+        Path tempDir = Files.createTempDirectory("xechat-dog-race-golden-bone-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());
+        GlobalConfig.initDataPath(tempDir.toString());
+        resetDbFactory();
+        try {
+            BoneTileScenario scenario = findOwnedTileSkillScenario("golden", "bone", "捡球高手", 990210L);
+            cn.xeblog.commons.entity.User user = accountUser(990110L);
+            PetService.adopt(user, adopt("golden", "金毛"));
+            GameRoom room = ownedDogRoom("dog-race-golden-bone", user);
+            DogRaceService.startRaceForTest(room, scenario.seed);
+
+            DogRaceService.applyRequestForTest(
+                    room,
+                    user.getIdentityKey(),
+                    user.getUsername(),
+                    request(room, DogRaceDTO.Event.PLACE_TILE_REQ, null, null, scenario.cell, "bone"));
+            DogRaceDTO roll = DogRaceService.applyRequestForTest(
+                    room,
+                    user.getIdentityKey(),
+                    user.getUsername(),
+                    request(room, DogRaceDTO.Event.ROLL_REQ, null, null, 0, null));
+
+            Assert.assertNotEquals(DogRaceDTO.Event.ERROR, roll.getEvent());
+            Assert.assertEquals(105, PetService.profile(user).getAssets().getBones());
+            Assert.assertTrue(roll.getBroadcast().contains("捡球高手"));
+            Assert.assertTrue(roll.getParticipants().stream()
+                    .anyMatch(dog -> "golden".equals(dog.getBreed()) && dog.getPosition() == scenario.cell + 2));
+        } finally {
+            resetDbFactory();
+            System.clearProperty(GlobalConfig.DATA_PATH_PROPERTY);
+            GlobalConfig.initDataPath(null);
+        }
+    }
+
+    @Test
+    public void borderCollieShouldIgnoreMudTileAndSkipOwnerReward() throws Exception {
+        Path tempDir = Files.createTempDirectory("xechat-dog-race-border-mud-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());
+        GlobalConfig.initDataPath(tempDir.toString());
+        resetDbFactory();
+        try {
+            BoneTileScenario scenario = findOwnedTileSkillScenario("border_collie", "mud", "聪明走位", 990211L);
+            cn.xeblog.commons.entity.User user = accountUser(990109L);
+            PetService.adopt(user, adopt("border_collie", "边牧"));
+            GameRoom room = ownedDogRoom("dog-race-border-mud", user);
+            DogRaceService.startRaceForTest(room, scenario.seed);
+
+            DogRaceService.applyRequestForTest(
+                    room,
+                    user.getIdentityKey(),
+                    user.getUsername(),
+                    request(room, DogRaceDTO.Event.PLACE_TILE_REQ, null, null, scenario.cell, "mud"));
+            DogRaceDTO roll = DogRaceService.applyRequestForTest(
+                    room,
+                    user.getIdentityKey(),
+                    user.getUsername(),
+                    request(room, DogRaceDTO.Event.ROLL_REQ, null, null, 0, null));
+
+            Assert.assertNotEquals(DogRaceDTO.Event.ERROR, roll.getEvent());
+            Assert.assertEquals(100, PetService.profile(user).getAssets().getBones());
+            Assert.assertTrue(roll.getBroadcast().contains("识破"));
+            Assert.assertTrue(roll.getParticipants().stream()
+                    .anyMatch(dog -> "border_collie".equals(dog.getBreed()) && dog.getPosition() == scenario.cell));
+        } finally {
+            resetDbFactory();
+            System.clearProperty(GlobalConfig.DATA_PATH_PROPERTY);
+            GlobalConfig.initDataPath(null);
+        }
+    }
+
     private DogRaceDTO request(GameRoom room, DogRaceDTO.Event event, String dogId, String betKind, int cell, String tileType) {
         DogRaceDTO dto = new DogRaceDTO(room.getId());
         dto.setEvent(event);
@@ -521,6 +628,10 @@ public class DogRaceServiceTest {
     }
 
     private static BoneTileScenario findBoneTileScenario(cn.xeblog.commons.entity.User user) {
+        return findTileScenario(user, null);
+    }
+
+    private static BoneTileScenario findTileScenario(cn.xeblog.commons.entity.User user, String breed) {
         for (long seed = 1L; seed <= 500L; seed++) {
             GameRoom room = pureBettingRoom("dog-race-bone-preview-" + seed, user);
             DogRaceDTO snapshot = DogRaceService.startRaceForTest(room, seed);
@@ -535,19 +646,66 @@ public class DogRaceServiceTest {
             }
             String dogId = roll.getDie().getDogId();
             int targetCell = -1;
+            String targetBreed = null;
             for (DogRaceDTO.Participant dog : roll.getParticipants()) {
                 if (dogId.equals(dog.getDogId())) {
                     targetCell = dog.getPosition();
+                    targetBreed = dog.getBreed();
                     break;
                 }
             }
-            if (targetCell >= 2 && targetCell <= 15 && !hasUnitAtSnapshot(snapshot, targetCell)) {
+            if (targetCell >= 2 && targetCell <= 15
+                    && (breed == null || breed.equals(targetBreed))
+                    && !hasUnitAtSnapshot(snapshot, targetCell)) {
                 DogRaceService.clearRoom(room.getId());
                 return new BoneTileScenario(seed, targetCell);
             }
             DogRaceService.clearRoom(room.getId());
         }
         throw new AssertionError("500 个种子内应找到可测试的骨头地块落点");
+    }
+
+    private static BoneTileScenario findOwnedTileSkillScenario(String breed, String tileType, String skillName, long probeAccountId) {
+        cn.xeblog.commons.entity.User probeUser = accountUser(probeAccountId);
+        PetProfileDTO profile = PetService.adopt(probeUser, adopt(breed, "探测狗"));
+        String realDogId = profile.getDogs().get(0).getId();
+        for (long seed = 1L; seed <= 10000L; seed++) {
+            GameRoom previewRoom = ownedDogRoom("dog-race-owned-preview-" + breed + "-" + seed, probeUser);
+            DogRaceDTO snapshot = DogRaceService.startRaceForTest(previewRoom, seed);
+            DogRaceDTO previewRoll = DogRaceService.applyRequestForTest(
+                    previewRoom,
+                    probeUser.getIdentityKey(),
+                    probeUser.getUsername(),
+                    requestStatic(previewRoom, DogRaceDTO.Event.ROLL_REQ, null, null, 0, null));
+            if (!realDogId.equals(previewRoll.getDie() == null ? null : previewRoll.getDie().getDogId())) {
+                DogRaceService.clearRoom(previewRoom.getId());
+                continue;
+            }
+            int targetCell = findParticipantPosition(previewRoll, realDogId);
+            if (targetCell < 2 || targetCell > 15 || hasUnitAtSnapshot(snapshot, targetCell)) {
+                DogRaceService.clearRoom(previewRoom.getId());
+                continue;
+            }
+            DogRaceService.clearRoom(previewRoom.getId());
+
+            GameRoom room = ownedDogRoom("dog-race-owned-skill-" + breed + "-" + seed, probeUser);
+            DogRaceService.startRaceForTest(room, seed);
+            DogRaceService.applyRequestForTest(
+                    room,
+                    probeUser.getIdentityKey(),
+                    probeUser.getUsername(),
+                    requestStatic(room, DogRaceDTO.Event.PLACE_TILE_REQ, null, null, targetCell, tileType));
+            DogRaceDTO roll = DogRaceService.applyRequestForTest(
+                    room,
+                    probeUser.getIdentityKey(),
+                    probeUser.getUsername(),
+                    requestStatic(room, DogRaceDTO.Event.ROLL_REQ, null, null, 0, null));
+            DogRaceService.clearRoom(room.getId());
+            if (roll.getBroadcast() != null && roll.getBroadcast().contains(skillName)) {
+                return new BoneTileScenario(seed, targetCell);
+            }
+        }
+        throw new AssertionError("10000 个种子内应找到 " + breed + " 的" + skillName + "触发场景");
     }
 
     private static boolean hasUnitAtSnapshot(DogRaceDTO snapshot, int cell) {
@@ -562,6 +720,15 @@ public class DogRaceServiceTest {
             }
         }
         return false;
+    }
+
+    private static int findParticipantPosition(DogRaceDTO dto, String dogId) {
+        for (DogRaceDTO.Participant dog : dto.getParticipants()) {
+            if (dogId.equals(dog.getDogId())) {
+                return dog.getPosition();
+            }
+        }
+        return -1;
     }
 
     private static DogRaceDTO requestStatic(GameRoom room, DogRaceDTO.Event event, String dogId, String betKind, int cell, String tileType) {

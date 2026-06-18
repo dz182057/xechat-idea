@@ -17,6 +17,7 @@ import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.pet.PetService;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -386,9 +387,14 @@ public final class DogRaceService {
 
     private static void moveDog(GameRoom room, RaceState state, String dogId, Random random, DogRaceDTO roll) {
         int steps = rollDog(random);
-        MoveResult result = moveUnit(room, state, dogId, steps, true);
         RaceUnit dog = state.units.get(dogId);
-        String skillName = tryApplyDogSkill(state, dog);
+        int beforePosition = dog == null ? 0 : dog.position;
+        int carriedAbove = dog == null ? 0 : carriedAboveCount(state, dog);
+        String tileSkillName = tryApplyTileDogSkill(state, dog, beforePosition + steps);
+        MoveResult result = moveUnit(room, state, dogId, steps, true, tileSkillName);
+        String skillName = tileSkillName == null
+                ? tryApplyDogSkill(state, dog, steps, beforePosition, carriedAbove)
+                : tileSkillName;
         if (skillName != null) {
             roll.setSkillName(skillName);
         }
@@ -399,7 +405,26 @@ public final class DogRaceService {
                 + (result.tileBroadcast == null ? "" : " " + result.tileBroadcast));
     }
 
-    private static String tryApplyDogSkill(RaceState state, RaceUnit dog) {
+    private static String tryApplyTileDogSkill(RaceState state, RaceUnit dog, int targetCell) {
+        if (dog == null || dog.ownerAccountId <= 0L || dog.breed == null || state.usedSkillDogIds.contains(dog.id)) {
+            return null;
+        }
+        DogRaceTile tile = findTile(state, targetCell);
+        if (tile == null) {
+            return null;
+        }
+        if ("golden".equals(dog.breed) && "bone".equals(tile.tileType) && shouldTriggerDogSkill(state, dog)) {
+            markDogSkillTriggered(state, dog, "捡球高手");
+            return dog.skillName;
+        }
+        if ("border_collie".equals(dog.breed) && "mud".equals(tile.tileType) && shouldTriggerDogSkill(state, dog)) {
+            markDogSkillTriggered(state, dog, "聪明走位");
+            return dog.skillName;
+        }
+        return null;
+    }
+
+    private static String tryApplyDogSkill(RaceState state, RaceUnit dog, int steps, int beforePosition, int carriedAbove) {
         if (dog == null || dog.ownerAccountId <= 0L || dog.breed == null || state.usedSkillDogIds.contains(dog.id)) {
             return null;
         }
@@ -407,18 +432,57 @@ public final class DogRaceService {
         if (skill == null) {
             return null;
         }
-        double rate = Math.min(DOG_SKILL_BASE_RATE + Math.max(0, Math.min(100, dog.skillStatValue)) * DOG_SKILL_RATE_PER_STAT,
-                DOG_SKILL_MAX_RATE);
-        if (state.random.nextDouble() >= rate) {
+        if (!canApplyMoveDogSkill(dog.breed, steps, beforePosition, carriedAbove)) {
             return null;
         }
-        state.usedSkillDogIds.add(dog.id);
-        dog.skillName = skill.name;
-        dog.skillTriggered = true;
-        if (skill.extraSteps > 0) {
-            moveUnit(null, state, dog.id, skill.extraSteps, false);
+        if (!shouldTriggerDogSkill(state, dog)) {
+            return null;
+        }
+        markDogSkillTriggered(state, dog, skill.name);
+        if ("husky".equals(dog.breed)) {
+            shuffleCurrentStack(state, dog);
+        } else if (skill.extraSteps > 0) {
+            moveUnit(null, state, dog.id, skill.extraSteps, false, null);
         }
         return skill.name;
+    }
+
+    private static boolean canApplyMoveDogSkill(String breed, int steps, int beforePosition, int carriedAbove) {
+        switch (breed) {
+            case "corgi":
+                return carriedAbove >= 1;
+            case "greyhound":
+                return true;
+            case "poodle":
+                return carriedAbove == 0;
+            case "native":
+                return beforePosition <= 8;
+            case "shiba":
+                return steps == 1;
+            case "husky":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean shouldTriggerDogSkill(RaceState state, RaceUnit dog) {
+        double rate = Math.min(DOG_SKILL_BASE_RATE + Math.max(0, Math.min(100, dog.skillStatValue)) * DOG_SKILL_RATE_PER_STAT,
+                DOG_SKILL_MAX_RATE);
+        return state.random.nextDouble() < rate;
+    }
+
+    private static void markDogSkillTriggered(RaceState state, RaceUnit dog, String skillName) {
+        state.usedSkillDogIds.add(dog.id);
+        dog.skillName = skillName;
+        dog.skillTriggered = true;
+    }
+
+    private static void shuffleCurrentStack(RaceState state, RaceUnit dog) {
+        List<String> stack = state.stacks.get(dog.position);
+        if (stack != null && stack.size() > 1) {
+            Collections.shuffle(stack, state.random);
+        }
     }
 
     private static DogRaceSkill skillForBreed(String breed) {
@@ -470,37 +534,58 @@ public final class DogRaceService {
     private static void moveCat(GameRoom room, RaceState state, Random random, DogRaceDTO roll) {
         String catId = random.nextBoolean() ? "black_cat" : "white_cat";
         int steps = rollDog(random);
-        MoveResult result = moveUnit(room, state, catId, -steps, true);
+        MoveResult result = moveUnit(room, state, catId, -steps, true, null);
         RaceUnit cat = state.units.get(catId);
         roll.setDie(new DogRaceDTO.Die("cat", 0, null, catId, steps));
         roll.setBroadcast("🐈 " + (cat == null ? "野猫" : cat.name) + " 逆行 " + steps + " 格，添乱到第 " + result.to + " 格！"
                 + (result.tileBroadcast == null ? "" : " " + result.tileBroadcast));
     }
 
-    private static MoveResult moveUnit(GameRoom room, RaceState state, String unitId, int delta, boolean checkTile) {
+    private static MoveResult moveUnit(GameRoom room, RaceState state, String unitId, int delta, boolean checkTile,
+                                       String triggeredTileSkillName) {
         MoveResult result = moveStack(state, unitId, delta, delta < 0);
         if (checkTile) {
             DogRaceTile tile = findTile(state, result.to);
             if (tile != null) {
                 if ("bone".equals(tile.tileType)) {
-                    String tileBroadcast = applyBoneTileReward(room, state.units.get(unitId), tile);
-                    result = moveStack(state, unitId, 1, false);
+                    RaceUnit unit = state.units.get(unitId);
+                    int bonusSteps = "捡球高手".equals(triggeredTileSkillName) ? 2 : 1;
+                    String tileBroadcast = applyBoneTileReward(room, unit, tile, bonusSteps);
+                    result = moveStack(state, unitId, bonusSteps, false);
                     result.tileBroadcast = tileBroadcast;
                 } else if ("mud".equals(tile.tileType)) {
-                    result = moveStack(state, unitId, -1, true);
+                    RaceUnit unit = state.units.get(unitId);
+                    if ("聪明走位".equals(triggeredTileSkillName)) {
+                        result.tileBroadcast = "🧠 " + unit.name + " 识破了 "
+                                + tile.ownerName + " 放的泥坑，没有后退。";
+                    } else {
+                        String tileBroadcast = applyMudTileReward(room, unit, tile);
+                        result = moveStack(state, unitId, -1, true);
+                        result.tileBroadcast = tileBroadcast;
+                    }
                 }
             }
         }
         return result;
     }
 
-    private static String applyBoneTileReward(GameRoom room, RaceUnit unit, DogRaceTile tile) {
+    private static String applyBoneTileReward(GameRoom room, RaceUnit unit, DogRaceTile tile, int bonusSteps) {
         if (tile.ownerAccountId > 0L) {
             PetProfileDTO profile = PetService.changeBones(tile.ownerAccountId, BONE_TILE_REWARD);
             sendPetProfileUpdate(room, tile.ownerPlayerKey, profile);
         }
+        String skillText = bonusSteps > 1 ? "，触发【捡球高手】向前冲 " + bonusSteps + " 格" : "";
         return "🦴 " + (unit == null ? "移动单位" : unit.name) + " 踩到 "
-                + tile.ownerName + " 放的骨头，" + tile.ownerName + " 获得 🦴" + BONE_TILE_REWARD + "。";
+                + tile.ownerName + " 放的骨头，" + tile.ownerName + " 获得 🦴" + BONE_TILE_REWARD + skillText + "。";
+    }
+
+    private static String applyMudTileReward(GameRoom room, RaceUnit unit, DogRaceTile tile) {
+        if (tile.ownerAccountId > 0L) {
+            PetProfileDTO profile = PetService.changeBones(tile.ownerAccountId, BONE_TILE_REWARD);
+            sendPetProfileUpdate(room, tile.ownerPlayerKey, profile);
+        }
+        return "🕳️ " + (unit == null ? "移动单位" : unit.name) + " 踩到 "
+                + tile.ownerName + " 放的泥坑，" + tile.ownerName + " 获得 🦴" + BONE_TILE_REWARD + "，后退 1 格。";
     }
 
     private static MoveResult moveStack(RaceState state, String unitId, int delta, boolean toBottom) {
@@ -771,6 +856,12 @@ public final class DogRaceService {
     private static int stackIndex(RaceState state, RaceUnit unit) {
         List<String> stack = state.stacks.get(unit.position);
         return stack == null ? -1 : stack.indexOf(unit.id);
+    }
+
+    private static int carriedAboveCount(RaceState state, RaceUnit unit) {
+        List<String> stack = state.stacks.get(unit.position);
+        int index = stack == null ? -1 : stack.indexOf(unit.id);
+        return index < 0 ? 0 : stack.size() - index - 1;
     }
 
     private static List<String> createDiceBag(RaceState state) {
