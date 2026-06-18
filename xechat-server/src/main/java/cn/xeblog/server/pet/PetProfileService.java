@@ -68,6 +68,7 @@ public final class PetProfileService {
     private static final int SHOP_FOOD_PRICE = 30;
     private static final int SHOP_MAKEUP_CARD_PRICE = 150;
     private static final int SHOP_NORMAL_ITEM_PRICE = 80;
+    private static final int SHOP_DAILY_RARE_ITEM_PRICE = 320;
     private static final int SHOP_LUCKY_BAG_PRICE = 250;
     private static final int SELL_NORMAL_ITEM_PRICE = 20;
     private static final int SELL_RARE_ITEM_PRICE = 80;
@@ -77,11 +78,15 @@ public final class PetProfileService {
     private static final int MAX_ITEM_COUNT = 9;
     private static final int MONTHLY_MAKEUP_CARD_BUY_LIMIT = 2;
     private static final int DAILY_NORMAL_ITEM_BUY_LIMIT = 3;
+    private static final int DAILY_RARE_ITEM_BUY_LIMIT = 1;
     private static final int DAILY_LUCKY_BAG_BUY_LIMIT = 2;
     private static final int SEVENTH_DAY_CHECKIN_BONES = 100;
     private static final int SEVENTH_DAY_CHECKIN_NORMAL_ITEM_COUNT = 2;
     private static final int CHECKIN_ITEM_OVERFLOW_BONES = 10;
     private static final String EXPLORE_LOCATION_BACK_HILL = "back_hill";
+    private static final String ITEM_BACK_HILL_CHEST = "chest_back_hill";
+    private static final int MAX_BACK_HILL_CHEST_COUNT = 99;
+    private static final String BACK_HILL_CHEST_FULL_ERROR = "后山箱子已达上限，打开后再探险";
     private static final int EXPLORE_ONE_HOUR = 1;
     private static final int EXPLORE_FOUR_HOURS = 4;
     private static final int EXPLORE_EIGHT_HOURS = 8;
@@ -111,6 +116,7 @@ public final class PetProfileService {
     private static final String DAILY_COUNTER_USE_ITEM_FEAST = "use_item_feast";
     private static final String DAILY_COUNTER_USE_ITEM_EXPRESS = "use_item_express";
     private static final String DAILY_COUNTER_SHOP_NORMAL_ITEM_BUY = "shop_normal_item_buy";
+    private static final String DAILY_COUNTER_SHOP_DAILY_RARE_ITEM_BUY = "shop_daily_rare_item_buy";
     private static final String DAILY_COUNTER_SHOP_LUCKY_BAG_BUY = "shop_lucky_bag_buy";
     private static final String DAILY_COUNTER_EXPLORE_START = "explore_start";
     private static final String DAILY_COUNTER_EXPLORE_ITEM_GAIN = "explore_item_gain";
@@ -170,6 +176,12 @@ public final class PetProfileService {
     }
 
     public static PetProfileDTO profile(long accountId) {
+        synchronized (accountLock(accountId)) {
+            return profileLocked(accountId);
+        }
+    }
+
+    private static PetProfileDTO profileLocked(long accountId) {
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             PetAssetsRecord assets = findAssetsOrDefault(session, accountId);
             LocalDate today = LocalDate.now();
@@ -179,8 +191,13 @@ public final class PetProfileService {
             boolean dogEnergyRefreshed = refreshExpiredDogEnergy(dogMapper, accountId,
                     assets.getEnergyLimit(), todayText, now);
             List<PetDogRecord> rows = dogMapper.listByOwner(accountId);
+            PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
+            boolean exploreSettled = settleEndedExploresAsChests(accountId, dogMapper, itemMapper, rows, now);
+            if (exploreSettled) {
+                rows = dogMapper.listByOwner(accountId);
+            }
             boolean dogStageChanged = updateDogGrowthStages(dogMapper, accountId, rows, now);
-            List<PetItemRecord> itemRows = session.getMapper(PetItemMapper.class).listPositiveByAccountId(accountId);
+            List<PetItemRecord> itemRows = itemMapper.listPositiveByAccountId(accountId);
             PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
             List<PetCollectionRecord> collectionRows = collectionMapper.listByAccountId(accountId);
             PetCheckinMapper checkinMapper = session.getMapper(PetCheckinMapper.class);
@@ -220,7 +237,7 @@ public final class PetProfileService {
                             findCollectionCount(collectionMapper, accountId, TREASURE_MAP_FRAGMENT_COLLECTION_ID)),
                     findCollectionCount(collectionMapper, accountId, TREASURE_MAP_FRAGMENT_COLLECTION_ID)
                             >= HUSKY_TREASURE_MAP_FRAGMENT_LIMIT));
-            if (dogEnergyRefreshed || dogStageChanged) {
+            if (dogEnergyRefreshed || exploreSettled || dogStageChanged) {
                 session.commit();
             }
             return profile;
@@ -413,6 +430,12 @@ public final class PetProfileService {
         }
     }
 
+    public static PetExploreOpenResultDTO openBackHillChest(long accountId, PetUseItemDTO request) {
+        synchronized (accountLock(accountId)) {
+            return openBackHillChestLocked(accountId, request);
+        }
+    }
+
     public static PetProfileDTO exploreStart(long accountId, PetExploreStartDTO request) {
         synchronized (accountLock(accountId)) {
             return exploreStartLocked(accountId, request);
@@ -502,6 +525,9 @@ public final class PetProfileService {
                 throw new IllegalArgumentException("狗狗活力不足");
             }
             ensureExploreStageUnlocked(dog, durationHours);
+            if (backHillChestCount(session.getMapper(PetItemMapper.class), accountId) >= MAX_BACK_HILL_CHEST_COUNT) {
+                throw new IllegalArgumentException(BACK_HILL_CHEST_FULL_ERROR);
+            }
             if (session.getMapper(PetDailyCounterMapper.class).incrementIfUnderLimit(accountId,
                     today, DAILY_COUNTER_EXPLORE_START, DAILY_EXPLORE_START_LIMIT, now) <= 0) {
                 throw new IllegalArgumentException("今日探险派遣次数已达上限");
@@ -575,6 +601,34 @@ public final class PetProfileService {
             return useExpressItem(accountId, dogId);
         }
         throw new IllegalArgumentException("暂不支持该道具");
+    }
+
+    private static PetExploreOpenResultDTO openBackHillChestLocked(long accountId, PetUseItemDTO request) {
+        String itemId = request == null ? null : StrUtil.trim(request.getItemId());
+        Integer quantity = request == null ? null : request.getQuantity();
+        if (!ITEM_BACK_HILL_CHEST.equals(itemId)) {
+            throw new IllegalArgumentException("暂不支持该道具");
+        }
+        if (quantity == null || quantity != 1) {
+            throw new IllegalArgumentException("道具使用数量必须为 1");
+        }
+
+        long now = System.currentTimeMillis();
+        String today = LocalDate.now().toString();
+        List<PetExploreRewardDTO> rewards = new ArrayList<>();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            ensureAssets(session, accountId);
+            PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
+            if (itemMapper.decrementItemIfEnough(accountId, ITEM_BACK_HILL_CHEST, 1, now) <= 0) {
+                throw new IllegalArgumentException("道具数量不足");
+            }
+            PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            addExploreBones(assetsMapper, accountId, exploreBaseBones(EXPLORE_ONE_HOUR), rewards, now);
+            applyExploreRolls(session, accountId, EXPLORE_ONE_HOUR, rewards, today, now);
+            session.commit();
+        }
+
+        return new PetExploreOpenResultDTO(profile(accountId), rewards);
     }
 
     private static PetProfileDTO useFeastItem(long accountId, String dogId) {
@@ -756,6 +810,9 @@ public final class PetProfileService {
         if (SHOP_NORMAL_ITEM_IDS.contains(itemId)) {
             return buyNormalItem(accountId, itemId, quantity);
         }
+        if (LUCKY_BAG_RARE_ITEM_IDS.contains(itemId)) {
+            return buyDailyRareItem(accountId, itemId, quantity);
+        }
         throw new IllegalArgumentException("暂不支持该商店商品");
     }
 
@@ -885,6 +942,48 @@ public final class PetProfileService {
         return profile(accountId);
     }
 
+    private static PetProfileDTO buyDailyRareItem(long accountId, String itemId, int quantity) {
+        LocalDate today = LocalDate.now();
+        if (!dailyRareShopItemId(today).equals(itemId)) {
+            throw new IllegalArgumentException("今日未出售该稀有道具");
+        }
+        if (quantity > DAILY_RARE_ITEM_BUY_LIMIT) {
+            throw new IllegalArgumentException("今日稀有道具购买次数已达上限");
+        }
+
+        long now = System.currentTimeMillis();
+        String todayText = today.toString();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
+            PetAssetsRecord assets = ensureAssets(session, accountId);
+            PetItemRecord item = itemMapper.findByAccountIdAndItemId(accountId, itemId);
+            int currentCount = item == null ? 0 : item.getCount();
+            if ((long) currentCount + quantity > MAX_ITEM_COUNT) {
+                throw new IllegalArgumentException("道具卡持有数量不能超过 9");
+            }
+
+            int price = SHOP_DAILY_RARE_ITEM_PRICE * quantity;
+            if (assets.getBones() < price) {
+                throw new IllegalArgumentException("骨头币不足");
+            }
+            if (counterMapper.incrementByIfUnderLimit(accountId, todayText, DAILY_COUNTER_SHOP_DAILY_RARE_ITEM_BUY,
+                    quantity, DAILY_RARE_ITEM_BUY_LIMIT, now) <= 0) {
+                throw new IllegalArgumentException("今日稀有道具购买次数已达上限");
+            }
+            if (assetsMapper.decrementBonesIfEnough(accountId, price, now) <= 0) {
+                throw new IllegalArgumentException("骨头币不足");
+            }
+            if (itemMapper.addItemIfUnderLimit(accountId, itemId, quantity, MAX_ITEM_COUNT, now) <= 0) {
+                throw new IllegalArgumentException("道具卡持有数量不能超过 9");
+            }
+            session.commit();
+        }
+
+        return profile(accountId);
+    }
+
     private static PetProfileDTO buyLuckyBag(long accountId, int quantity) {
         if (quantity > DAILY_LUCKY_BAG_BUY_LIMIT) {
             throw new IllegalArgumentException("今日狗狗福袋购买次数已达上限");
@@ -929,6 +1028,39 @@ public final class PetProfileService {
         }
 
         return profile(accountId);
+    }
+
+    private static boolean settleEndedExploresAsChests(long accountId,
+                                                       PetDogMapper dogMapper,
+                                                       PetItemMapper itemMapper,
+                                                       List<PetDogRecord> dogs,
+                                                       long now) {
+        boolean settled = false;
+        for (PetDogRecord dog : dogs) {
+            if (!"exploring".equals(dog.getStatus())) {
+                continue;
+            }
+            if (!EXPLORE_LOCATION_BACK_HILL.equals(dog.getExploreLocation())) {
+                continue;
+            }
+            if (dog.getExploreEndsAt() == null || dog.getExploreEndsAt() > now) {
+                continue;
+            }
+            if (itemMapper.addItemIfUnderLimit(accountId, ITEM_BACK_HILL_CHEST, 1,
+                    MAX_BACK_HILL_CHEST_COUNT, now) <= 0) {
+                throw new IllegalArgumentException(BACK_HILL_CHEST_FULL_ERROR);
+            }
+            if (dogMapper.openExplore(dog.getId(), accountId, now) <= 0) {
+                throw new IllegalArgumentException("探险结算失败，请刷新后重试");
+            }
+            settled = true;
+        }
+        return settled;
+    }
+
+    private static int backHillChestCount(PetItemMapper itemMapper, long accountId) {
+        PetItemRecord item = itemMapper.findByAccountIdAndItemId(accountId, ITEM_BACK_HILL_CHEST);
+        return item == null ? 0 : item.getCount();
     }
 
     private static int exploreEnergyCost(int durationHours) {
@@ -1148,6 +1280,11 @@ public final class PetProfileService {
             return itemId;
         }
         return pickAvailableLuckyBagItem(LUCKY_BAG_ITEM_IDS, itemCounts);
+    }
+
+    private static String dailyRareShopItemId(LocalDate date) {
+        int itemIndex = (int) Math.floorMod(date.toEpochDay(), LUCKY_BAG_RARE_ITEM_IDS.size());
+        return LUCKY_BAG_RARE_ITEM_IDS.get(itemIndex);
     }
 
     private static String pickAvailableLuckyBagItem(List<String> pool, Map<String, Integer> itemCounts) {

@@ -145,9 +145,15 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 break;
             case USE_ITEM:
                 try {
-                    PetProfileDTO useItemProfile = PetProfileService.useItem(user.getAccountId(),
-                            toBean(body.getContent(), PetUseItemDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, useItemProfile));
+                    PetUseItemDTO useItemRequest = toBean(body.getContent(), PetUseItemDTO.class);
+                    if (isBackHillChest(useItemRequest)) {
+                        PetExploreOpenResultDTO chestResult = PetProfileService.openBackHillChest(user.getAccountId(),
+                                useItemRequest);
+                        send(user, PetResponseDTO.ok(petAction, requestId, chestResult));
+                    } else {
+                        PetProfileDTO useItemProfile = PetProfileService.useItem(user.getAccountId(), useItemRequest);
+                        send(user, PetResponseDTO.ok(petAction, requestId, useItemProfile));
+                    }
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -179,6 +185,11 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("狗狗请求内容无效", e);
         }
+    }
+
+    private boolean isBackHillChest(PetUseItemDTO request) {
+        String itemId = request == null || request.getItemId() == null ? null : request.getItemId().trim();
+        return "chest_back_hill".equals(itemId);
     }
 
     private void send(User user, PetResponseDTO body) {

@@ -15,6 +15,14 @@ import org.junit.Test;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class PetServiceTest {
 
@@ -128,6 +136,43 @@ public class PetServiceTest {
         Assert.assertEquals(16, afterSecond.getDogs().get(0).getWeeklyPoints());
     }
 
+    @Test
+    public void profileShouldSerializeExpiredEnergyRefreshForSameAccount() throws Exception {
+        User user = accountUser(990007L);
+        PetService.adopt(user, adopt("corgi", "并发狗"));
+        expireDogEnergy(user.getAccountId());
+
+        int threadCount = 12;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch ready = new CountDownLatch(threadCount);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+        List<PetProfileDTO> profiles = Collections.synchronizedList(new ArrayList<>());
+
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                ready.countDown();
+                try {
+                    start.await();
+                    profiles.add(PetService.profile(user));
+                } catch (Throwable e) {
+                    failures.add(e);
+                }
+            });
+        }
+
+        Assert.assertTrue("并发任务应全部就绪", ready.await(5, TimeUnit.SECONDS));
+        start.countDown();
+        executor.shutdown();
+        Assert.assertTrue("并发 profile 请求应及时完成", executor.awaitTermination(10, TimeUnit.SECONDS));
+
+        Assert.assertTrue("同账号并发 profile 不应抛出 SQLITE_BUSY: " + failures, failures.isEmpty());
+        Assert.assertEquals(threadCount, profiles.size());
+        for (PetProfileDTO profile : profiles) {
+            Assert.assertEquals(10, profile.getDogs().get(0).getEnergy());
+        }
+    }
+
     private static User accountUser(long accountId) {
         User user = new User();
         user.setId("test-" + accountId);
@@ -155,6 +200,13 @@ public class PetServiceTest {
         dto.setRank(rank);
         dto.setWeeklyPoints(weeklyPoints);
         return dto;
+    }
+
+    private static void expireDogEnergy(long accountId) throws Exception {
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             Statement statement = session.getConnection().createStatement()) {
+            statement.executeUpdate("UPDATE dogs SET energy = 1, energy_date = '2000-01-01' WHERE owner_id = " + accountId);
+        }
     }
 
     private static void resetDbFactory() throws Exception {
