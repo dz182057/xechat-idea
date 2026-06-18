@@ -36,6 +36,7 @@ public final class DogRaceService {
     private static final int[] DOG_DICE_FACES = {1, 1, 2, 2, 3, 3};
     private static final int LEG_BET_COST = 10;
     private static final int FINAL_BET_COST = 20;
+    private static final int BONE_TILE_REWARD = 5;
     private static final int[] LEG_BET_ODDS = {5, 3, 2, 2};
     private static final int[] FINAL_BET_REWARDS = {100, 60, 40, 20};
     private static final int[] RANK_REWARD_BONES = {80, 50, 30, 10, 10};
@@ -244,8 +245,14 @@ public final class DogRaceService {
             }
         }
 
+        Long accountId;
+        try {
+            accountId = resolveRoomAccountId(room, playerKey, "请先登录账号再放地块");
+        } catch (IllegalArgumentException e) {
+            return error(room, e.getMessage());
+        }
         state.tilePlayerKeys.add(playerKey);
-        state.tiles.add(new DogRaceTile(cell, tileType, playerKey, playerName));
+        state.tiles.add(new DogRaceTile(cell, tileType, playerKey, playerName, accountId == null ? 0L : accountId));
         DogRaceDTO dto = snapshot(room, state, DogRaceDTO.Event.PLACE_TILE);
         dto.setBroadcast(playerName + " 在第 " + cell + " 格放了" + ("bone".equals(tileType) ? "骨头" : "泥坑") + "。");
         dto.getBroadcasts().add(dto.getBroadcast());
@@ -264,9 +271,9 @@ public final class DogRaceService {
         roll.setPhase("running");
         roll.setLegNo(state.legNo);
         if ("cat".equals(die)) {
-            moveCat(state, state.random, roll);
+            moveCat(room, state, state.random, roll);
         } else {
-            moveDog(state, die, state.random, roll);
+            moveDog(room, state, die, state.random, roll);
         }
         fillSnapshotFields(roll, state);
 
@@ -355,9 +362,9 @@ public final class DogRaceService {
         push(state.stacks, white.position, white.id);
     }
 
-    private static void moveDog(RaceState state, String dogId, Random random, DogRaceDTO roll) {
+    private static void moveDog(GameRoom room, RaceState state, String dogId, Random random, DogRaceDTO roll) {
         int steps = rollDog(random);
-        MoveResult result = moveUnit(state, dogId, steps, true);
+        MoveResult result = moveUnit(room, state, dogId, steps, true);
         RaceUnit dog = state.units.get(dogId);
         String skillName = tryApplyDogSkill(state, dog);
         if (skillName != null) {
@@ -366,7 +373,8 @@ public final class DogRaceService {
         int to = dog == null ? result.to : dog.position;
         roll.setDie(new DogRaceDTO.Die("dog", dog == null ? 0 : dog.slot, dogId, null, steps));
         roll.setBroadcast("🎲 " + (dog == null ? dogId : dog.name) + " 掷出 " + steps + " 点，冲到第 " + to + " 格！"
-                + (skillName == null ? "" : " ✨触发【" + skillName + "】"));
+                + (skillName == null ? "" : " ✨触发【" + skillName + "】")
+                + (result.tileBroadcast == null ? "" : " " + result.tileBroadcast));
     }
 
     private static String tryApplyDogSkill(RaceState state, RaceUnit dog) {
@@ -386,7 +394,7 @@ public final class DogRaceService {
         dog.skillName = skill.name;
         dog.skillTriggered = true;
         if (skill.extraSteps > 0) {
-            moveUnit(state, dog.id, skill.extraSteps, false);
+            moveUnit(null, state, dog.id, skill.extraSteps, false);
         }
         return skill.name;
     }
@@ -437,28 +445,40 @@ public final class DogRaceService {
         }
     }
 
-    private static void moveCat(RaceState state, Random random, DogRaceDTO roll) {
+    private static void moveCat(GameRoom room, RaceState state, Random random, DogRaceDTO roll) {
         String catId = random.nextBoolean() ? "black_cat" : "white_cat";
         int steps = rollDog(random);
-        MoveResult result = moveUnit(state, catId, -steps, true);
+        MoveResult result = moveUnit(room, state, catId, -steps, true);
         RaceUnit cat = state.units.get(catId);
         roll.setDie(new DogRaceDTO.Die("cat", 0, null, catId, steps));
-        roll.setBroadcast("🐈 " + (cat == null ? "野猫" : cat.name) + " 逆行 " + steps + " 格，添乱到第 " + result.to + " 格！");
+        roll.setBroadcast("🐈 " + (cat == null ? "野猫" : cat.name) + " 逆行 " + steps + " 格，添乱到第 " + result.to + " 格！"
+                + (result.tileBroadcast == null ? "" : " " + result.tileBroadcast));
     }
 
-    private static MoveResult moveUnit(RaceState state, String unitId, int delta, boolean checkTile) {
+    private static MoveResult moveUnit(GameRoom room, RaceState state, String unitId, int delta, boolean checkTile) {
         MoveResult result = moveStack(state, unitId, delta, delta < 0);
         if (checkTile) {
             DogRaceTile tile = findTile(state, result.to);
             if (tile != null) {
                 if ("bone".equals(tile.tileType)) {
+                    String tileBroadcast = applyBoneTileReward(room, state.units.get(unitId), tile);
                     result = moveStack(state, unitId, 1, false);
+                    result.tileBroadcast = tileBroadcast;
                 } else if ("mud".equals(tile.tileType)) {
                     result = moveStack(state, unitId, -1, true);
                 }
             }
         }
         return result;
+    }
+
+    private static String applyBoneTileReward(GameRoom room, RaceUnit unit, DogRaceTile tile) {
+        if (tile.ownerAccountId > 0L) {
+            PetProfileDTO profile = PetService.changeBones(tile.ownerAccountId, BONE_TILE_REWARD);
+            sendPetProfileUpdate(room, tile.ownerPlayerKey, profile);
+        }
+        return "🦴 " + (unit == null ? "移动单位" : unit.name) + " 踩到 "
+                + tile.ownerName + " 放的骨头，" + tile.ownerName + " 获得 🦴" + BONE_TILE_REWARD + "。";
     }
 
     private static MoveResult moveStack(RaceState state, String unitId, int delta, boolean toBottom) {
@@ -592,7 +612,7 @@ public final class DogRaceService {
     }
 
     private static void sendPetProfileUpdate(GameRoom room, String playerKey, PetProfileDTO profile) {
-        if (playerKey == null || profile == null) {
+        if (room == null || playerKey == null || profile == null) {
             return;
         }
         GameRoom.Player player = room.getUsers().get(playerKey);
@@ -656,13 +676,17 @@ public final class DogRaceService {
     }
 
     private static Long resolveBetAccountId(GameRoom room, String playerKey) {
+        return resolveRoomAccountId(room, playerKey, "请先登录账号再下注");
+    }
+
+    private static Long resolveRoomAccountId(GameRoom room, String playerKey, String errorMessage) {
         if (playerKey == null || room == null || room.getUsers() == null || !room.getUsers().containsKey(playerKey)) {
             return null;
         }
         GameRoom.Player player = room.getUsers().get(playerKey);
         long accountId = player == null ? 0L : player.getAccountId();
         if (accountId <= 0L) {
-            throw new IllegalArgumentException("请先登录账号再下注");
+            throw new IllegalArgumentException(errorMessage);
         }
         return accountId;
     }
@@ -874,18 +898,21 @@ public final class DogRaceService {
         private final String tileType;
         private final String ownerPlayerKey;
         private final String ownerName;
+        private final long ownerAccountId;
 
-        private DogRaceTile(int cell, String tileType, String ownerPlayerKey, String ownerName) {
+        private DogRaceTile(int cell, String tileType, String ownerPlayerKey, String ownerName, long ownerAccountId) {
             this.cell = cell;
             this.tileType = tileType;
             this.ownerPlayerKey = ownerPlayerKey;
             this.ownerName = ownerName;
+            this.ownerAccountId = ownerAccountId;
         }
     }
 
     private static class MoveResult {
         private final int from;
         private final int to;
+        private String tileBroadcast;
 
         private MoveResult(int from, int to) {
             this.from = from;
