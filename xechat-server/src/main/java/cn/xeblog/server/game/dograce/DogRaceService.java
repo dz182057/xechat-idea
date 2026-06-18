@@ -37,6 +37,8 @@ public final class DogRaceService {
     private static final int LEG_BET_COST = 10;
     private static final int FINAL_BET_COST = 20;
     private static final int BONE_TILE_REWARD = 5;
+    private static final int SIGNUP_ENERGY_COST = 3;
+    private static final int SIGNUP_BONES_COST = 20;
     private static final int[] LEG_BET_ODDS = {5, 3, 2, 2};
     private static final int[] FINAL_BET_REWARDS = {100, 60, 40, 20};
     private static final int[] RANK_REWARD_BONES = {80, 50, 30, 10, 10};
@@ -59,26 +61,31 @@ public final class DogRaceService {
     }
 
     public static void startRace(GameRoom room) {
-        DogRaceDTO snapshot = startRaceForTest(room, System.nanoTime());
+        DogRaceDTO snapshot = startRaceForTest(room, System.nanoTime(), true);
         broadcast(room, snapshot);
     }
 
     public static DogRaceDTO startRaceForTest(GameRoom room, long seed) {
-        RaceState state = createState(room, seed);
+        return startRaceForTest(room, seed, false);
+    }
+
+    public static DogRaceDTO startRaceForTest(GameRoom room, long seed, boolean chargeSignupCost) {
+        RaceState state = createState(room, seed, chargeSignupCost);
         ROOM_STATES.put(room.getId(), state);
         DogRaceDTO snapshot = snapshot(room, state, DogRaceDTO.Event.RACE_INIT);
         snapshot.getBroadcasts().add("🏁 狗狗赛跑开赛，玩家可以下注、放地块或催骰。");
+        snapshot.getBroadcasts().addAll(state.initialBroadcasts);
         scheduleAutoRoll(room.getId(), state);
         return snapshot;
     }
 
     public static DogRaceDTO createInitialSnapshot(GameRoom room, long seed) {
-        RaceState state = createState(room, seed);
+        RaceState state = createState(room, seed, false);
         return snapshot(room, state, DogRaceDTO.Event.RACE_INIT);
     }
 
     public static List<DogRaceDTO> simulateRace(GameRoom room, long seed) {
-        RaceState state = createState(room, seed);
+        RaceState state = createState(room, seed, false);
         List<DogRaceDTO> events = new ArrayList<>();
         events.add(snapshot(room, state, DogRaceDTO.Event.RACE_INIT));
         int guard = 0;
@@ -156,10 +163,10 @@ public final class DogRaceService {
         return state != null && state.autoRollScheduled;
     }
 
-    private static RaceState createState(GameRoom room, long seed) {
+    private static RaceState createState(GameRoom room, long seed, boolean chargeSignupCost) {
         Random random = new Random(seed);
         RaceState state = new RaceState(random);
-        initDogs(room, state, random);
+        initDogs(room, state, random, chargeSignupCost);
         initCats(state, random);
         state.diceBag = createDiceBag(state);
         return state;
@@ -317,7 +324,7 @@ public final class DogRaceService {
         return settle;
     }
 
-    private static void initDogs(GameRoom room, RaceState state, Random random) {
+    private static void initDogs(GameRoom room, RaceState state, Random random, boolean chargeSignupCost) {
         int slot = 1;
         if ("owned_dog".equals(mode(room))) {
             for (GameRoom.Player player : room.getUsers().values()) {
@@ -327,6 +334,21 @@ public final class DogRaceService {
                 PetProfileDTO.Dog petDog = PetService.findRaceDog(player.getAccountId());
                 if (petDog == null) {
                     continue;
+                }
+                if (chargeSignupCost) {
+                    try {
+                        PetProfileDTO profile = PetService.spendRaceSignup(
+                                player.getAccountId(),
+                                petDog.getId(),
+                                SIGNUP_ENERGY_COST,
+                                SIGNUP_BONES_COST);
+                        sendPetProfileUpdate(room, player.getId(), profile);
+                        state.initialBroadcasts.add(player.getUsername() + " 带 " + petDog.getName()
+                                + " 报名参赛，消耗 🦴" + SIGNUP_BONES_COST + " 和活力 " + SIGNUP_ENERGY_COST + "。");
+                    } catch (IllegalArgumentException e) {
+                        state.initialBroadcasts.add(player.getUsername() + " 的狗狗报名失败：" + e.getMessage() + "。");
+                        continue;
+                    }
                 }
                 RaceUnit unit = new RaceUnit(petDog.getId(), petDog.getName(), "dog", slot, rollDog(random));
                 unit.breed = petDog.getBreed();
@@ -816,6 +838,7 @@ public final class DogRaceService {
         private final Set<String> finalBetKeys = new HashSet<>();
         private final Set<String> tilePlayerKeys = new HashSet<>();
         private final Set<String> usedSkillDogIds = new HashSet<>();
+        private final List<String> initialBroadcasts = new ArrayList<>();
         private int legNo = 1;
         private List<String> diceBag = new ArrayList<>();
         private boolean finished;

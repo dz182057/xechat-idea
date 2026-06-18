@@ -150,6 +150,50 @@ public final class PetService {
         return profile(accountId);
     }
 
+    public static PetProfileDTO spendRaceSignup(long accountId, String dogId, int energyCost, int bonesCost) {
+        ensureAccountId(accountId);
+        if (StrUtil.isBlank(dogId)) {
+            throw new IllegalArgumentException("赛跑报名缺少狗狗");
+        }
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            Connection conn = session.getConnection();
+            ensureAssets(conn, accountId);
+            PetProfileDTO.Assets assets = loadAssets(conn, accountId);
+            PetProfileDTO.Dog dog = loadDog(conn, accountId, dogId);
+            if (dog == null) {
+                throw new IllegalArgumentException("狗狗不存在");
+            }
+            if (assets.getBones() < bonesCost) {
+                throw new IllegalArgumentException("骨头币不足");
+            }
+            if (dog.getEnergy() < energyCost) {
+                throw new IllegalArgumentException("狗狗活力不足");
+            }
+            long now = System.currentTimeMillis();
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE pet_assets SET bones=?, updated_at=? WHERE account_id=?")) {
+                ps.setInt(1, assets.getBones() - bonesCost);
+                ps.setLong(2, now);
+                ps.setLong(3, accountId);
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE pet_dogs SET energy=?, updated_at=? WHERE id=? AND account_id=?")) {
+                ps.setInt(1, dog.getEnergy() - energyCost);
+                ps.setLong(2, now);
+                ps.setString(3, dogId);
+                ps.setLong(4, accountId);
+                ps.executeUpdate();
+            }
+            session.commit();
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("赛跑报名扣费失败", e);
+        }
+        return profile(accountId);
+    }
+
     public static PetProfileDTO.Dog findRaceDog(long accountId) {
         ensureAccountId(accountId);
         try (SqlSession session = DbInitializer.factory().openSession(false)) {

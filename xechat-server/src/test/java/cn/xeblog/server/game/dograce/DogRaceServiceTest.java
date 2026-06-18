@@ -244,6 +244,31 @@ public class DogRaceServiceTest {
     }
 
     @Test
+    public void ownedDogRaceStartShouldSpendSignupCost() throws Exception {
+        Path tempDir = Files.createTempDirectory("xechat-dog-race-signup-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());
+        GlobalConfig.initDataPath(tempDir.toString());
+        resetDbFactory();
+        try {
+            cn.xeblog.commons.entity.User user = accountUser(990106L);
+            PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "报名参赛狗"));
+            String realDogId = profile.getDogs().get(0).getId();
+            GameRoom room = ownedDogRoom("dog-race-owned-signup", user);
+
+            DogRaceDTO snapshot = DogRaceService.startRaceForTest(room, 20260617L, true);
+            PetProfileDTO afterSignup = PetService.profile(user);
+
+            Assert.assertTrue(snapshot.getParticipants().stream().anyMatch(dog -> realDogId.equals(dog.getDogId())));
+            Assert.assertEquals(80, afterSignup.getAssets().getBones());
+            Assert.assertEquals(7, afterSignup.getDogs().get(0).getEnergy());
+        } finally {
+            resetDbFactory();
+            System.clearProperty(GlobalConfig.DATA_PATH_PROPERTY);
+            GlobalConfig.initDataPath(null);
+        }
+    }
+
+    @Test
     public void ownedDogRaceShouldBroadcastRealDogSkillWhenTriggered() throws Exception {
         Path tempDir = Files.createTempDirectory("xechat-dog-race-skill-test");
         System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempDir.toString());

@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 public class DogRace extends AbstractGame<DogRaceDTO> {
 
     private static final int TRACK_LENGTH = 16;
+    private static final String RULE_HINT = "持狗报名 🦴20 + 活力 3 · 赛段注 🦴10 · 暗注 🦴20 · 骨头地块 +🦴5 · 催骰 5s";
 
     private JPanel mainPanel;
     private JLabel titleLabel;
@@ -62,6 +63,10 @@ public class DogRace extends AbstractGame<DogRaceDTO> {
 
     public DogRaceDTO getLatestForTest() {
         return latest;
+    }
+
+    public String getRuleHintForTest() {
+        return RULE_HINT;
     }
 
     private void showStartPanel() {
@@ -136,7 +141,10 @@ public class DogRace extends AbstractGame<DogRaceDTO> {
     }
 
     private JPanel buildActionPanel() {
-        JPanel panel = new JPanel(new GridLayout(3, 1, 4, 4));
+        JPanel panel = new JPanel(new GridLayout(4, 1, 4, 4));
+
+        JLabel ruleHint = new JLabel(RULE_HINT);
+        panel.add(ruleHint);
 
         JPanel targetPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         dogSelect = new JComboBox<>();

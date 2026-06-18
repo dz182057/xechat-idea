@@ -82,6 +82,39 @@ public class PetServiceTest {
         Assert.assertEquals("adult", dog.getStage());
     }
 
+    @Test
+    public void raceSignupShouldSpendBonesAndDogEnergyAtomically() {
+        User user = accountUser(990004L);
+        PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "报名狗"));
+        String dogId = profile.getDogs().get(0).getId();
+
+        PetProfileDTO afterSignup = PetService.spendRaceSignup(user.getAccountId(), dogId, 3, 20);
+
+        Assert.assertEquals(80, afterSignup.getAssets().getBones());
+        Assert.assertEquals(7, afterSignup.getDogs().get(0).getEnergy());
+    }
+
+    @Test
+    public void raceSignupShouldNotSpendBonesWhenEnergyIsNotEnough() {
+        User user = accountUser(990005L);
+        PetProfileDTO profile = PetService.adopt(user, adopt("golden", "低活力狗"));
+        String dogId = profile.getDogs().get(0).getId();
+        PetService.spendRaceSignup(user.getAccountId(), dogId, 3, 20);
+        PetService.spendRaceSignup(user.getAccountId(), dogId, 3, 20);
+        PetService.spendRaceSignup(user.getAccountId(), dogId, 3, 20);
+
+        try {
+            PetService.spendRaceSignup(user.getAccountId(), dogId, 3, 20);
+            Assert.fail("活力不足时不应继续报名扣费");
+        } catch (IllegalArgumentException e) {
+            Assert.assertEquals("狗狗活力不足", e.getMessage());
+        }
+
+        PetProfileDTO afterFailure = PetService.profile(user);
+        Assert.assertEquals(40, afterFailure.getAssets().getBones());
+        Assert.assertEquals(1, afterFailure.getDogs().get(0).getEnergy());
+    }
+
     private static User accountUser(long accountId) {
         User user = new User();
         user.setId("test-" + accountId);

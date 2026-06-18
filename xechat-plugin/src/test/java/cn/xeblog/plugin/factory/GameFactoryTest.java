@@ -47,6 +47,15 @@ public class GameFactoryTest {
     }
 
     @Test
+    public void dogRaceShouldExposeCostHint() {
+        DogRace dogRace = new DogRace();
+
+        Assert.assertTrue(dogRace.getRuleHintForTest().contains("持狗报名"));
+        Assert.assertTrue(dogRace.getRuleHintForTest().contains("赛段注"));
+        Assert.assertTrue(dogRace.getRuleHintForTest().contains("催骰 5s"));
+    }
+
+    @Test
     public void homeownerRoomClosedEndsCurrentGame() throws Exception {
         DataCache.isOnline = true;
         GameAction.clean();
