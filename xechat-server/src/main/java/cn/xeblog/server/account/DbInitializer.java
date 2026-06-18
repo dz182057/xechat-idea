@@ -33,6 +33,8 @@ import java.util.Properties;
 @Slf4j
 public final class DbInitializer {
 
+    private static final String QUICK_QUIZ_TO_TACIT_QUIZ_MIGRATION = "quick_quiz_to_tacit_quiz_20260618";
+
     private static volatile SqlSessionFactory FACTORY;
 
     private DbInitializer() {
@@ -228,9 +230,13 @@ public final class DbInitializer {
      * 给已有数据库补齐快问快答题库和答题记录表。
      */
     private static void ensureQuickQuizTables() throws Exception {
-        try (SqlSession session = FACTORY.openSession(true)) {
+        try (SqlSession session = FACTORY.openSession(false)) {
             Connection conn = session.getConnection();
             try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE IF NOT EXISTS db_migrations (" +
+                        "id TEXT PRIMARY KEY," +
+                        "applied_at INTEGER NOT NULL" +
+                        ")");
                 if (!tableExists(conn, "quick_quiz_questions")) {
                     st.execute("CREATE TABLE quick_quiz_questions (" +
                             "id INTEGER PRIMARY KEY AUTOINCREMENT," +
@@ -272,7 +278,80 @@ public final class DbInitializer {
                     addColumnIfMissing(conn, st, "quick_quiz_records", "points_delta", "INTEGER NOT NULL DEFAULT 0");
                     addColumnIfMissing(conn, st, "quick_quiz_records", "total_score", "INTEGER NOT NULL DEFAULT 0");
                 }
+                ensureTacitQuizTables(conn, st);
+                migrateLegacyQuickQuizToTacitQuiz(conn, st);
             }
+            session.commit();
+        }
+    }
+
+    private static void ensureTacitQuizTables(Connection conn, Statement st) throws Exception {
+        if (!tableExists(conn, "tacit_quiz_questions")) {
+            st.execute("CREATE TABLE tacit_quiz_questions (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "question TEXT NOT NULL UNIQUE," +
+                    "options_json TEXT NOT NULL," +
+                    "sort_order INTEGER NOT NULL DEFAULT 0," +
+                    "active INTEGER NOT NULL DEFAULT 1," +
+                    "created_at INTEGER NOT NULL," +
+                    "updated_at INTEGER NOT NULL" +
+                    ")");
+            log.info("数据库迁移: 创建 tacit_quiz_questions 表");
+        }
+        if (!tableExists(conn, "tacit_quiz_records")) {
+            st.execute("CREATE TABLE tacit_quiz_records (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "room_id TEXT NOT NULL," +
+                    "question_id INTEGER NOT NULL," +
+                    "player_key TEXT NOT NULL," +
+                    "username TEXT NOT NULL," +
+                    "choice_index INTEGER NOT NULL," +
+                    "choice_text TEXT NOT NULL," +
+                    "created_at INTEGER NOT NULL" +
+                    ")");
+            log.info("数据库迁移: 创建 tacit_quiz_records 表");
+        }
+        st.execute("CREATE INDEX IF NOT EXISTS idx_tacit_quiz_records_player " +
+                "ON tacit_quiz_records(player_key, question_id)");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_tacit_quiz_records_room_question " +
+                "ON tacit_quiz_records(room_id, question_id)");
+    }
+
+    private static void migrateLegacyQuickQuizToTacitQuiz(Connection conn, Statement st) throws Exception {
+        if (migrationApplied(conn, QUICK_QUIZ_TO_TACIT_QUIZ_MIGRATION)) {
+            return;
+        }
+        st.execute("INSERT OR IGNORE INTO tacit_quiz_questions (" +
+                "id, question, options_json, sort_order, active, created_at, updated_at) " +
+                "SELECT id, question, options_json, sort_order, active, created_at, updated_at " +
+                "FROM quick_quiz_questions");
+        st.execute("INSERT OR IGNORE INTO tacit_quiz_records (" +
+                "id, room_id, question_id, player_key, username, choice_index, choice_text, created_at) " +
+                "SELECT id, room_id, question_id, player_key, username, choice_index, choice_text, created_at " +
+                "FROM quick_quiz_records");
+        st.execute("DELETE FROM quick_quiz_records");
+        st.execute("DELETE FROM quick_quiz_questions");
+        if (tableExists(conn, "sqlite_sequence")) {
+            st.execute("DELETE FROM sqlite_sequence WHERE name IN ('quick_quiz_questions', 'quick_quiz_records')");
+        }
+        markMigrationApplied(conn, QUICK_QUIZ_TO_TACIT_QUIZ_MIGRATION);
+        log.info("数据库迁移: 已迁移旧快问快答数据到默契问答表，并清空快问快答表");
+    }
+
+    private static boolean migrationApplied(Connection conn, String migrationId) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM db_migrations WHERE id = ?")) {
+            ps.setString(1, migrationId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private static void markMigrationApplied(Connection conn, String migrationId) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO db_migrations (id, applied_at) VALUES (?, strftime('%s','now') * 1000)")) {
+            ps.setString(1, migrationId);
+            ps.executeUpdate();
         }
     }
 

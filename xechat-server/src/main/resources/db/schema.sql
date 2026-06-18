@@ -146,8 +146,44 @@ CREATE TABLE IF NOT EXISTS draw_guess_words (
     updated_at  INTEGER NOT NULL
 );
 
--- 快问快答题库
+-- 数据库迁移标记
+CREATE TABLE IF NOT EXISTS db_migrations (
+    id          TEXT PRIMARY KEY,
+    applied_at  INTEGER NOT NULL
+);
+
+-- 快问快答（知识问答）题库
 CREATE TABLE IF NOT EXISTS quick_quiz_questions (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    question              TEXT    NOT NULL UNIQUE,
+    options_json          TEXT    NOT NULL,
+    correct_answer_index  INTEGER NOT NULL DEFAULT 0,
+    score                 INTEGER NOT NULL DEFAULT 1,
+    sort_order            INTEGER NOT NULL DEFAULT 0,
+    active                INTEGER NOT NULL DEFAULT 1,
+    created_at            INTEGER NOT NULL,
+    updated_at            INTEGER NOT NULL
+);
+
+-- 快问快答（知识问答）答题记录
+CREATE TABLE IF NOT EXISTS quick_quiz_records (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id       TEXT    NOT NULL,
+    question_id   INTEGER NOT NULL,
+    player_key    TEXT    NOT NULL,
+    username      TEXT    NOT NULL,
+    choice_index  INTEGER NOT NULL,
+    choice_text   TEXT    NOT NULL,
+    correct       INTEGER NOT NULL DEFAULT 0,
+    points_delta  INTEGER NOT NULL DEFAULT 0,
+    total_score   INTEGER NOT NULL DEFAULT 0,
+    created_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_player ON quick_quiz_records(player_key, question_id);
+CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question ON quick_quiz_records(room_id, question_id);
+
+-- 默契问答题库
+CREATE TABLE IF NOT EXISTS tacit_quiz_questions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     question      TEXT    NOT NULL UNIQUE,
     options_json  TEXT    NOT NULL,
@@ -157,8 +193,8 @@ CREATE TABLE IF NOT EXISTS quick_quiz_questions (
     updated_at    INTEGER NOT NULL
 );
 
--- 快问快答答题记录
-CREATE TABLE IF NOT EXISTS quick_quiz_records (
+-- 默契问答答题记录
+CREATE TABLE IF NOT EXISTS tacit_quiz_records (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     room_id       TEXT    NOT NULL,
     question_id   INTEGER NOT NULL,
@@ -168,8 +204,8 @@ CREATE TABLE IF NOT EXISTS quick_quiz_records (
     choice_text   TEXT    NOT NULL,
     created_at    INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_player ON quick_quiz_records(player_key, question_id);
-CREATE INDEX IF NOT EXISTS idx_quick_quiz_records_room_question ON quick_quiz_records(room_id, question_id);
+CREATE INDEX IF NOT EXISTS idx_tacit_quiz_records_player ON tacit_quiz_records(player_key, question_id);
+CREATE INDEX IF NOT EXISTS idx_tacit_quiz_records_room_question ON tacit_quiz_records(room_id, question_id);
 
 -- 狗狗宇宙个人资产
 CREATE TABLE IF NOT EXISTS pet_assets (

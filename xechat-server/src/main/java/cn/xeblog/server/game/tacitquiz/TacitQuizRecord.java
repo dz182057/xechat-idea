@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 /**
- * quick_quiz_records 表记录。
+ * tacit_quiz_records 表记录。
  */
 @Data
 @Builder

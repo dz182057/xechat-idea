@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import cn.xeblog.server.config.GlobalConfig;
+import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.After;
 import org.junit.Test;
@@ -13,7 +14,13 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
 public class DbInitializerConnectionTest {
@@ -57,6 +64,78 @@ public class DbInitializerConnectionTest {
                 .anyMatch(message -> message.contains("Connection is invalid")
                         || message.contains("attempted to return to the pool, discarding connection"));
         assertFalse(hasInvalidConnectionLog);
+    }
+
+    @Test
+    public void initShouldMigrateLegacyQuickQuizRowsToTacitQuizAndClearQuickQuizTables() throws Exception {
+        Path root = Files.createTempDirectory("xechat-db-migrate-quick-quiz-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());
+        GlobalConfig.initDataPath(null);
+        Files.createDirectories(Paths.get(GlobalConfig.DATA_DIR));
+        resetFactory();
+
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + GlobalConfig.DB_PATH);
+             Statement st = conn.createStatement()) {
+            st.execute("CREATE TABLE quick_quiz_questions (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "question TEXT NOT NULL UNIQUE," +
+                    "options_json TEXT NOT NULL," +
+                    "sort_order INTEGER NOT NULL DEFAULT 0," +
+                    "active INTEGER NOT NULL DEFAULT 1," +
+                    "created_at INTEGER NOT NULL," +
+                    "updated_at INTEGER NOT NULL" +
+                    ")");
+            st.execute("CREATE TABLE quick_quiz_records (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "room_id TEXT NOT NULL," +
+                    "question_id INTEGER NOT NULL," +
+                    "player_key TEXT NOT NULL," +
+                    "username TEXT NOT NULL," +
+                    "choice_index INTEGER NOT NULL," +
+                    "choice_text TEXT NOT NULL," +
+                    "created_at INTEGER NOT NULL" +
+                    ")");
+            st.execute("INSERT INTO quick_quiz_questions (" +
+                    "id, question, options_json, sort_order, active, created_at, updated_at) " +
+                    "VALUES (1, '旧默契题', '[\"A\",\"B\"]', 3, 1, 100, 200)");
+            st.execute("INSERT INTO quick_quiz_records (" +
+                    "id, room_id, question_id, player_key, username, choice_index, choice_text, created_at) " +
+                    "VALUES (2, 'room-1', 1, 'alice', 'Alice', 0, 'A', 300)");
+        }
+
+        DbInitializer.initIfNeeded();
+
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            Connection conn = session.getConnection();
+            assertEquals(1, countRows(conn, "tacit_quiz_questions"));
+            assertEquals(1, countRows(conn, "tacit_quiz_records"));
+            assertEquals(0, countRows(conn, "quick_quiz_questions"));
+            assertEquals(0, countRows(conn, "quick_quiz_records"));
+            assertEquals("旧默契题", scalarText(conn,
+                    "SELECT question FROM tacit_quiz_questions WHERE id = 1"));
+            assertEquals(1, scalarLong(conn,
+                    "SELECT COUNT(1) FROM db_migrations WHERE id = 'quick_quiz_to_tacit_quiz_20260618'"));
+        }
+    }
+
+    private static long countRows(Connection conn, String tableName) throws Exception {
+        return scalarLong(conn, "SELECT COUNT(1) FROM " + tableName);
+    }
+
+    private static long scalarLong(Connection conn, String sql) throws Exception {
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    private static String scalarText(Connection conn, String sql) throws Exception {
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getString(1);
+        }
     }
 
     private static void resetFactory() throws Exception {

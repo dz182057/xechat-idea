@@ -9,7 +9,7 @@
     </sql>
 
     <insert id="upsertQuestion" parameterType="cn.xeblog.server.game.tacitquiz.TacitQuizQuestion">
-        INSERT INTO quick_quiz_questions (
+        INSERT INTO tacit_quiz_questions (
             question, options_json, sort_order, active, created_at, updated_at
         ) VALUES (
             #{question}, #{optionsJson}, #{sortOrder}, #{active}, #{createdAt}, #{updatedAt}
@@ -22,19 +22,19 @@
     </insert>
 
     <update id="deactivateAllQuestions">
-        UPDATE quick_quiz_questions SET active = 0, updated_at = strftime('%s','now') * 1000
+        UPDATE tacit_quiz_questions SET active = 0, updated_at = strftime('%s','now') * 1000
     </update>
 
     <select id="listActiveQuestions" resultType="cn.xeblog.server.game.tacitquiz.TacitQuizQuestion">
         SELECT <include refid="questionCols"/>
-        FROM quick_quiz_questions
+        FROM tacit_quiz_questions
         WHERE active = 1
         ORDER BY sort_order ASC, id ASC
     </select>
 
     <select id="randomAvailableQuestion" resultType="cn.xeblog.server.game.tacitquiz.TacitQuizQuestion">
         SELECT <include refid="questionCols"/>
-        FROM quick_quiz_questions q
+        FROM tacit_quiz_questions q
         WHERE q.active = 1
         <if test="usedQuestionIds != null and usedQuestionIds.size() > 0">
             AND q.id NOT IN
@@ -44,12 +44,12 @@
         </if>
         AND NOT (
             EXISTS (
-                SELECT 1 FROM quick_quiz_records r1
+                SELECT 1 FROM tacit_quiz_records r1
                 WHERE r1.question_id = q.id AND r1.player_key = #{playerAKey}
                   AND r1.choice_index >= 0
             )
             AND EXISTS (
-                SELECT 1 FROM quick_quiz_records r2
+                SELECT 1 FROM tacit_quiz_records r2
                 WHERE r2.question_id = q.id AND r2.player_key = #{playerBKey}
                   AND r2.choice_index >= 0
             )
@@ -60,7 +60,7 @@
 
     <select id="countAvailableQuestions" resultType="int">
         SELECT COUNT(1)
-        FROM quick_quiz_questions q
+        FROM tacit_quiz_questions q
         WHERE q.active = 1
         <if test="usedQuestionIds != null and usedQuestionIds.size() > 0">
             AND q.id NOT IN
@@ -70,12 +70,12 @@
         </if>
         AND NOT (
             EXISTS (
-                SELECT 1 FROM quick_quiz_records r1
+                SELECT 1 FROM tacit_quiz_records r1
                 WHERE r1.question_id = q.id AND r1.player_key = #{playerAKey}
                   AND r1.choice_index >= 0
             )
             AND EXISTS (
-                SELECT 1 FROM quick_quiz_records r2
+                SELECT 1 FROM tacit_quiz_records r2
                 WHERE r2.question_id = q.id AND r2.player_key = #{playerBKey}
                   AND r2.choice_index >= 0
             )
@@ -83,7 +83,7 @@
     </select>
 
     <insert id="insertRecord" parameterType="cn.xeblog.server.game.tacitquiz.TacitQuizRecord">
-        INSERT INTO quick_quiz_records (
+        INSERT INTO tacit_quiz_records (
             room_id, question_id, player_key, username, choice_index, choice_text, created_at
         ) VALUES (
             #{roomId}, #{questionId}, #{playerKey}, #{username}, #{choiceIndex}, #{choiceText}, #{createdAt}
@@ -94,10 +94,10 @@
         SELECT r.id, r.room_id, r.question_id, r.player_key, r.username,
                r.choice_index, r.choice_text, r.created_at,
                q.question, q.options_json
-        FROM quick_quiz_records r
-        JOIN quick_quiz_questions q ON q.id = r.question_id
+        FROM tacit_quiz_records r
+        JOIN tacit_quiz_questions q ON q.id = r.question_id
         WHERE EXISTS (
-            SELECT 1 FROM quick_quiz_records mine
+            SELECT 1 FROM tacit_quiz_records mine
             WHERE mine.room_id = r.room_id
               AND mine.question_id = r.question_id
               AND mine.player_key = #{playerKey}
@@ -109,8 +109,8 @@
         SELECT r.id, r.room_id, r.question_id, r.player_key, r.username,
                r.choice_index, r.choice_text, r.created_at,
                q.question, q.options_json
-        FROM quick_quiz_records r
-        JOIN quick_quiz_questions q ON q.id = r.question_id
+        FROM tacit_quiz_records r
+        JOIN tacit_quiz_questions q ON q.id = r.question_id
         ORDER BY r.created_at DESC, r.id ASC
     </select>
 
