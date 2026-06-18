@@ -1,4 +1,4 @@
-FROM openjdk:8-jre-slim
+FROM eclipse-temurin:17-jre
 MAINTAINER "安凌毅 https://xeblog.cn"
 
 ENV JAVA_OPTS="-Xms512m -Xmx512m"
