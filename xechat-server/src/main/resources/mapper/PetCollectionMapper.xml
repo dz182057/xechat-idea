@@ -23,6 +23,14 @@
           AND item_id = #{itemId}
     </select>
 
+    <select id="countDiscovered" resultType="int">
+        SELECT COUNT(1)
+        FROM pet_collections
+        WHERE account_id = #{accountId}
+          AND item_id = #{itemId}
+          AND discovered = 1
+    </select>
+
     <insert id="addCollection">
         INSERT INTO pet_collections (
             account_id, item_id, count, discovered, updated_at

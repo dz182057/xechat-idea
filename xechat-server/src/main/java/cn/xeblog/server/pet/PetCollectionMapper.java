@@ -14,6 +14,9 @@ public interface PetCollectionMapper {
     Integer findCount(@Param("accountId") long accountId,
                       @Param("itemId") String itemId);
 
+    int countDiscovered(@Param("accountId") long accountId,
+                        @Param("itemId") String itemId);
+
     int addCollection(@Param("accountId") long accountId,
                       @Param("itemId") String itemId,
                       @Param("updatedAt") long updatedAt);

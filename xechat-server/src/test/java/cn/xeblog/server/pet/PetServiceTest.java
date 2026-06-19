@@ -385,6 +385,42 @@ public class PetServiceTest {
     }
 
     @Test
+    public void exploreOpenShouldGrantEasterSnailCollection() throws Exception {
+        User user = accountUser(990023L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "蜗牛狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 79);
+        IntSupplier originalEasterSupplier = setExploreEasterEventSupplier(() -> 2);
+        try {
+            PetProfileService.exploreStart(user.getAccountId(), exploreStart(dogId, "back_hill", 1));
+            setExploreEnded(user.getAccountId(), dogId);
+
+            PetExploreOpenResultDTO result = PetProfileService.exploreOpen(user.getAccountId(), exploreOpen(dogId));
+
+            Assert.assertTrue(result.getRewards().stream()
+                    .anyMatch(reward -> "collection".equals(reward.getType())
+                            && "easter_snail".equals(reward.getItemId())
+                            && reward.getAmount() == 1));
+            Assert.assertEquals(1, findCollectionCount(user.getAccountId(), "easter_snail"));
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+            setExploreEasterEventSupplier(originalEasterSupplier);
+        }
+    }
+
+    @Test
+    public void checkinShouldConsumeNeighborSlipperAndGrantBonusBones() throws Exception {
+        User user = accountUser(990024L);
+        PetProfileDTO beforeProfile = PetService.profile(user);
+        insertCollection(user.getAccountId(), "easter_neighbor_slipper", 1);
+
+        PetProfileDTO afterProfile = PetProfileService.checkin(user.getAccountId());
+
+        Assert.assertEquals(beforeProfile.getAssets().getBones() + 70, afterProfile.getAssets().getBones());
+        Assert.assertEquals(0, findCollectionCount(user.getAccountId(), "easter_neighbor_slipper"));
+    }
+
+    @Test
     public void walkDogShouldConsumeEnergyAndGrantOutingBondOncePerDay() {
         User user = accountUser(990016L);
         PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "散步狗"));
@@ -722,6 +758,22 @@ public class PetServiceTest {
         }
     }
 
+    private static void insertCollection(long accountId, String itemId, int count) throws Exception {
+        long now = System.currentTimeMillis();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "INSERT INTO pet_collections (account_id, item_id, count, discovered, updated_at) " +
+                             "VALUES (?, ?, ?, 1, ?) " +
+                             "ON CONFLICT(account_id, item_id) DO UPDATE SET count = excluded.count, " +
+                             "discovered = 1, updated_at = excluded.updated_at")) {
+            statement.setLong(1, accountId);
+            statement.setString(2, itemId);
+            statement.setInt(3, count);
+            statement.setLong(4, now);
+            statement.executeUpdate();
+        }
+    }
+
     private static void setDogEnergy(long accountId, String dogId, int energy, String energyDate) throws Exception {
         try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
              PreparedStatement statement = session.getConnection().prepareStatement(
@@ -762,6 +814,14 @@ public class PetServiceTest {
 
     private static IntSupplier setExploreRollSupplier(IntSupplier supplier) throws Exception {
         Field field = PetProfileService.class.getDeclaredField("exploreRollSupplier");
+        field.setAccessible(true);
+        IntSupplier original = (IntSupplier) field.get(null);
+        field.set(null, supplier);
+        return original;
+    }
+
+    private static IntSupplier setExploreEasterEventSupplier(IntSupplier supplier) throws Exception {
+        Field field = PetProfileService.class.getDeclaredField("exploreEasterEventSupplier");
         field.setAccessible(true);
         IntSupplier original = (IntSupplier) field.get(null);
         field.set(null, supplier);

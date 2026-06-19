@@ -149,11 +149,15 @@ public final class PetProfileService {
     private static final String INVALID_EXPLORE_RESET_ERROR = "探险数据异常，已重置，请重新开始探险";
     private static final int EXPLORE_ROLL_BONES = 15;
     private static final int EXPLORE_ITEM_OVERFLOW_BONES = 10;
+    private static final int EXPLORE_EASTER_EVENT_OVERFLOW_BONES = 50;
     private static final int HUSKY_TREASURE_MAP_FRAGMENT_LIMIT = 3;
     private static final int DAILY_EXPLORE_START_LIMIT = 3;
     private static final int DAILY_EXPLORE_ITEM_GAIN_LIMIT = 5;
     private static final String TREASURE_MAP_FRAGMENT_COLLECTION_ID = "treasure_map_fragment";
     private static final String MYSTERY_CAVE_COMPLETED_COLLECTION_ID = "mystery_cave_completed";
+    private static final String EASTER_NEIGHBOR_SLIPPER_COLLECTION_ID = "easter_neighbor_slipper";
+    private static final String EASTER_SNAIL_COLLECTION_ID = "easter_snail";
+    private static final int EASTER_NEIGHBOR_SLIPPER_CHECKIN_BONES = 50;
     private static final String ITEM_FEAST = "item_feast";
     private static final String ITEM_EXPRESS = "item_express";
     private static final String ITEM_LUCKY_DAY = "item_lucky_day";
@@ -315,6 +319,7 @@ public final class PetProfileService {
     private static final Map<String, Integer> SELL_ITEM_PRICES = createSellItemPrices();
     private static final Map<Long, Object> ACCOUNT_LOCKS = new ConcurrentHashMap<>();
     private static IntSupplier exploreRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);
+    private static IntSupplier exploreEasterEventSupplier = () -> ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
 
     private PetProfileService() {
     }
@@ -1939,7 +1944,7 @@ public final class PetProfileService {
             } else if (roll < 78) {
                 applyExploreCollectionReward(session, accountId, rewards, now);
             } else if (roll < 80) {
-                applyExploreTreasureMapReward(session, accountId, rewards, now);
+                applyExploreEasterEventReward(session, accountId, assetsMapper, rewards, now);
             } else if (roll < 80 + collectionBonus) {
                 applyExploreCollectionReward(session, accountId, rewards, now);
             } else if (roll < 80 + collectionBonus + treasureBonus) {
@@ -1963,6 +1968,40 @@ public final class PetProfileService {
         session.getMapper(PetCollectionMapper.class).addCollection(
                 accountId, TREASURE_MAP_FRAGMENT_COLLECTION_ID, now);
         rewards.add(new PetExploreRewardDTO("collection", TREASURE_MAP_FRAGMENT_COLLECTION_ID, 1));
+    }
+
+    private static void applyExploreEasterEventReward(SqlSession session, long accountId,
+                                                      PetAssetsMapper assetsMapper,
+                                                      List<PetExploreRewardDTO> rewards, long now) {
+        PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
+        List<String> eventIds = availableExploreEasterEventIds(collectionMapper, accountId);
+        if (eventIds.isEmpty()) {
+            addExploreBones(assetsMapper, accountId, EXPLORE_EASTER_EVENT_OVERFLOW_BONES, rewards, now);
+            return;
+        }
+
+        String eventId = eventIds.get(Math.floorMod(nextExploreEasterEventIndex(), eventIds.size()));
+        collectionMapper.addCollection(accountId, eventId, now);
+        rewards.add(new PetExploreRewardDTO("collection", eventId, 1));
+    }
+
+    private static List<String> availableExploreEasterEventIds(PetCollectionMapper collectionMapper, long accountId) {
+        List<String> eventIds = new ArrayList<>();
+        if (!isCollectionDiscovered(collectionMapper, accountId, EASTER_NEIGHBOR_SLIPPER_COLLECTION_ID)) {
+            eventIds.add(EASTER_NEIGHBOR_SLIPPER_COLLECTION_ID);
+        }
+        if (findCollectionCount(collectionMapper, accountId,
+                TREASURE_MAP_FRAGMENT_COLLECTION_ID) < HUSKY_TREASURE_MAP_FRAGMENT_LIMIT) {
+            eventIds.add(TREASURE_MAP_FRAGMENT_COLLECTION_ID);
+        }
+        if (!isCollectionDiscovered(collectionMapper, accountId, EASTER_SNAIL_COLLECTION_ID)) {
+            eventIds.add(EASTER_SNAIL_COLLECTION_ID);
+        }
+        return eventIds;
+    }
+
+    private static boolean isCollectionDiscovered(PetCollectionMapper collectionMapper, long accountId, String itemId) {
+        return collectionMapper.countDiscovered(accountId, itemId) > 0;
     }
 
     private static String pickBackHillCollectionItem(List<PetCollectionRecord> collections) {
@@ -2023,6 +2062,10 @@ public final class PetProfileService {
 
     private static int nextExploreRoll() {
         return exploreRollSupplier.getAsInt();
+    }
+
+    private static int nextExploreEasterEventIndex() {
+        return exploreEasterEventSupplier.getAsInt();
     }
 
     private static Map<String, Integer> luckyBagItemCounts(PetItemMapper itemMapper, long accountId) {
@@ -2107,7 +2150,7 @@ public final class PetProfileService {
                     .cycleDay(cycleDay)
                     .createdAt(now)
                     .build());
-            applyCheckinReward(session, accountId, cycleDay, now);
+            applyCheckinReward(session, accountId, cycleDay, now, true);
             milestoneReward = applyCheckinMilestoneReward(session, accountId, previousTotalCheckins + 1, now);
             session.commit();
         }
@@ -2147,7 +2190,7 @@ public final class PetProfileService {
                     .cycleDay(cycleDay)
                     .createdAt(now)
                     .build());
-            applyCheckinReward(session, accountId, cycleDay, now);
+            applyCheckinReward(session, accountId, cycleDay, now, false);
             milestoneReward = applyCheckinMilestoneReward(session, accountId, previousTotalCheckins + 1, now);
             session.commit();
         }
@@ -2167,7 +2210,8 @@ public final class PetProfileService {
         }
     }
 
-    private static void applyCheckinReward(SqlSession session, long accountId, int cycleDay, long now) {
+    private static void applyCheckinReward(SqlSession session, long accountId, int cycleDay, long now,
+                                           boolean actualCheckin) {
         PetAssetsMapper mapper = session.getMapper(PetAssetsMapper.class);
         boolean rewardApplied = true;
         switch (cycleDay) {
@@ -2198,6 +2242,21 @@ public final class PetProfileService {
         }
         if (rewardApplied && hasCompletedBackHillCollectionSet(session.getMapper(PetCollectionMapper.class), accountId)) {
             mapper.addBones(accountId, BACK_HILL_COLLECTION_CHECKIN_BONUS_BONES, now);
+        }
+        if (rewardApplied && actualCheckin) {
+            applyNeighborSlipperCheckinBonus(session, accountId, now);
+        }
+    }
+
+    private static void applyNeighborSlipperCheckinBonus(SqlSession session, long accountId, long now) {
+        PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
+        if (findCollectionCount(collectionMapper, accountId, EASTER_NEIGHBOR_SLIPPER_COLLECTION_ID) <= 0) {
+            return;
+        }
+        if (collectionMapper.decrementCollectionIfEnough(accountId,
+                EASTER_NEIGHBOR_SLIPPER_COLLECTION_ID, 1, now) > 0) {
+            session.getMapper(PetAssetsMapper.class).addBones(
+                    accountId, EASTER_NEIGHBOR_SLIPPER_CHECKIN_BONES, now);
         }
     }
 
