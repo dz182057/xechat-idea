@@ -244,6 +244,15 @@ public final class PetProfileService {
             "creek_coral",
             "creek_drop"
     ));
+    private static final List<String> SNOW_MOUNTAIN_COLLECTION_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "snow_mountain_snowflake",
+            "snow_mountain_ice",
+            "snow_mountain_skate",
+            "snow_mountain_cloud",
+            "snow_mountain_board",
+            "snow_mountain_deer"
+    ));
+    private static final int SNOW_MOUNTAIN_COLLECTION_ENERGY_LIMIT_BONUS = 10;
     private static final int COLLECTION_SELL_PRICE = 15;
     private static final Set<String> SELLABLE_COLLECTION_ITEM_IDS = Collections.unmodifiableSet(
             new HashSet<>(BACK_HILL_COLLECTION_ITEM_IDS));
@@ -332,8 +341,10 @@ public final class PetProfileService {
             String todayText = today.toString();
             long now = System.currentTimeMillis();
             PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
+            PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
+            int energyLimit = effectiveEnergyLimit(collectionMapper, accountId, assets.getEnergyLimit());
             boolean dogEnergyRefreshed = refreshExpiredDogEnergy(dogMapper, accountId,
-                    assets.getEnergyLimit(), todayText, now);
+                    energyLimit, todayText, now);
             List<PetDogRecord> rows = dogMapper.listByOwner(accountId);
             PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
             PetTrainingMapper trainingMapper = session.getMapper(PetTrainingMapper.class);
@@ -344,7 +355,6 @@ public final class PetProfileService {
             }
             boolean dogStageChanged = updateDogGrowthStages(dogMapper, accountId, rows, now);
             List<PetItemRecord> itemRows = itemMapper.listPositiveByAccountId(accountId);
-            PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
             List<PetCollectionRecord> collectionRows = collectionMapper.listByAccountId(accountId);
             PetCheckinMapper checkinMapper = session.getMapper(PetCheckinMapper.class);
             PetDailyCounterMapper dailyCounterMapper = session.getMapper(PetDailyCounterMapper.class);
@@ -356,7 +366,7 @@ public final class PetProfileService {
                     : todayCheckin.getCycleDay();
             PetProfileDTO profile = new PetProfileDTO();
             profile.setAccountId(accountId);
-            profile.setAssets(toDTO(assets));
+            profile.setAssets(toDTO(assets, energyLimit));
             List<PetDogDTO> dogs = new ArrayList<>(rows.size());
             for (PetDogRecord row : rows) {
                 dogs.add(toDTO(row));
@@ -532,7 +542,9 @@ public final class PetProfileService {
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
             PetAssetsRecord assets = ensureAssets(session, accountId);
-            refreshExpiredDogEnergy(dogMapper, accountId, assets.getEnergyLimit(), today, now);
+            int energyLimit = effectiveEnergyLimit(session.getMapper(PetCollectionMapper.class),
+                    accountId, assets.getEnergyLimit());
+            refreshExpiredDogEnergy(dogMapper, accountId, energyLimit, today, now);
             PetDogRecord dog = StrUtil.isBlank(dogId) ? null : dogMapper.findByIdAndOwner(dogId, accountId);
             if (dog == null) {
                 throw new IllegalArgumentException("只能喂自己的狗狗");
@@ -548,10 +560,10 @@ public final class PetProfileService {
                     DAILY_COUNTER_FEED_BOND_PREFIX, now);
 
             int energy = dog.getEnergy();
-            if (dog.getEnergy() < assets.getEnergyLimit()
+            if (dog.getEnergy() < energyLimit
                     && counterMapper.incrementIfUnderLimit(accountId, today,
                     DAILY_COUNTER_FEED_FOOD, DAILY_FEED_LIMIT, now) > 0) {
-                energy = Math.min(assets.getEnergyLimit(), dog.getEnergy() + 1);
+                energy = Math.min(energyLimit, dog.getEnergy() + 1);
             }
             dogMapper.updateCareStats(dog.getId(), accountId, bond, energy, now);
             session.commit();
@@ -599,7 +611,9 @@ public final class PetProfileService {
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
             PetAssetsRecord assets = ensureAssets(session, accountId);
-            refreshExpiredDogEnergy(dogMapper, accountId, assets.getEnergyLimit(), today, now);
+            int energyLimit = effectiveEnergyLimit(session.getMapper(PetCollectionMapper.class),
+                    accountId, assets.getEnergyLimit());
+            refreshExpiredDogEnergy(dogMapper, accountId, energyLimit, today, now);
             PetDogRecord dog = StrUtil.isBlank(dogId) ? null : dogMapper.findByIdAndOwner(dogId, accountId);
             if (dog == null) {
                 throw new IllegalArgumentException("只能带自己的狗狗散步");
@@ -918,8 +932,10 @@ public final class PetProfileService {
             if (dogMapper.openExplore(dogId, accountId, now) <= 0) {
                 throw new IllegalArgumentException("探险开箱失败，请刷新后重试");
             }
-            applyExploreEnergyTraining(dogMapper, accountId, dog, assetsMapper.findByAccountId(accountId),
-                    rewards, now);
+            PetAssetsRecord assets = assetsMapper.findByAccountId(accountId);
+            int energyLimit = effectiveEnergyLimit(session.getMapper(PetCollectionMapper.class),
+                    accountId, assets.getEnergyLimit());
+            applyExploreEnergyTraining(dogMapper, accountId, dog, energyLimit, rewards, now);
             session.commit();
         }
 
@@ -1715,13 +1731,12 @@ public final class PetProfileService {
     }
 
     private static void applyExploreEnergyTraining(PetDogMapper dogMapper, long accountId, PetDogRecord dog,
-                                                   PetAssetsRecord assets, List<PetExploreRewardDTO> rewards,
-                                                   long now) {
+                                                   int energyLimit, List<PetExploreRewardDTO> rewards, long now) {
         int refundPercent = exploreSnapshotEffect(dog, TRAINING_SKILL_ENERGY);
-        if (refundPercent <= 0 || assets == null || nextExploreRoll() >= refundPercent) {
+        if (refundPercent <= 0 || nextExploreRoll() >= refundPercent) {
             return;
         }
-        if (dogMapper.addEnergyIfUnderLimit(dog.getId(), accountId, 1, assets.getEnergyLimit(), now) > 0) {
+        if (dogMapper.addEnergyIfUnderLimit(dog.getId(), accountId, 1, energyLimit, now) > 0) {
             rewards.add(new PetExploreRewardDTO("energy", null, 1));
         }
     }
@@ -2198,6 +2213,14 @@ public final class PetProfileService {
         return hasCompletedCollectionSet(collectionMapper, accountId, BACK_HILL_COLLECTION_ITEM_IDS);
     }
 
+    private static int effectiveEnergyLimit(PetCollectionMapper collectionMapper, long accountId, int baseEnergyLimit) {
+        int energyLimit = Math.max(0, baseEnergyLimit);
+        if (hasCompletedCollectionSet(collectionMapper, accountId, SNOW_MOUNTAIN_COLLECTION_ITEM_IDS)) {
+            energyLimit += SNOW_MOUNTAIN_COLLECTION_ENERGY_LIMIT_BONUS;
+        }
+        return energyLimit;
+    }
+
     private static boolean hasCompletedCollectionSet(PetCollectionMapper collectionMapper, long accountId,
                                                      List<String> collectionItemIds) {
         Set<String> discoveredItems = new HashSet<>();
@@ -2436,8 +2459,12 @@ public final class PetProfileService {
     }
 
     private static PetAssetsDTO toDTO(PetAssetsRecord row) {
+        return toDTO(row, row.getEnergyLimit());
+    }
+
+    private static PetAssetsDTO toDTO(PetAssetsRecord row, int energyLimit) {
         return new PetAssetsDTO(row.getBones(), row.getFood(), row.getMakeupCards(), row.getDogSlots(),
-                row.getEnergyLimit());
+                energyLimit);
     }
 
     private static PetInventoryItemDTO toDTO(PetItemRecord row) {

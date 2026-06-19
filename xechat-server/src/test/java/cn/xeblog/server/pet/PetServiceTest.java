@@ -4,6 +4,7 @@ import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
+import cn.xeblog.commons.entity.pet.PetFeedDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
 import cn.xeblog.commons.entity.pet.PetShopBuyDTO;
@@ -23,6 +24,7 @@ import java.nio.file.Path;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -312,6 +314,34 @@ public class PetServiceTest {
     }
 
     @Test
+    public void profileShouldApplySnowMountainCollectionEnergyLimitBonus() throws Exception {
+        User user = accountUser(990019L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "雪山狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+        insertSnowMountainCollections(user.getAccountId());
+        setDogEnergy(user.getAccountId(), dogId, 1, "2000-01-01");
+
+        PetProfileDTO profile = PetService.profile(user);
+
+        Assert.assertEquals(20, profile.getAssets().getEnergyLimit());
+        Assert.assertEquals(20, profile.getDogs().get(0).getEnergy());
+    }
+
+    @Test
+    public void feedShouldRestoreEnergyUpToSnowMountainCollectionLimit() throws Exception {
+        User user = accountUser(990020L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "雪山饭狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+        insertSnowMountainCollections(user.getAccountId());
+        setDogEnergy(user.getAccountId(), dogId, 10, LocalDate.now().toString());
+
+        PetProfileDTO profile = PetProfileService.feed(user.getAccountId(), feed(dogId));
+
+        Assert.assertEquals(20, profile.getAssets().getEnergyLimit());
+        Assert.assertEquals(11, profile.getDogs().get(0).getEnergy());
+    }
+
+    @Test
     public void walkDogShouldConsumeEnergyAndGrantOutingBondOncePerDay() {
         User user = accountUser(990016L);
         PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "散步狗"));
@@ -462,6 +492,12 @@ public class PetServiceTest {
         return dto;
     }
 
+    private static PetFeedDTO feed(String dogId) {
+        PetFeedDTO dto = new PetFeedDTO();
+        dto.setDogId(dogId);
+        return dto;
+    }
+
     private static PetShopBuyDTO shopBuy(String itemId, int quantity) {
         PetShopBuyDTO dto = new PetShopBuyDTO();
         dto.setItemId(itemId);
@@ -568,6 +604,43 @@ public class PetServiceTest {
                 statement.addBatch();
             }
             statement.executeBatch();
+        }
+    }
+
+    private static void insertSnowMountainCollections(long accountId) throws Exception {
+        long now = System.currentTimeMillis();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "INSERT INTO pet_collections (account_id, item_id, count, discovered, updated_at) " +
+                             "VALUES (?, ?, 1, 1, ?) " +
+                             "ON CONFLICT(account_id, item_id) DO UPDATE SET count = 1, " +
+                             "discovered = 1, updated_at = excluded.updated_at")) {
+            for (String itemId : new String[]{
+                    "snow_mountain_snowflake",
+                    "snow_mountain_ice",
+                    "snow_mountain_skate",
+                    "snow_mountain_cloud",
+                    "snow_mountain_board",
+                    "snow_mountain_deer"
+            }) {
+                statement.setLong(1, accountId);
+                statement.setString(2, itemId);
+                statement.setLong(3, now);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    private static void setDogEnergy(long accountId, String dogId, int energy, String energyDate) throws Exception {
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "UPDATE dogs SET energy = ?, energy_date = ? WHERE owner_id = ? AND id = ?")) {
+            statement.setInt(1, energy);
+            statement.setString(2, energyDate);
+            statement.setLong(3, accountId);
+            statement.setString(4, dogId);
+            statement.executeUpdate();
         }
     }
 
