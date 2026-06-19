@@ -35,4 +35,21 @@ public class QuickQuizAnswerResultDTO implements Serializable {
 
     private boolean economyApplied;
 
+    private List<String> petItemNotices;
+
+    public QuickQuizAnswerResultDTO(String roomId, QuickQuizQuestionDTO question, List<QuickQuizAnswerViewDTO> answers,
+                                    List<QuickQuizPlayerScoreDTO> rankings, int roundNo, int totalRounds,
+                                    boolean finished, int prizePool, int rewardPerWinner, boolean economyApplied) {
+        this.roomId = roomId;
+        this.question = question;
+        this.answers = answers;
+        this.rankings = rankings;
+        this.roundNo = roundNo;
+        this.totalRounds = totalRounds;
+        this.finished = finished;
+        this.prizePool = prizePool;
+        this.rewardPerWinner = rewardPerWinner;
+        this.economyApplied = economyApplied;
+    }
+
 }

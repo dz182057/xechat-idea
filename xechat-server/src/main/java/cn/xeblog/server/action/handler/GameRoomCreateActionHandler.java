@@ -9,6 +9,7 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.annotation.DoAction;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.GameRoomCache;
+import cn.xeblog.server.pet.PetGameItemDeclarationService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
@@ -57,6 +58,10 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
             log.debug("游戏房间创建失败，用户已在房间中 -> roomId: {}, user: {}", roomId, user.getUsername());
             return;
         }
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                user,
+                gameRoom,
+                body.getPetItems());
         user.send(response);
         log.debug("游戏房间创建成功 -> {}", gameRoom);
     }

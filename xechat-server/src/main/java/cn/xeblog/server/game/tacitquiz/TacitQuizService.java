@@ -11,6 +11,7 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.PetGameItemDeclarationService;
 import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
@@ -26,6 +27,11 @@ import java.util.function.LongSupplier;
 public final class TacitQuizService {
 
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
+    private static final String SLOT_INTERACTION = "interaction";
+    private static final String ITEM_SYNC_PROPHECY = "item_sync_prophecy";
+    private static final String ITEM_SYNC_PERSPECTIVE = "item_sync_perspective";
+    private static final int SYNC_PROPHECY_REWARD_BONES = 20;
+    private static final int SYNC_PERSPECTIVE_REWARD_BONES = 30;
     private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
     private static LongSupplier nowSupplier = System::currentTimeMillis;
 
@@ -268,9 +274,10 @@ public final class TacitQuizService {
             nextPlayers = getRoomUsers(room);
             finished = nextPlayers.size() < 2;
         }
+        List<String> petItemNotices = applyInteractionItemSettlements(room, answers);
         TacitQuizAnswerResultDTO result = new TacitQuizAnswerResultDTO(
                 room.getId(), state.currentQuestion, answers, state.roundNo,
-                room.getTacitQuizQuestionCount(), finished);
+                room.getTacitQuizQuestionCount(), finished, petItemNotices);
         sendToRoom(room, ResponseBuilder.build(null, result, MessageType.TACIT_QUIZ_ANSWER_RESULT));
         if (finished) {
             applyMiniGameRewards(state, answers, now);
@@ -372,6 +379,68 @@ public final class TacitQuizService {
                 log.error("默契问答小游戏产出结算失败 -> accountId: {}", accountId, e);
             }
         }
+    }
+
+    private static List<String> applyInteractionItemSettlements(GameRoom room, List<TacitQuizAnswerViewDTO> answers) {
+        List<String> notices = new ArrayList<>();
+        if (room == null || answers == null || answers.isEmpty()) {
+            return notices;
+        }
+        Map<String, TacitQuizAnswerViewDTO> answersByPlayer = new HashMap<>();
+        for (TacitQuizAnswerViewDTO answer : answers) {
+            if (answer != null && answer.getPlayerKey() != null) {
+                answersByPlayer.put(answer.getPlayerKey(), answer);
+            }
+        }
+
+        for (Map.Entry<String, GameRoom.Player> entry : room.getUsers().entrySet()) {
+            String playerKey = entry.getKey();
+            GameRoom.Player player = entry.getValue();
+            if (player == null || player.getPetInteractionItemId() == null) {
+                continue;
+            }
+            String itemId = player.getPetInteractionItemId();
+            boolean supported = ITEM_SYNC_PROPHECY.equals(itemId) || ITEM_SYNC_PERSPECTIVE.equals(itemId);
+            if (!supported) {
+                continue;
+            }
+            boolean succeeded = ITEM_SYNC_PROPHECY.equals(itemId)
+                    ? isMatchedRound(answers)
+                    : didMatchOpponentChoice(playerKey, answersByPlayer);
+            int rewardBones = ITEM_SYNC_PROPHECY.equals(itemId)
+                    ? SYNC_PROPHECY_REWARD_BONES
+                    : SYNC_PERSPECTIVE_REWARD_BONES;
+            String itemName = ITEM_SYNC_PROPHECY.equals(itemId) ? "默契预言" : "换位骨牌";
+            if (succeeded) {
+                int acceptedReward = PetGameItemDeclarationService.settleSucceededWithInteractionReward(
+                        room, playerKey, itemId, SLOT_INTERACTION, rewardBones);
+                notices.add(acceptedReward > 0
+                        ? itemName + "命中，返还道具并获得 🦴" + acceptedReward + "。"
+                        : itemName + "命中，返还道具；今日互动奖励额度已用完。");
+            } else {
+                PetGameItemDeclarationService.settleFailed(room, playerKey, itemId, SLOT_INTERACTION);
+                notices.add(itemName + "未命中，道具已消耗。");
+            }
+            player.setPetInteractionItemId(null);
+        }
+        return notices;
+    }
+
+    private static boolean didMatchOpponentChoice(String playerKey, Map<String, TacitQuizAnswerViewDTO> answersByPlayer) {
+        TacitQuizAnswerViewDTO mine = answersByPlayer.get(playerKey);
+        if (mine == null || mine.getChoiceIndex() < 0) {
+            return false;
+        }
+        for (Map.Entry<String, TacitQuizAnswerViewDTO> entry : answersByPlayer.entrySet()) {
+            if (playerKey.equals(entry.getKey())) {
+                continue;
+            }
+            TacitQuizAnswerViewDTO opponent = entry.getValue();
+            if (opponent != null && opponent.getChoiceIndex() == mine.getChoiceIndex()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isMatchedRound(List<TacitQuizAnswerViewDTO> answers) {

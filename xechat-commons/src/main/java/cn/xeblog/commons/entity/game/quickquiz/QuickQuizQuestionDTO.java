@@ -33,4 +33,21 @@ public class QuickQuizQuestionDTO implements Serializable {
 
     private int totalRounds;
 
+    private String petItemNotice;
+
+    private Integer petItemDisabledOptionIndex;
+
+    public QuickQuizQuestionDTO(long id, String question, List<String> options, int correctAnswerIndex, int score,
+                                long startedAt, long deadlineAt, int roundNo, int totalRounds) {
+        this.id = id;
+        this.question = question;
+        this.options = options;
+        this.correctAnswerIndex = correctAnswerIndex;
+        this.score = score;
+        this.startedAt = startedAt;
+        this.deadlineAt = deadlineAt;
+        this.roundNo = roundNo;
+        this.totalRounds = totalRounds;
+    }
+
 }

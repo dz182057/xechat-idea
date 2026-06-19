@@ -23,6 +23,12 @@ public class PetCheckinStatusDTO implements Serializable {
 
     private int cycleDay;
 
+    private int totalCheckins;
+
+    private int milestoneRemaining;
+
     private List<String> checkedDatesInMonth;
+
+    private PetCheckinMilestoneRewardDTO lastMilestoneReward;
 
 }

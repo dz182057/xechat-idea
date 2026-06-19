@@ -16,7 +16,9 @@ import cn.xeblog.commons.entity.pet.PetResponseDTO;
 import cn.xeblog.commons.entity.pet.PetSellItemDTO;
 import cn.xeblog.commons.entity.pet.PetSetCompanionDTO;
 import cn.xeblog.commons.entity.pet.PetShopBuyDTO;
+import cn.xeblog.commons.entity.pet.PetTrainingSkillActionDTO;
 import cn.xeblog.commons.entity.pet.PetUseItemDTO;
+import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.PetAction;
@@ -73,6 +75,19 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
                 break;
+            case GREET_ALL_DOGS:
+                PetProfileDTO greetedProfile = PetProfileService.greetAllDogs(user.getAccountId());
+                send(user, PetResponseDTO.ok(petAction, requestId, greetedProfile));
+                break;
+            case WALK_DOG:
+                try {
+                    PetProfileDTO walkedProfile = PetProfileService.walkDog(user.getAccountId(),
+                            toBean(body.getContent(), PetWalkDogDTO.class));
+                    send(user, PetResponseDTO.ok(petAction, requestId, walkedProfile));
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
             case CHECKIN:
                 try {
                     PetProfileDTO checkedProfile = PetProfileService.checkin(user.getAccountId());
@@ -125,6 +140,15 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
                 break;
+            case SELL_COLLECTION:
+                try {
+                    PetProfileDTO sellCollectionProfile = PetProfileService.sellCollection(user.getAccountId(),
+                            toBean(body.getContent(), PetSellItemDTO.class));
+                    send(user, PetResponseDTO.ok(petAction, requestId, sellCollectionProfile));
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
             case EXPLORE_START:
                 try {
                     PetProfileDTO exploreProfile = PetProfileService.exploreStart(user.getAccountId(),
@@ -139,6 +163,33 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                     PetExploreOpenResultDTO openResult = PetProfileService.exploreOpen(user.getAccountId(),
                             toBean(body.getContent(), PetExploreOpenDTO.class));
                     send(user, PetResponseDTO.ok(petAction, requestId, openResult));
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
+            case TRAINING_LEARN:
+                try {
+                    PetProfileDTO trainingLearnProfile = PetProfileService.trainingLearn(user.getAccountId(),
+                            toBean(body.getContent(), PetTrainingSkillActionDTO.class));
+                    send(user, PetResponseDTO.ok(petAction, requestId, trainingLearnProfile));
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
+            case TRAINING_UPGRADE:
+                try {
+                    PetProfileDTO trainingUpgradeProfile = PetProfileService.trainingUpgrade(user.getAccountId(),
+                            toBean(body.getContent(), PetTrainingSkillActionDTO.class));
+                    send(user, PetResponseDTO.ok(petAction, requestId, trainingUpgradeProfile));
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
+            case TRAINING_EQUIP:
+                try {
+                    PetProfileDTO trainingEquipProfile = PetProfileService.trainingEquip(user.getAccountId(),
+                            toBean(body.getContent(), PetTrainingSkillActionDTO.class));
+                    send(user, PetResponseDTO.ok(petAction, requestId, trainingEquipProfile));
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }

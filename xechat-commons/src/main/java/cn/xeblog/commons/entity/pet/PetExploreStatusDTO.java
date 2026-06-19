@@ -26,6 +26,10 @@ public class PetExploreStatusDTO implements Serializable {
 
     private int treasureMapFragments;
 
+    private boolean mysteryCaveUnlocked;
+
+    private boolean mysteryCaveCompleted;
+
     private boolean huskyUnlocked;
 
 }

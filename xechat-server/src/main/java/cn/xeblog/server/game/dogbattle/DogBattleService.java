@@ -6,6 +6,7 @@ import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.enums.Game;
+import cn.xeblog.server.pet.PetGameItemDeclarationService;
 import cn.xeblog.server.pet.PetProfileService;
 
 import java.util.ArrayList;
@@ -33,12 +34,21 @@ public final class DogBattleService {
     private static final int MAX_SPLASH_DAMAGE = 18;
     private static final int WINNER_REWARD_BONES = 8;
     private static final int LOSER_REWARD_BONES = 3;
+    private static final int DIRECT_HIT_ITEM_REWARD_BONES = 40;
+    private static final int PROPHECY_ITEM_REWARD_BONES = 20;
+    private static final String ITEM_BATTLE_DIRECT_HIT = "item_battle_direct_hit";
+    private static final String ITEM_BATTLE_AIRBAG = "item_battle_airbag";
+    private static final String ITEM_BATTLE_PEBBLE = "item_battle_pebble";
+    private static final String ITEM_BATTLE_ECHO = "item_battle_echo";
+    private static final String ITEM_PROPHECY = "item_prophecy";
     private static final double GRAVITY = 0.35;
     private static final double WIND_ACCEL = 0.006;
     private static final int MAX_STEPS = 240;
     private static final Map<String, BattleState> STATES = new ConcurrentHashMap<>();
     private static Function<GameRoom.Player, PetDogDTO> dogResolver = DogBattleService::resolvePetDog;
     private static RewardApplier rewardApplier = PetProfileService::addDogBattleReward;
+    private static InteractionRewardApplier interactionRewardApplier = DogBattleService::ignoreInteractionReward;
+    private static GameItemSettler gameItemSettler = DogBattleService::settleGameItem;
 
     private DogBattleService() {
     }
@@ -53,7 +63,10 @@ public final class DogBattleService {
         BattleState state = STATES.computeIfAbsent(room.getId(), key -> BattleState.from(room));
         synchronized (state) {
             state.startedPlayerKeys.add(user.getIdentityKey());
-            if (state.started || state.startedPlayerKeys.size() < room.getUsers().size()) {
+            if (state.started) {
+                return state.toSnapshot(room, "SNAPSHOT");
+            }
+            if (state.startedPlayerKeys.size() < room.getUsers().size()) {
                 return null;
             }
             state.started = true;
@@ -87,7 +100,8 @@ public final class DogBattleService {
                 return null;
             }
 
-            SkillTurn skillTurn = SkillTurn.from(actor, input.isUseSkill());
+            boolean pebblePreview = state.hasPendingPebble(actorKey);
+            SkillTurn skillTurn = SkillTurn.from(actor, !pebblePreview && input.isUseSkill());
             if (skillTurn.used && !skillTurn.canUse(actor, target)) {
                 return null;
             }
@@ -100,7 +114,16 @@ public final class DogBattleService {
                     skillTurn.speedMultiplier(),
                     input
             );
+            List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects = new ArrayList<>();
+            if (pebblePreview) {
+                state.consumePebble(actorKey);
+                simulation.hit.setDamage(0);
+                itemEffects.add(itemEffect(actorKey, ITEM_BATTLE_PEBBLE, "PEBBLE_THROWN", 0, 0));
+                return state.toTurnResult(room, actorKey, simulation, itemEffects, false, null,
+                        false, false, null, actorKey, wind(state.turnNo, state.windPower), "playing");
+            }
             state.applyDefensiveSkill(target, simulation.hit);
+            state.applyPlayItemEffects(target, simulation.hit, itemEffects);
             if ("DOG".equals(simulation.hit.getTargetType())) {
                 target.setHp(Math.max(0, target.getHp() - simulation.hit.getDamage()));
             } else if ("OBSTACLE".equals(simulation.hit.getTargetType())) {
@@ -108,6 +131,7 @@ public final class DogBattleService {
             }
             state.applyPostSkillEffects(actor, target, skillTurn, simulation.hit);
             state.updateSkillCooldown(actor, skillTurn, simulation.hit);
+            state.recordInteractionHit(actorKey, simulation.hit, itemEffects);
 
             boolean roundOver = target.getHp() <= 0;
             boolean matchOver = false;
@@ -119,7 +143,7 @@ public final class DogBattleService {
                     matchOver = true;
                     state.matchOver = true;
                     state.winnerPlayerKey = actor.getPlayerKey();
-                    state.applyReward(actor.getPlayerKey(), target.getPlayerKey());
+                    state.applyReward(room, actor.getPlayerKey(), target.getPlayerKey(), itemEffects);
                     nextPlayerKey = null;
                 } else {
                     state.startNextRound(actor.getPlayerKey());
@@ -131,30 +155,10 @@ public final class DogBattleService {
                 state.windPower = nextWindPower(state.windPower, state.turnNo);
             }
 
-            DogBattleDTO result = new DogBattleDTO();
-            result.setRoomId(room.getId());
-            result.setGame(Game.DOG_BATTLE);
-            result.setEvent("TURN_RESULT");
-            result.setRoundNo(state.roundNo);
-            result.setTurnNo(state.turnNo);
-            result.setActorPlayerKey(actorKey);
-            result.setCurrentPlayerKey(state.currentPlayerKey);
-            result.setTrajectory(simulation.trajectory);
-            result.setHit(simulation.hit);
-            result.setPlayers(state.copyPlayers());
-            result.setWind(wind(state.turnNo, state.windPower));
-            result.setObstacles(state.copyObstacles());
-            result.setNextPlayerKey(nextPlayerKey);
-            result.setNextWind(matchOver ? null : wind(state.turnNo, state.windPower));
-            result.setUsedSkill(skillTurn.used);
-            result.setSkillName(skillTurn.skillName);
-            result.setRoundOver(roundOver);
-            result.setMatchOver(matchOver);
-            result.setWinnerPlayerKey(roundWinnerPlayerKey != null ? roundWinnerPlayerKey : state.winnerPlayerKey);
-            result.setRewardPreview(matchOver ? rewardPreview(state.winnerPlayerKey, state.rewardApplied) : null);
-            result.setPhase(matchOver ? "matchOver" : roundOver ? "roundOver" : "playing");
-
-            return result;
+            return state.toTurnResult(room, actorKey, simulation, itemEffects, skillTurn.used, skillTurn.skillName,
+                    roundOver, matchOver, roundWinnerPlayerKey != null ? roundWinnerPlayerKey : state.winnerPlayerKey,
+                    nextPlayerKey, matchOver ? null : wind(state.turnNo, state.windPower),
+                    matchOver ? "matchOver" : roundOver ? "roundOver" : "playing");
         }
     }
 
@@ -178,6 +182,38 @@ public final class DogBattleService {
 
     static void resetRewardApplier() {
         rewardApplier = PetProfileService::addDogBattleReward;
+    }
+
+    static void setInteractionRewardApplierForTest(InteractionRewardApplier applier) {
+        interactionRewardApplier = applier == null ? DogBattleService::ignoreInteractionReward : applier;
+    }
+
+    static void resetInteractionRewardApplier() {
+        interactionRewardApplier = DogBattleService::ignoreInteractionReward;
+    }
+
+    static void setGameItemSettlerForTest(GameItemSettler settler) {
+        gameItemSettler = settler == null ? DogBattleService::settleGameItem : settler;
+    }
+
+    static void resetGameItemSettler() {
+        gameItemSettler = DogBattleService::settleGameItem;
+    }
+
+    private static void settleGameItem(GameRoom room, String playerKey, String itemId,
+                                       String slot, String status, int rewardBones) {
+        if ("succeeded".equals(status)) {
+            PetGameItemDeclarationService.settleSucceededWithInteractionReward(room, playerKey, itemId, slot, rewardBones);
+        } else if ("failed".equals(status)) {
+            PetGameItemDeclarationService.settleFailed(room, playerKey, itemId, slot);
+        } else if ("consumed".equals(status)) {
+            PetGameItemDeclarationService.settleConsumed(room, playerKey, itemId, slot);
+        } else if ("refunded".equals(status)) {
+            PetGameItemDeclarationService.settleRefunded(room, playerKey, itemId, slot);
+        }
+    }
+
+    private static void ignoreInteractionReward(long accountId, String itemId, int requestedBones) {
     }
 
     private static SimulationResult simulate(
@@ -304,6 +340,22 @@ public final class DogBattleService {
         return hit;
     }
 
+    private static DogBattleDTO.DogBattleItemEffectDTO itemEffect(
+            String playerKey,
+            String itemId,
+            String effectType,
+            int damageBlocked,
+            int rewardBones
+    ) {
+        DogBattleDTO.DogBattleItemEffectDTO effect = new DogBattleDTO.DogBattleItemEffectDTO();
+        effect.setPlayerKey(playerKey);
+        effect.setItemId(itemId);
+        effect.setEffectType(effectType);
+        effect.setDamageBlocked(damageBlocked);
+        effect.setRewardBones(rewardBones);
+        return effect;
+    }
+
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
     }
@@ -311,17 +363,27 @@ public final class DogBattleService {
     private static final class BattleState {
         private final List<DogBattleDTO.DogBattlePlayerDTO> players;
         private final Map<String, Long> accountIds;
+        private final Map<String, String> playItemIds;
+        private final Map<String, String> interactionItemIds;
+        private final LinkedHashSet<String> usedPebblePlayerKeys = new LinkedHashSet<>();
+        private final LinkedHashSet<String> usedAirbagPlayerKeys = new LinkedHashSet<>();
+        private final LinkedHashSet<String> directHitItemPlayerKeys = new LinkedHashSet<>();
         private final int roundCount;
         private final int requiredWins;
         private final boolean allowSkill;
         private final LinkedHashSet<String> startedPlayerKeys = new LinkedHashSet<>();
         private final List<DogBattleDTO.DogBattleObstacleDTO> obstacles = new ArrayList<>();
+        private String lastActorPlayerKey;
+        private List<DogBattleDTO.DogBattleTrajectoryPointDTO> lastTrajectory = new ArrayList<>();
+        private DogBattleDTO.DogBattleHitDTO lastHit;
+        private List<DogBattleDTO.DogBattleItemEffectDTO> lastItemEffects = new ArrayList<>();
         private int roundNo = 1;
         private int turnNo = 1;
         private int windPower;
         private boolean started;
         private boolean matchOver;
         private boolean rewardApplied;
+        private boolean interactionRewardApplied;
         private String currentPlayerKey;
         private String winnerPlayerKey;
         private String poodleGuardPlayerKey;
@@ -329,11 +391,15 @@ public final class DogBattleService {
         private BattleState(
                 List<DogBattleDTO.DogBattlePlayerDTO> players,
                 Map<String, Long> accountIds,
+                Map<String, String> playItemIds,
+                Map<String, String> interactionItemIds,
                 int roundCount,
                 boolean allowSkill
         ) {
             this.players = players;
             this.accountIds = accountIds;
+            this.playItemIds = playItemIds;
+            this.interactionItemIds = interactionItemIds;
             this.roundCount = normalizeRoundCount(roundCount);
             this.requiredWins = this.roundCount / 2 + 1;
             this.allowSkill = allowSkill;
@@ -346,16 +412,21 @@ public final class DogBattleService {
         private static BattleState from(GameRoom room) {
             List<DogBattleDTO.DogBattlePlayerDTO> players = new ArrayList<>();
             Map<String, Long> accountIds = new LinkedHashMap<>();
+            Map<String, String> playItemIds = new LinkedHashMap<>();
+            Map<String, String> interactionItemIds = new LinkedHashMap<>();
             int index = 0;
             for (GameRoom.Player player : room.getUsers().values()) {
                 players.add(createPlayer(player, index == 0 ? "LEFT" : "RIGHT", dogResolver.apply(player)));
                 accountIds.put(player.getId(), player.getAccountId());
+                playItemIds.put(player.getId(), player.getPetPlayItemId());
+                interactionItemIds.put(player.getId(), player.getPetInteractionItemId());
                 index++;
                 if (index >= 2) {
                     break;
                 }
             }
-            return new BattleState(players, accountIds, room.getDogBattleRoundCount(), room.isDogBattleAllowSkill());
+            return new BattleState(players, accountIds, playItemIds, interactionItemIds,
+                    room.getDogBattleRoundCount(), room.isDogBattleAllowSkill());
         }
 
         private DogBattleDTO toSnapshot(GameRoom room, String event) {
@@ -372,6 +443,11 @@ public final class DogBattleService {
             snapshot.setObstacles(copyObstacles());
             snapshot.setPhase("playing");
             snapshot.setWinnerPlayerKey(winnerPlayerKey);
+            snapshot.setItemStates(buildItemStates());
+            snapshot.setLastActorPlayerKey(lastActorPlayerKey);
+            snapshot.setLastTrajectory(copyTrajectory(lastTrajectory));
+            snapshot.setLastHit(copyHit(lastHit));
+            snapshot.setLastItemEffects(copyItemEffects(lastItemEffects));
             return snapshot;
         }
 
@@ -388,6 +464,18 @@ public final class DogBattleService {
             obstacles.addAll(generateObstacles(roundNo));
         }
 
+        private boolean hasPendingPebble(String playerKey) {
+            return playerKey != null
+                    && ITEM_BATTLE_PEBBLE.equals(playItemIds.get(playerKey))
+                    && !usedPebblePlayerKeys.contains(playerKey);
+        }
+
+        private void consumePebble(String playerKey) {
+            if (playerKey != null) {
+                usedPebblePlayerKeys.add(playerKey);
+            }
+        }
+
         private void damageObstacle(String obstacleId, int damage) {
             for (DogBattleDTO.DogBattleObstacleDTO obstacle : obstacles) {
                 if (!obstacle.getId().equals(obstacleId) || !obstacle.isDestructible()) {
@@ -400,7 +488,8 @@ public final class DogBattleService {
             }
         }
 
-        private void applyReward(String winnerPlayerKey, String loserPlayerKey) {
+        private void applyReward(GameRoom room, String winnerPlayerKey, String loserPlayerKey,
+                                 List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects) {
             if (rewardApplied) {
                 return;
             }
@@ -410,6 +499,189 @@ public final class DogBattleService {
                 return;
             }
             rewardApplied = rewardApplier.apply(winnerAccountId, loserAccountId, WINNER_REWARD_BONES, LOSER_REWARD_BONES);
+            if (rewardApplied) {
+                applyInteractionRewards(room, itemEffects);
+                applyPlayItemSettlements(room, itemEffects);
+            }
+        }
+
+        private DogBattleDTO toTurnResult(
+                GameRoom room,
+                String actorKey,
+                SimulationResult simulation,
+                List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects,
+                boolean usedSkill,
+                String skillName,
+                boolean roundOver,
+                boolean matchOver,
+                String winnerPlayerKey,
+                String nextPlayerKey,
+                DogBattleDTO.DogBattleWindDTO nextWind,
+                String phase
+        ) {
+            recordLastTurn(actorKey, simulation, itemEffects);
+            DogBattleDTO result = new DogBattleDTO();
+            result.setRoomId(room.getId());
+            result.setGame(Game.DOG_BATTLE);
+            result.setEvent("TURN_RESULT");
+            result.setRoundNo(roundNo);
+            result.setTurnNo(turnNo);
+            result.setActorPlayerKey(actorKey);
+            result.setCurrentPlayerKey(currentPlayerKey);
+            result.setTrajectory(simulation.trajectory);
+            result.setHit(simulation.hit);
+            result.setPlayers(copyPlayers());
+            result.setWind(wind(turnNo, windPower));
+            result.setObstacles(copyObstacles());
+            result.setNextPlayerKey(nextPlayerKey);
+            result.setNextWind(nextWind);
+            result.setUsedSkill(usedSkill);
+            result.setSkillName(skillName);
+            result.setItemEffects(itemEffects);
+            result.setRoundOver(roundOver);
+            result.setMatchOver(matchOver);
+            result.setWinnerPlayerKey(winnerPlayerKey);
+            result.setRewardPreview(matchOver ? rewardPreview(this.winnerPlayerKey, rewardApplied) : null);
+            result.setPhase(phase);
+            return result;
+        }
+
+        private void recordLastTurn(
+                String actorKey,
+                SimulationResult simulation,
+                List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects
+        ) {
+            lastActorPlayerKey = actorKey;
+            lastTrajectory = copyTrajectory(simulation == null ? null : simulation.trajectory);
+            lastHit = copyHit(simulation == null ? null : simulation.hit);
+            lastItemEffects = copyItemEffects(itemEffects);
+        }
+
+        private List<DogBattleDTO.DogBattleItemStateDTO> buildItemStates() {
+            List<DogBattleDTO.DogBattleItemStateDTO> itemStates = new ArrayList<>();
+            for (Map.Entry<String, String> entry : playItemIds.entrySet()) {
+                String playerKey = entry.getKey();
+                String itemId = entry.getValue();
+                if (isBlank(itemId)) {
+                    continue;
+                }
+                itemStates.add(itemState(playerKey, itemId, "gameplay", playItemStatus(playerKey, itemId)));
+            }
+            for (Map.Entry<String, String> entry : interactionItemIds.entrySet()) {
+                String playerKey = entry.getKey();
+                String itemId = entry.getValue();
+                if (isBlank(itemId)) {
+                    continue;
+                }
+                itemStates.add(itemState(playerKey, itemId, "interaction", interactionItemStatus(playerKey, itemId)));
+            }
+            return itemStates;
+        }
+
+        private String playItemStatus(String playerKey, String itemId) {
+            if (rewardApplied) {
+                if (ITEM_BATTLE_PEBBLE.equals(itemId)) {
+                    return usedPebblePlayerKeys.contains(playerKey) ? "consumed" : "refunded";
+                }
+                if (ITEM_BATTLE_AIRBAG.equals(itemId)) {
+                    return usedAirbagPlayerKeys.contains(playerKey) ? "consumed" : "refunded";
+                }
+                if (ITEM_BATTLE_ECHO.equals(itemId)) {
+                    return "consumed";
+                }
+            }
+            if (ITEM_BATTLE_PEBBLE.equals(itemId) && usedPebblePlayerKeys.contains(playerKey)) {
+                return "triggered";
+            }
+            if (ITEM_BATTLE_AIRBAG.equals(itemId) && usedAirbagPlayerKeys.contains(playerKey)) {
+                return "triggered";
+            }
+            return "reserved";
+        }
+
+        private String interactionItemStatus(String playerKey, String itemId) {
+            if (rewardApplied) {
+                if (ITEM_BATTLE_DIRECT_HIT.equals(itemId)) {
+                    return directHitItemPlayerKeys.contains(playerKey) ? "succeeded" : "failed";
+                }
+                if (ITEM_PROPHECY.equals(itemId)) {
+                    return playerKey.equals(winnerPlayerKey) ? "succeeded" : "failed";
+                }
+            }
+            if (ITEM_BATTLE_DIRECT_HIT.equals(itemId) && directHitItemPlayerKeys.contains(playerKey)) {
+                return "challenge_met";
+            }
+            return "reserved";
+        }
+
+        private void recordInteractionHit(String actorPlayerKey, DogBattleDTO.DogBattleHitDTO hit,
+                                          List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects) {
+            if (actorPlayerKey == null
+                    || hit == null
+                    || !hit.isDirectHit()
+                    || !ITEM_BATTLE_DIRECT_HIT.equals(interactionItemIds.get(actorPlayerKey))) {
+                return;
+            }
+            directHitItemPlayerKeys.add(actorPlayerKey);
+            itemEffects.add(itemEffect(actorPlayerKey, ITEM_BATTLE_DIRECT_HIT,
+                    "DIRECT_HIT_MARKED", 0, DIRECT_HIT_ITEM_REWARD_BONES));
+        }
+
+        private void applyInteractionRewards(GameRoom room, List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects) {
+            if (interactionRewardApplied) {
+                return;
+            }
+            interactionRewardApplied = true;
+            for (Map.Entry<String, String> entry : interactionItemIds.entrySet()) {
+                String playerKey = entry.getKey();
+                String itemId = entry.getValue();
+                boolean succeeded;
+                int rewardBones;
+                if (ITEM_BATTLE_DIRECT_HIT.equals(itemId)) {
+                    succeeded = directHitItemPlayerKeys.contains(playerKey);
+                    rewardBones = DIRECT_HIT_ITEM_REWARD_BONES;
+                } else if (ITEM_PROPHECY.equals(itemId)) {
+                    succeeded = playerKey.equals(winnerPlayerKey);
+                    rewardBones = PROPHECY_ITEM_REWARD_BONES;
+                } else {
+                    continue;
+                }
+                gameItemSettler.settle(room, playerKey, itemId,
+                        "interaction", succeeded ? "succeeded" : "failed",
+                        succeeded ? rewardBones : 0);
+                itemEffects.add(itemEffect(playerKey, itemId,
+                        succeeded ? "INTERACTION_SUCCEEDED" : "INTERACTION_FAILED",
+                        0, succeeded ? rewardBones : 0));
+                if (!succeeded) {
+                    continue;
+                }
+                Long accountId = accountIds.get(playerKey);
+                if (accountId == null || accountId <= 0L) {
+                    continue;
+                }
+                interactionRewardApplier.apply(accountId, itemId, rewardBones);
+            }
+        }
+
+        private void applyPlayItemSettlements(GameRoom room, List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects) {
+            for (Map.Entry<String, String> entry : playItemIds.entrySet()) {
+                String playerKey = entry.getKey();
+                String itemId = entry.getValue();
+                String status = null;
+                if (ITEM_BATTLE_PEBBLE.equals(itemId)) {
+                    status = usedPebblePlayerKeys.contains(playerKey) ? "consumed" : "refunded";
+                } else if (ITEM_BATTLE_AIRBAG.equals(itemId)) {
+                    status = usedAirbagPlayerKeys.contains(playerKey) ? "consumed" : "refunded";
+                } else if (ITEM_BATTLE_ECHO.equals(itemId)) {
+                    status = "consumed";
+                }
+                if (status != null) {
+                    gameItemSettler.settle(room, playerKey, itemId, "gameplay", status, 0);
+                    itemEffects.add(itemEffect(playerKey, itemId,
+                            "consumed".equals(status) ? "PLAY_CONSUMED" : "PLAY_REFUNDED",
+                            0, 0));
+                }
+            }
         }
 
         private void applyDefensiveSkill(DogBattleDTO.DogBattlePlayerDTO target, DogBattleDTO.DogBattleHitDTO hit) {
@@ -420,6 +692,22 @@ public final class DogBattleService {
             if ("DOG".equals(hit.getTargetType()) && !hit.isDirectHit() && hit.getDamage() > 0) {
                 hit.setDamage(Math.max(0, (int) Math.floor(hit.getDamage() * 0.9)));
             }
+        }
+
+        private void applyPlayItemEffects(DogBattleDTO.DogBattlePlayerDTO target, DogBattleDTO.DogBattleHitDTO hit,
+                                          List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects) {
+            if (target == null
+                    || hit == null
+                    || hit.getDamage() <= 0
+                    || !ITEM_BATTLE_AIRBAG.equals(playItemIds.get(target.getPlayerKey()))
+                    || usedAirbagPlayerKeys.contains(target.getPlayerKey())) {
+                return;
+            }
+            usedAirbagPlayerKeys.add(target.getPlayerKey());
+            int blockedDamage = Math.min(15, (int) Math.floor(hit.getDamage() * 0.3));
+            hit.setDamage(Math.max(5, hit.getDamage() - blockedDamage));
+            itemEffects.add(itemEffect(target.getPlayerKey(), ITEM_BATTLE_AIRBAG,
+                    "DAMAGE_REDUCED", blockedDamage, 0));
         }
 
         private void applyPostSkillEffects(
@@ -556,6 +844,91 @@ public final class DogBattleService {
         copy.setDestructible(obstacle.isDestructible());
         copy.setDestroyed(obstacle.isDestroyed());
         return copy;
+    }
+
+    private static List<DogBattleDTO.DogBattleTrajectoryPointDTO> copyTrajectory(
+            List<DogBattleDTO.DogBattleTrajectoryPointDTO> trajectory
+    ) {
+        List<DogBattleDTO.DogBattleTrajectoryPointDTO> copy = new ArrayList<>();
+        if (trajectory == null) {
+            return copy;
+        }
+        for (DogBattleDTO.DogBattleTrajectoryPointDTO point : trajectory) {
+            copy.add(copyPoint(point));
+        }
+        return copy;
+    }
+
+    private static DogBattleDTO.DogBattleTrajectoryPointDTO copyPoint(
+            DogBattleDTO.DogBattleTrajectoryPointDTO point
+    ) {
+        DogBattleDTO.DogBattleTrajectoryPointDTO copy = new DogBattleDTO.DogBattleTrajectoryPointDTO();
+        if (point == null) {
+            return copy;
+        }
+        copy.setX(point.getX());
+        copy.setY(point.getY());
+        return copy;
+    }
+
+    private static DogBattleDTO.DogBattleHitDTO copyHit(DogBattleDTO.DogBattleHitDTO hit) {
+        if (hit == null) {
+            return null;
+        }
+        DogBattleDTO.DogBattleHitDTO copy = new DogBattleDTO.DogBattleHitDTO();
+        copy.setTargetType(hit.getTargetType());
+        copy.setTargetId(hit.getTargetId());
+        copy.setX(hit.getX());
+        copy.setY(hit.getY());
+        copy.setDirectHit(hit.isDirectHit());
+        copy.setDamage(hit.getDamage());
+        return copy;
+    }
+
+    private static List<DogBattleDTO.DogBattleItemEffectDTO> copyItemEffects(
+            List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects
+    ) {
+        List<DogBattleDTO.DogBattleItemEffectDTO> copy = new ArrayList<>();
+        if (itemEffects == null) {
+            return copy;
+        }
+        for (DogBattleDTO.DogBattleItemEffectDTO itemEffect : itemEffects) {
+            copy.add(copyItemEffect(itemEffect));
+        }
+        return copy;
+    }
+
+    private static DogBattleDTO.DogBattleItemEffectDTO copyItemEffect(
+            DogBattleDTO.DogBattleItemEffectDTO itemEffect
+    ) {
+        DogBattleDTO.DogBattleItemEffectDTO copy = new DogBattleDTO.DogBattleItemEffectDTO();
+        if (itemEffect == null) {
+            return copy;
+        }
+        copy.setPlayerKey(itemEffect.getPlayerKey());
+        copy.setItemId(itemEffect.getItemId());
+        copy.setEffectType(itemEffect.getEffectType());
+        copy.setDamageBlocked(itemEffect.getDamageBlocked());
+        copy.setRewardBones(itemEffect.getRewardBones());
+        return copy;
+    }
+
+    private static DogBattleDTO.DogBattleItemStateDTO itemState(
+            String playerKey,
+            String itemId,
+            String slot,
+            String status
+    ) {
+        DogBattleDTO.DogBattleItemStateDTO itemState = new DogBattleDTO.DogBattleItemStateDTO();
+        itemState.setPlayerKey(playerKey);
+        itemState.setItemId(itemId);
+        itemState.setSlot(slot);
+        itemState.setStatus(status);
+        return itemState;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private static DogBattleDTO.DogBattleConfigDTO config(GameRoom room) {
@@ -766,5 +1139,13 @@ public final class DogBattleService {
 
     interface RewardApplier {
         boolean apply(long winnerAccountId, long loserAccountId, int winnerBones, int loserBones);
+    }
+
+    interface InteractionRewardApplier {
+        void apply(long accountId, String itemId, int requestedBones);
+    }
+
+    interface GameItemSettler {
+        void settle(GameRoom room, String playerKey, String itemId, String slot, String status, int rewardBones);
     }
 }

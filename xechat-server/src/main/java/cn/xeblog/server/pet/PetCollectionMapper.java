@@ -18,4 +18,9 @@ public interface PetCollectionMapper {
                       @Param("itemId") String itemId,
                       @Param("updatedAt") long updatedAt);
 
+    int decrementCollectionIfEnough(@Param("accountId") long accountId,
+                                    @Param("itemId") String itemId,
+                                    @Param("quantity") int quantity,
+                                    @Param("updatedAt") long updatedAt);
+
 }

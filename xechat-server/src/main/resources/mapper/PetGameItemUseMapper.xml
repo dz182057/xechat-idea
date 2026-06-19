@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetGameItemUseMapper">
+
+    <sql id="cols">
+        id, game_id, account_id, item_id, slot, definition_version, status,
+        target_user_id, payload_json, reward_bones, created_at, settled_at
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.pet.PetGameItemUseRecord">
+        INSERT INTO game_item_uses (
+            id, game_id, account_id, item_id, slot, definition_version, status,
+            target_user_id, payload_json, reward_bones, created_at, settled_at
+        ) VALUES (
+            #{id}, #{gameId}, #{accountId}, #{itemId}, #{slot}, #{definitionVersion}, #{status},
+            #{targetUserId}, #{payloadJson}, #{rewardBones}, #{createdAt}, #{settledAt}
+        )
+    </insert>
+
+    <select id="findLatestReserved" resultType="cn.xeblog.server.pet.PetGameItemUseRecord">
+        SELECT <include refid="cols"/>
+        FROM game_item_uses
+        WHERE game_id = #{gameId}
+          AND account_id = #{accountId}
+          AND item_id = #{itemId}
+          AND slot = #{slot}
+          AND status = 'reserved'
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+    <update id="markSettled">
+        UPDATE game_item_uses
+        SET status = #{status},
+            reward_bones = #{rewardBones},
+            settled_at = #{settledAt}
+        WHERE id = #{id}
+          AND status = 'reserved'
+    </update>
+
+</mapper>

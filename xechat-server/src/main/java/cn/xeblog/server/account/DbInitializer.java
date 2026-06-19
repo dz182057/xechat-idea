@@ -456,6 +456,10 @@ public final class DbInitializer {
                         "explore_location TEXT," +
                         "explore_ends_at INTEGER," +
                         "explore_duration_hours INTEGER," +
+                        "explore_skill_id TEXT," +
+                        "explore_skill_snapshot_id TEXT," +
+                        "explore_skill_snapshot_level INTEGER," +
+                        "explore_skill_snapshot_version TEXT," +
                         "race_count INTEGER NOT NULL DEFAULT 0," +
                         "race_first_count INTEGER NOT NULL DEFAULT 0," +
                         "weekly_points INTEGER NOT NULL DEFAULT 0," +
@@ -467,6 +471,10 @@ public final class DbInitializer {
                 addColumnIfMissing(conn, st, "dogs", "explore_location", "TEXT");
                 addColumnIfMissing(conn, st, "dogs", "explore_ends_at", "INTEGER");
                 addColumnIfMissing(conn, st, "dogs", "explore_duration_hours", "INTEGER");
+                addColumnIfMissing(conn, st, "dogs", "explore_skill_id", "TEXT");
+                addColumnIfMissing(conn, st, "dogs", "explore_skill_snapshot_id", "TEXT");
+                addColumnIfMissing(conn, st, "dogs", "explore_skill_snapshot_level", "INTEGER");
+                addColumnIfMissing(conn, st, "dogs", "explore_skill_snapshot_version", "TEXT");
                 addColumnIfMissing(conn, st, "dogs", "race_count", "INTEGER NOT NULL DEFAULT 0");
                 addColumnIfMissing(conn, st, "dogs", "race_first_count", "INTEGER NOT NULL DEFAULT 0");
                 addColumnIfMissing(conn, st, "dogs", "weekly_points", "INTEGER NOT NULL DEFAULT 0");
@@ -490,6 +498,22 @@ public final class DbInitializer {
                         "updated_at INTEGER NOT NULL," +
                         "PRIMARY KEY (account_id, item_id)" +
                         ")");
+                st.execute("CREATE TABLE IF NOT EXISTS game_item_uses (" +
+                        "id TEXT PRIMARY KEY," +
+                        "game_id TEXT NOT NULL," +
+                        "account_id INTEGER NOT NULL," +
+                        "item_id TEXT NOT NULL," +
+                        "slot TEXT NOT NULL," +
+                        "definition_version INTEGER NOT NULL," +
+                        "status TEXT NOT NULL," +
+                        "target_user_id TEXT," +
+                        "payload_json TEXT," +
+                        "reward_bones INTEGER NOT NULL DEFAULT 0," +
+                        "created_at INTEGER NOT NULL," +
+                        "settled_at INTEGER" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_game_item_uses_reserved " +
+                        "ON game_item_uses(game_id, account_id, item_id, slot, status)");
                 st.execute("CREATE TABLE IF NOT EXISTS pet_collections (" +
                         "account_id INTEGER NOT NULL," +
                         "item_id TEXT NOT NULL," +
@@ -514,6 +538,20 @@ public final class DbInitializer {
                         "value INTEGER NOT NULL DEFAULT 0," +
                         "updated_at INTEGER NOT NULL," +
                         "PRIMARY KEY (account_id, counter_date, counter)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_training_skills (" +
+                        "account_id INTEGER NOT NULL," +
+                        "skill_id TEXT NOT NULL," +
+                        "level INTEGER NOT NULL DEFAULT 1," +
+                        "definition_version TEXT NOT NULL," +
+                        "updated_at INTEGER NOT NULL," +
+                        "PRIMARY KEY (account_id, skill_id)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_training_flags (" +
+                        "account_id INTEGER PRIMARY KEY," +
+                        "first_explore_free_available INTEGER NOT NULL DEFAULT 0," +
+                        "first_explore_free_used INTEGER NOT NULL DEFAULT 0," +
+                        "updated_at INTEGER NOT NULL" +
                         ")");
             }
         }

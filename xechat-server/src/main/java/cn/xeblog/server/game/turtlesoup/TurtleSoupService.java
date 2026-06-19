@@ -10,10 +10,13 @@ import cn.xeblog.commons.entity.game.turtlesoup.TurtleSoupDTO;
 import cn.xeblog.commons.entity.game.turtlesoup.TurtleSoupLogItemDTO;
 import cn.xeblog.commons.entity.game.turtlesoup.TurtleSoupRecordDTO;
 import cn.xeblog.commons.entity.game.turtlesoup.TurtleSoupStoryDTO;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.PetGameItemDeclarationService;
+import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
 
@@ -30,7 +33,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class TurtleSoupService {
 
     private static final int DEFAULT_GUESS_LIMIT = 3;
+    private static final String ITEM_TURTLE_PROBE = "item_turtle_probe";
+    private static final String SLOT_GAMEPLAY = "gameplay";
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
+    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
 
     private TurtleSoupService() {
     }
@@ -121,6 +127,7 @@ public final class TurtleSoupService {
         state.bestResult = null;
         state.awaitingJudgment = false;
         state.awaitingClueApproval = false;
+        state.pendingProbe = false;
         state.startedAt = 0;
         state.confirmed = false;
         state.finished = false;
@@ -186,6 +193,14 @@ public final class TurtleSoupService {
 
     public static void clearRoom(String roomId) {
         ROOM_STATES.remove(roomId);
+    }
+
+    static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
+        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+    }
+
+    static void resetMiniGameRewards() {
+        miniGameRewards = PetService::applyMiniGameResult;
     }
 
     public static String playerKey(User user) {
@@ -272,6 +287,7 @@ public final class TurtleSoupService {
         }
         state.guessUsed++;
         state.awaitingJudgment = true;
+        state.pendingProbe = hasProbeItem(room, state.guesserId);
         state.logs.add(new TurtleSoupLogItemDTO("GUESS", user.getIdentityKey(), user.getUsername(),
                 content, null, null, System.currentTimeMillis()));
         TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.GUESS);
@@ -297,11 +313,17 @@ public final class TurtleSoupService {
         }
         state.awaitingJudgment = false;
         state.bestResult = better(state.bestResult, result);
+        String petItemNotice = settlePendingProbe(room, state, result);
         state.logs.add(new TurtleSoupLogItemDTO("JUDGE", user.getIdentityKey(), user.getUsername(),
                 null, null, result.name(), System.currentTimeMillis()));
 
         TurtleSoupDTO event = baseEvent(state, TurtleSoupDTO.Event.JUDGE);
         event.setGuessResult(result);
+        if (petItemNotice != null) {
+            event.setPetItemNotice(petItemNotice);
+            dto.setPetItemNotice(petItemNotice);
+            dto.setGuessUsed(state.guessUsed);
+        }
         sendToRoom(room, ResponseBuilder.build(user, event, MessageType.GAME));
 
         if (result == TurtleSoupDTO.GuessResult.CORRECT || state.guessUsed >= state.guessLimit) {
@@ -366,6 +388,7 @@ public final class TurtleSoupService {
                 ? TurtleSoupDTO.GuessResult.WRONG
                 : state.bestResult;
         long endedAt = System.currentTimeMillis();
+        applyMiniGameRewardsForRound(room, state.hostId, state.guesserId, finalResult, state.startedAt, endedAt);
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             session.getMapper(TurtleSoupMapper.class).insertRecord(TurtleSoupRecord.builder()
                     .roomId(state.roomId)
@@ -394,12 +417,70 @@ public final class TurtleSoupService {
         sendToRoom(room, ResponseBuilder.build(null, reveal, MessageType.GAME));
     }
 
+    static void applyMiniGameRewardsForRound(GameRoom room, String hostId, String guesserId,
+                                             TurtleSoupDTO.GuessResult finalResult,
+                                             long startedAt, long endedAt) {
+        long durationSeconds = Math.max(0L, (endedAt - startedAt + 999L) / 1000L);
+        applyMiniGameReward(room, hostId, false, durationSeconds);
+        applyMiniGameReward(room, guesserId, finalResult == TurtleSoupDTO.GuessResult.CORRECT, durationSeconds);
+    }
+
+    private static void applyMiniGameReward(GameRoom room, String playerId, boolean win, long durationSeconds) {
+        GameRoom.Player player = room == null ? null : room.getUsers().get(playerId);
+        if (player == null || player.getAccountId() <= 0L) {
+            return;
+        }
+        try {
+            miniGameRewards.apply(player.getAccountId(), Game.TURTLE_SOUP, win, durationSeconds);
+        } catch (RuntimeException e) {
+            log.error("海龟汤小游戏产出结算失败 -> accountId: {}", player.getAccountId(), e);
+        }
+    }
+
     private static boolean ensureConfirmed(User user, RoomState state) {
         if (state.confirmed) {
             return true;
         }
         user.send(ResponseBuilder.system("主持人确认题目后才能正式开始"));
         return false;
+    }
+
+    private static boolean hasProbeItem(GameRoom room, String playerKey) {
+        GameRoom.Player player = room.getUsers().get(playerKey);
+        return player != null && ITEM_TURTLE_PROBE.equals(player.getPetPlayItemId());
+    }
+
+    private static String settlePendingProbe(GameRoom room, RoomState state, TurtleSoupDTO.GuessResult result) {
+        if (!state.pendingProbe) {
+            return null;
+        }
+        state.pendingProbe = false;
+        GameRoom.Player player = room.getUsers().get(state.guesserId);
+        if (player == null || !ITEM_TURTLE_PROBE.equals(player.getPetPlayItemId())) {
+            return null;
+        }
+
+        if (result == TurtleSoupDTO.GuessResult.CORRECT) {
+            PetGameItemDeclarationService.settleRefunded(room, player.getId(), ITEM_TURTLE_PROBE, SLOT_GAMEPLAY);
+            player.setPetPlayItemId(null);
+            return "试探骨命中正确汤底，道具已返还。";
+        }
+
+        state.guessUsed = Math.max(0, state.guessUsed - 1);
+        PetGameItemDeclarationService.settleConsumed(room, player.getId(), ITEM_TURTLE_PROBE, SLOT_GAMEPLAY);
+        player.setPetPlayItemId(null);
+        return "试探骨触发，本次猜底判定为" + guessResultText(result)
+                + "，不消耗正式猜底次数，道具已消耗。";
+    }
+
+    private static String guessResultText(TurtleSoupDTO.GuessResult result) {
+        if (result == TurtleSoupDTO.GuessResult.CORRECT) {
+            return "正确";
+        }
+        if (result == TurtleSoupDTO.GuessResult.PARTIAL) {
+            return "部分正确";
+        }
+        return "错误";
     }
 
     private static User chooseHost(GameRoom room, List<User> players, RoomState old) {
@@ -601,11 +682,16 @@ public final class TurtleSoupService {
         private TurtleSoupDTO.GuessResult bestResult;
         private boolean awaitingJudgment;
         private boolean awaitingClueApproval;
+        private boolean pendingProbe;
         private long startedAt;
         private boolean confirmed;
         private boolean finished;
         private final List<Long> previewedStoryIds = new ArrayList<>();
         private final List<TurtleSoupLogItemDTO> logs = new ArrayList<>();
+    }
+
+    interface MiniGameRewards {
+        void apply(long accountId, Game game, boolean win, long durationSeconds);
     }
 
 }

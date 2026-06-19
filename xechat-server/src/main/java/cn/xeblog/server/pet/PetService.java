@@ -5,6 +5,7 @@ import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
+import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
 import cn.xeblog.commons.enums.Game;
 
 /**
@@ -30,6 +31,11 @@ public final class PetService {
         return PetProfileService.recordRaceResult(user.getAccountId(), result);
     }
 
+    public static PetProfileDTO walkDog(User user, PetWalkDogDTO request) {
+        ensureAccountUser(user);
+        return PetProfileService.walkDog(user.getAccountId(), request);
+    }
+
     public static PetProfileDTO applyRaceResult(long accountId, PetRaceResultDTO result) {
         ensureAccountId(accountId);
         return PetProfileService.recordRaceResult(accountId, result);
@@ -48,6 +54,11 @@ public final class PetService {
     public static PetProfileDTO applyMiniGameResult(long accountId, Game game, boolean win, long durationSeconds) {
         ensureAccountId(accountId);
         return PetProfileService.applyMiniGameResult(accountId, game, win, durationSeconds);
+    }
+
+    public static PetProfileDTO applyInteractionItemReward(long accountId, String itemId, int requestedBones) {
+        ensureAccountId(accountId);
+        return PetProfileService.applyInteractionItemReward(accountId, itemId, requestedBones);
     }
 
     public static PetProfileDTO spendRaceSignup(long accountId, String dogId, int energyCost, int bonesCost) {

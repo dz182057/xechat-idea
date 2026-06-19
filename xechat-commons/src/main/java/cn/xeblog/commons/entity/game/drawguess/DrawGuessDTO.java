@@ -24,6 +24,11 @@ public class DrawGuessDTO extends GameDTO {
     private String word;
     private String text;
     private Line line;
+    private String petItemId;
+    private String petItemNotice;
+    private String petItemPattern;
+    private String petItemRevealedMask;
+    private Integer petItemHintDelaySeconds;
 
     public enum Event {
         START_ROUND,

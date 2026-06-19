@@ -15,6 +15,7 @@ import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
 import cn.xeblog.server.game.tacitquiz.TacitQuizService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
+import cn.xeblog.server.pet.PetGameItemDeclarationService;
 import cn.xeblog.server.service.AbstractResponseHistoryService;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -144,6 +145,11 @@ public class ChannelAction {
                     player.send(response);
                 }
             });
+            if (homeowner) {
+                PetGameItemDeclarationService.releaseReservedForRoom(gameRoom);
+            } else {
+                PetGameItemDeclarationService.releaseReservedForPlayer(gameRoom, user);
+            }
             clearGameRoomState(gameRoom);
             GameRoomCache.leftRoom(gameRoom.getId(), user);
         }

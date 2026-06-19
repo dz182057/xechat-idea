@@ -17,5 +17,14 @@ public class GobangDTO extends GameDTO {
     private int x;
     private int y;
     private int type;
+    private String petItemNotice;
+    private Integer petItemGuardX;
+    private Integer petItemGuardY;
+
+    public GobangDTO(int x, int y, int type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+    }
 
 }

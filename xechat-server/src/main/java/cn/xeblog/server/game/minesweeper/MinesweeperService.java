@@ -11,21 +11,37 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.game.minesweeper.NoGuessMinesweeper;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.PetGameItemDeclarationService;
+import cn.xeblog.server.pet.PetService;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 /**
  * 扫雷服务端权威生成与操作处理。客户端不可用时仍可走本地 no-guess 兜底。
  */
+@Slf4j
 public final class MinesweeperService {
 
+    private static final String ITEM_MINE_SHIELD = "item_mine_shield";
+    private static final String ITEM_MINE_MARK = "item_mine_mark";
+    private static final String ITEM_MINE_AREA = "item_mine_area";
+    private static final String ITEM_MINE_SCOUT = "item_mine_scout";
+    private static final String ITEM_METAL_DETECTOR = "item_metal_detector";
     private static final Map<String, RoomState> STATES = new ConcurrentHashMap<>();
+    private static GameItemSettler gameItemSettler = MinesweeperService::settleGameItem;
+    private static BoardGenerator boardGenerator = MinesweeperService::generateBoard;
+    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
+    private static LongSupplier nowSupplier = System::currentTimeMillis;
 
     private MinesweeperService() {
     }
@@ -73,12 +89,44 @@ public final class MinesweeperService {
         }
         RoomState state = STATES.compute(singleKey(user), (key, oldState) ->
                 shouldRecreateState(oldState, dto) ? createState(dto, key, null) : oldState);
-        OpenResult result = applyAction(state, dto);
+        OpenResult result = applyAction(state, dto, false);
         user.send(ResponseBuilder.build(null, stateEvent(state, result, true, null, null, null), MessageType.GAME));
     }
 
     public static void clearRoom(String roomId) {
         STATES.remove(roomKey(roomId));
+    }
+
+    static void setGameItemSettlerForTest(GameItemSettler settler) {
+        gameItemSettler = settler == null ? MinesweeperService::settleGameItem : settler;
+    }
+
+    static void resetGameItemSettler() {
+        gameItemSettler = MinesweeperService::settleGameItem;
+    }
+
+    static void setBoardGeneratorForTest(BoardGenerator generator) {
+        boardGenerator = generator == null ? MinesweeperService::generateBoard : generator;
+    }
+
+    static void resetBoardGenerator() {
+        boardGenerator = MinesweeperService::generateBoard;
+    }
+
+    static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
+        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+    }
+
+    static void resetMiniGameRewards() {
+        miniGameRewards = PetService::applyMiniGameResult;
+    }
+
+    static void setNowSupplierForTest(LongSupplier testNowSupplier) {
+        nowSupplier = testNowSupplier == null ? System::currentTimeMillis : testNowSupplier;
+    }
+
+    static void resetNowSupplier() {
+        nowSupplier = System::currentTimeMillis;
     }
 
     private static void handleRoomAction(User user, GameRoom room, MinesweeperDTO dto) {
@@ -89,11 +137,54 @@ public final class MinesweeperService {
         if (state.nextTurnPlayerKey != null && !state.nextTurnPlayerKey.equals(actorKey)) {
             return;
         }
-        OpenResult result = applyAction(state, dto);
+        OpenResult result = applyAction(state, dto, hasUnusedMineShield(room, state, actorKey));
+        if (result.shieldedMine) {
+            state.usedMineShieldPlayerKeys.add(actorKey);
+            state.settledMineShieldPlayerKeys.add(actorKey);
+            gameItemSettler.settle(room, actorKey, ITEM_MINE_SHIELD, "gameplay", "consumed");
+        }
+        if (applyMineAutoMarkIfAvailable(room, state, actorKey, result, ITEM_MINE_MARK,
+                state.usedMineMarkPlayerKeys, 1)) {
+            state.usedMineMarkPlayerKeys.add(actorKey);
+            state.settledMineMarkPlayerKeys.add(actorKey);
+            gameItemSettler.settle(room, actorKey, ITEM_MINE_MARK, "gameplay", "consumed");
+        }
+        if (applyMineAreaIfAvailable(room, state, actorKey, result, dto.getX(), dto.getY())) {
+            state.usedMineAreaPlayerKeys.add(actorKey);
+            state.settledMineAreaPlayerKeys.add(actorKey);
+            gameItemSettler.settle(room, actorKey, ITEM_MINE_AREA, "gameplay", "consumed");
+        }
+        if (applyMineAutoMarkIfAvailable(room, state, actorKey, result, ITEM_MINE_SCOUT,
+                state.usedMineScoutPlayerKeys, 1)) {
+            state.usedMineScoutPlayerKeys.add(actorKey);
+            state.settledMineScoutPlayerKeys.add(actorKey);
+            gameItemSettler.settle(room, actorKey, ITEM_MINE_SCOUT, "gameplay", "consumed");
+        }
+        if (applyMineAutoMarkIfAvailable(room, state, actorKey, result, ITEM_METAL_DETECTOR,
+                state.usedMetalDetectorPlayerKeys, 2)) {
+            state.usedMetalDetectorPlayerKeys.add(actorKey);
+            state.settledMetalDetectorPlayerKeys.add(actorKey);
+            gameItemSettler.settle(room, actorKey, ITEM_METAL_DETECTOR, "gameplay", "consumed");
+        }
+        settleGameplayItemsIfGameOver(room, state);
+        applyMiniGameRewardsIfGameOver(room, state);
         if (result.openedCount > 0 && state.phase == MinesweeperDTO.Phase.playing) {
             state.nextTurnPlayerKey = otherPlayerKey(room, actorKey);
         }
         sendToRoom(room, ResponseBuilder.build(user, stateEvent(state, result, false, actorKey, dto.getX(), dto.getY()), MessageType.GAME));
+    }
+
+    private static void settleGameItem(GameRoom room, String playerKey, String itemId, String slot, String status) {
+        if ("consumed".equals(status)) {
+            PetGameItemDeclarationService.settleConsumed(room, playerKey, itemId, slot);
+        } else if ("refunded".equals(status)) {
+            PetGameItemDeclarationService.settleRefunded(room, playerKey, itemId, slot);
+        }
+    }
+
+    private static NoGuessMinesweeper.Board generateBoard(int rows, int cols, int mines,
+                                                          NoGuessMinesweeper.Point firstClick) {
+        return NoGuessMinesweeper.generate(rows, cols, mines, firstClick, new Random());
     }
 
     private static MinesweeperDTO startResponse(MinesweeperDTO request, String roomId, String nextTurnPlayerKey) {
@@ -114,8 +205,8 @@ public final class MinesweeperService {
         int mines = normalizeMines(rows, cols, dto.getMines());
         int x = dto.getX() == null ? cols / 2 : clamp(dto.getX(), 0, cols - 1);
         int y = dto.getY() == null ? rows / 2 : clamp(dto.getY(), 0, rows - 1);
-        NoGuessMinesweeper.Board board = NoGuessMinesweeper.generate(
-                rows, cols, mines, new NoGuessMinesweeper.Point(x, y), new Random());
+        NoGuessMinesweeper.Board board = boardGenerator.generate(
+                rows, cols, mines, new NoGuessMinesweeper.Point(x, y));
         RoomState state = new RoomState();
         state.roomId = roomId;
         state.rows = rows;
@@ -127,6 +218,7 @@ public final class MinesweeperService {
         state.exploded = new boolean[rows][cols];
         state.phase = MinesweeperDTO.Phase.playing;
         state.nextTurnPlayerKey = nextTurnPlayerKey;
+        state.startedAt = nowSupplier.getAsLong();
         return state;
     }
 
@@ -140,7 +232,7 @@ public final class MinesweeperService {
         return state.rows != rows || state.cols != cols || state.mines != mines;
     }
 
-    private static OpenResult applyAction(RoomState state, MinesweeperDTO dto) {
+    private static OpenResult applyAction(RoomState state, MinesweeperDTO dto, boolean mineShieldAvailable) {
         OpenResult result = new OpenResult();
         result.phase = state.phase;
         if (state.phase != MinesweeperDTO.Phase.playing || dto.getX() == null || dto.getY() == null) {
@@ -152,9 +244,9 @@ public final class MinesweeperService {
             return result;
         }
         if (dto.getAction() == MinesweeperDTO.ActionType.OPEN_AROUND) {
-            openAround(state, x, y, result);
+            openAround(state, x, y, result, mineShieldAvailable);
         } else {
-            result.openedCount = openCell(state, x, y, result);
+            result.openedCount = openCell(state, x, y, result, mineShieldAvailable);
         }
         if (result.hitMine) {
             state.phase = MinesweeperDTO.Phase.lost;
@@ -169,12 +261,17 @@ public final class MinesweeperService {
         return result;
     }
 
-    private static int openCell(RoomState state, int x, int y, OpenResult result) {
+    private static int openCell(RoomState state, int x, int y, OpenResult result, boolean mineShieldAvailable) {
         if (state.opened[y][x] || state.sharedMarked[y][x]) {
             return 0;
         }
         NoGuessMinesweeper.Cell cell = state.board.cell(x, y);
         if (cell.isMine()) {
+            if (mineShieldAvailable) {
+                state.sharedMarked[y][x] = true;
+                result.shieldedMine = true;
+                return 1;
+            }
             state.opened[y][x] = true;
             state.exploded[y][x] = true;
             result.hitMine = true;
@@ -183,7 +280,7 @@ public final class MinesweeperService {
         return openSafeArea(state, x, y);
     }
 
-    private static void openAround(RoomState state, int x, int y, OpenResult result) {
+    private static void openAround(RoomState state, int x, int y, OpenResult result, boolean mineShieldAvailable) {
         if (!state.opened[y][x]) {
             return;
         }
@@ -193,7 +290,11 @@ public final class MinesweeperService {
         }
         for (NoGuessMinesweeper.Cell cell : state.board.neighbors(x, y)) {
             OpenResult cellResult = new OpenResult();
-            result.openedCount += openCell(state, cell.getX(), cell.getY(), cellResult);
+            result.openedCount += openCell(state, cell.getX(), cell.getY(), cellResult, mineShieldAvailable);
+            if (cellResult.shieldedMine) {
+                result.shieldedMine = true;
+                return;
+            }
             if (cellResult.hitMine) {
                 result.hitMine = true;
                 state.phase = MinesweeperDTO.Phase.lost;
@@ -318,6 +419,122 @@ public final class MinesweeperService {
         return actorKey;
     }
 
+    private static boolean hasUnusedMineShield(GameRoom room, RoomState state, String actorKey) {
+        if (room == null || state == null || actorKey == null || state.usedMineShieldPlayerKeys.contains(actorKey)) {
+            return false;
+        }
+        GameRoom.Player player = room.getUsers().get(actorKey);
+        return player != null && ITEM_MINE_SHIELD.equals(player.getPetPlayItemId());
+    }
+
+    private static boolean applyMineAreaIfAvailable(GameRoom room, RoomState state, String actorKey,
+                                                    OpenResult result, Integer centerX, Integer centerY) {
+        if (!hasUnusedGameplayItem(room, actorKey, ITEM_MINE_AREA, state.usedMineAreaPlayerKeys)
+                || result.openedCount <= 0 || state.phase != MinesweeperDTO.Phase.playing
+                || centerX == null || centerY == null || !inBounds(state, centerX, centerY)) {
+            return false;
+        }
+        return markUnmarkedMinesInArea(state, centerX, centerY, 1, 1) > 0;
+    }
+
+    private static boolean applyMineAutoMarkIfAvailable(GameRoom room, RoomState state, String actorKey,
+                                                        OpenResult result, String itemId,
+                                                        Set<String> usedPlayerKeys, int maxMarks) {
+        if (!hasUnusedGameplayItem(room, actorKey, itemId, usedPlayerKeys) || result.openedCount <= 0
+                || state.phase != MinesweeperDTO.Phase.playing) {
+            return false;
+        }
+        return markUnmarkedMines(state, maxMarks) > 0;
+    }
+
+    private static boolean hasUnusedGameplayItem(GameRoom room, String actorKey, String itemId,
+                                                 Set<String> usedPlayerKeys) {
+        if (room == null || actorKey == null || usedPlayerKeys.contains(actorKey)) {
+            return false;
+        }
+        GameRoom.Player player = room.getUsers().get(actorKey);
+        return player != null && itemId.equals(player.getPetPlayItemId());
+    }
+
+    private static int markUnmarkedMines(RoomState state, int maxMarks) {
+        int marked = 0;
+        for (int y = 0; y < state.rows; y++) {
+            for (int x = 0; x < state.cols; x++) {
+                if (state.board.cell(x, y).isMine() && !state.opened[y][x] && !state.sharedMarked[y][x]) {
+                    state.sharedMarked[y][x] = true;
+                    marked++;
+                    if (marked >= maxMarks) {
+                        return marked;
+                    }
+                }
+            }
+        }
+        return marked;
+    }
+
+    private static int markUnmarkedMinesInArea(RoomState state, int centerX, int centerY, int radius, int maxMarks) {
+        int marked = 0;
+        int minY = Math.max(0, centerY - radius);
+        int maxY = Math.min(state.rows - 1, centerY + radius);
+        int minX = Math.max(0, centerX - radius);
+        int maxX = Math.min(state.cols - 1, centerX + radius);
+        for (int y = minY; y <= maxY; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                if (state.board.cell(x, y).isMine() && !state.opened[y][x] && !state.sharedMarked[y][x]) {
+                    state.sharedMarked[y][x] = true;
+                    marked++;
+                    if (marked >= maxMarks) {
+                        return marked;
+                    }
+                }
+            }
+        }
+        return marked;
+    }
+
+    private static void settleGameplayItemsIfGameOver(GameRoom room, RoomState state) {
+        if (room == null || state == null || state.phase == MinesweeperDTO.Phase.playing) {
+            return;
+        }
+        settleGameplayItemsIfGameOver(room, state, ITEM_MINE_MARK, state.settledMineMarkPlayerKeys);
+        settleGameplayItemsIfGameOver(room, state, ITEM_MINE_AREA, state.settledMineAreaPlayerKeys);
+        settleGameplayItemsIfGameOver(room, state, ITEM_MINE_SCOUT, state.settledMineScoutPlayerKeys);
+        settleGameplayItemsIfGameOver(room, state, ITEM_METAL_DETECTOR, state.settledMetalDetectorPlayerKeys);
+        settleGameplayItemsIfGameOver(room, state, ITEM_MINE_SHIELD, state.settledMineShieldPlayerKeys);
+    }
+
+    private static void settleGameplayItemsIfGameOver(GameRoom room, RoomState state, String itemId,
+                                                      Set<String> settledPlayerKeys) {
+        for (GameRoom.Player player : room.getUsers().values()) {
+            String playerKey = player.getId();
+            if (!itemId.equals(player.getPetPlayItemId()) || settledPlayerKeys.contains(playerKey)) {
+                continue;
+            }
+            settledPlayerKeys.add(playerKey);
+            gameItemSettler.settle(room, playerKey, itemId, "gameplay", "refunded");
+        }
+    }
+
+    private static void applyMiniGameRewardsIfGameOver(GameRoom room, RoomState state) {
+        if (room == null || state == null || state.phase == MinesweeperDTO.Phase.playing
+                || state.miniGameRewardsApplied) {
+            return;
+        }
+        state.miniGameRewardsApplied = true;
+        boolean won = state.phase == MinesweeperDTO.Phase.won;
+        long durationSeconds = Math.max(0L, (nowSupplier.getAsLong() - state.startedAt + 999L) / 1000L);
+        for (GameRoom.Player player : room.getUsers().values()) {
+            if (player.getAccountId() <= 0) {
+                continue;
+            }
+            try {
+                miniGameRewards.apply(player.getAccountId(), Game.MINESWEEPER, won, durationSeconds);
+            } catch (RuntimeException e) {
+                log.warn("扫雷小游戏产出结算失败 -> accountId: {}", player.getAccountId(), e);
+            }
+        }
+    }
+
     private static String singleKey(User user) {
         return "single:" + user.getIdentityKey();
     }
@@ -355,14 +572,39 @@ public final class MinesweeperService {
         private boolean[][] opened;
         private boolean[][] sharedMarked;
         private boolean[][] exploded;
+        private final Set<String> usedMineShieldPlayerKeys = new HashSet<>();
+        private final Set<String> settledMineShieldPlayerKeys = new HashSet<>();
+        private final Set<String> usedMineMarkPlayerKeys = new HashSet<>();
+        private final Set<String> settledMineMarkPlayerKeys = new HashSet<>();
+        private final Set<String> usedMineAreaPlayerKeys = new HashSet<>();
+        private final Set<String> settledMineAreaPlayerKeys = new HashSet<>();
+        private final Set<String> usedMineScoutPlayerKeys = new HashSet<>();
+        private final Set<String> settledMineScoutPlayerKeys = new HashSet<>();
+        private final Set<String> usedMetalDetectorPlayerKeys = new HashSet<>();
+        private final Set<String> settledMetalDetectorPlayerKeys = new HashSet<>();
         private String nextTurnPlayerKey;
         private MinesweeperDTO.Phase phase;
+        private long startedAt;
+        private boolean miniGameRewardsApplied;
     }
 
     private static class OpenResult {
         private int openedCount;
         private boolean hitMine;
+        private boolean shieldedMine;
         private boolean won;
         private MinesweeperDTO.Phase phase = MinesweeperDTO.Phase.playing;
+    }
+
+    interface GameItemSettler {
+        void settle(GameRoom room, String playerKey, String itemId, String slot, String status);
+    }
+
+    interface BoardGenerator {
+        NoGuessMinesweeper.Board generate(int rows, int cols, int mines, NoGuessMinesweeper.Point firstClick);
+    }
+
+    interface MiniGameRewards {
+        void apply(long accountId, Game game, boolean win, long durationSeconds);
     }
 }

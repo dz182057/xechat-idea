@@ -13,7 +13,6 @@
         FROM pet_collections
         WHERE account_id = #{accountId}
           AND discovered = 1
-          AND count &gt; 0
         ORDER BY item_id ASC
     </select>
 
@@ -35,5 +34,16 @@
             discovered = 1,
             updated_at = #{updatedAt}
     </insert>
+
+    <update id="decrementCollectionIfEnough">
+        UPDATE pet_collections
+        SET count = count - #{quantity},
+            discovered = 1,
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND item_id = #{itemId}
+          AND discovered = 1
+          AND count &gt;= #{quantity}
+    </update>
 
 </mapper>

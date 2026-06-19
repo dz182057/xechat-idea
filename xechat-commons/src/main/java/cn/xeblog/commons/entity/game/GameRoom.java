@@ -133,9 +133,31 @@ public class GameRoom implements Serializable {
          */
         private boolean readied;
 
+        /**
+         * 该玩家本局声明的狗狗玩法槽。
+         */
+        private String petPlayItemId;
+
+        /**
+         * 该玩家本局声明的狗狗互动槽。
+         */
+        private String petInteractionItemId;
+
         public Player(String id, String username) {
             this.id = id;
             this.username = username;
+        }
+
+        public Player(String id, String channelId, String username, long accountId, String account,
+                      String uuid, String nickname, boolean readied) {
+            this.id = id;
+            this.channelId = channelId;
+            this.username = username;
+            this.accountId = accountId;
+            this.account = account;
+            this.uuid = uuid;
+            this.nickname = nickname;
+            this.readied = readied;
         }
 
         public Player(User user) {
@@ -210,6 +232,17 @@ public class GameRoom implements Serializable {
         }
 
         player.setReadied(true);
+        return true;
+    }
+
+    public boolean applyPetItems(User user, GamePlayerPetItemsDTO petItems) {
+        Player player = users.get(user.getIdentityKey());
+        if (player == null || !player.isConnection(user)) {
+            return false;
+        }
+
+        player.setPetPlayItemId(petItems == null ? null : petItems.getPetPlayItemId());
+        player.setPetInteractionItemId(petItems == null ? null : petItems.getPetInteractionItemId());
         return true;
     }
 

@@ -42,6 +42,14 @@ public class PetDogDTO implements Serializable {
 
     private Long exploreEndsAt;
 
+    private String exploreSkillId;
+
+    private String exploreSkillSnapshotId;
+
+    private Integer exploreSkillSnapshotLevel;
+
+    private String exploreSkillSnapshotDefinitionVersion;
+
     private int raceCount;
 
     private int raceFirstCount;

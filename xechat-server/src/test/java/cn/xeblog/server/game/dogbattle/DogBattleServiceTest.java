@@ -27,6 +27,8 @@ public class DogBattleServiceTest {
         DogBattleService.clearRoom(room.getId());
         DogBattleService.resetDogResolver();
         DogBattleService.resetRewardApplier();
+        DogBattleService.resetInteractionRewardApplier();
+        DogBattleService.resetGameItemSettler();
     }
 
     @Test
@@ -116,6 +118,61 @@ public class DogBattleServiceTest {
         assertEquals(76, findPlayer(result, rightKey).getHp());
         assertNotNull(result.getNextWind());
         assertEquals(2, result.getNextWind().getTurnNo());
+    }
+
+    @Test
+    public void airbagPlayItemReducesNextDamageOnce() {
+        room.addUser(left);
+        room.addUser(right);
+        room.getUsers().get(right.getIdentityKey()).setPetPlayItemId("item_battle_airbag");
+        startMatch();
+
+        DogBattleDTO firstHit = DogBattleService.handleInput(left, room, directHitInput());
+
+        assertNotNull(firstHit);
+        assertEquals("DOG", firstHit.getHit().getTargetType());
+        assertEquals(17, firstHit.getHit().getDamage());
+        assertEquals(83, findPlayer(firstHit, right.getIdentityKey()).getHp());
+        assertEquals(1, firstHit.getItemEffects().size());
+        assertEquals("item_battle_airbag", firstHit.getItemEffects().get(0).getItemId());
+        assertEquals(right.getIdentityKey(), firstHit.getItemEffects().get(0).getPlayerKey());
+        assertEquals("DAMAGE_REDUCED", firstHit.getItemEffects().get(0).getEffectType());
+        assertEquals(7, firstHit.getItemEffects().get(0).getDamageBlocked());
+
+        DogBattleService.handleInput(right, room, missInput());
+        DogBattleDTO secondHit = DogBattleService.handleInput(left, room, directHitInput());
+
+        assertNotNull(secondHit);
+        assertEquals(24, secondHit.getHit().getDamage());
+        assertEquals(59, findPlayer(secondHit, right.getIdentityKey()).getHp());
+    }
+
+    @Test
+    public void pebblePlayItemThrowsNoDamagePreviewBeforeFormalAttack() {
+        room.addUser(left);
+        room.addUser(right);
+        room.getUsers().get(left.getIdentityKey()).setPetPlayItemId("item_battle_pebble");
+        startMatch();
+
+        DogBattleDTO pebble = DogBattleService.handleInput(left, room, directHitInput());
+
+        assertNotNull(pebble);
+        assertEquals(left.getIdentityKey(), pebble.getNextPlayerKey());
+        assertEquals(1, pebble.getTurnNo());
+        assertEquals(0, pebble.getHit().getDamage());
+        assertEquals(100, findPlayer(pebble, right.getIdentityKey()).getHp());
+        assertTrue(pebble.getItemEffects().stream().anyMatch(effect ->
+                left.getIdentityKey().equals(effect.getPlayerKey())
+                        && "item_battle_pebble".equals(effect.getItemId())
+                        && "PEBBLE_THROWN".equals(effect.getEffectType())));
+
+        DogBattleDTO formalAttack = DogBattleService.handleInput(left, room, directHitInput());
+
+        assertNotNull(formalAttack);
+        assertEquals(right.getIdentityKey(), formalAttack.getNextPlayerKey());
+        assertEquals(2, formalAttack.getTurnNo());
+        assertEquals(24, formalAttack.getHit().getDamage());
+        assertEquals(76, findPlayer(formalAttack, right.getIdentityKey()).getHp());
     }
 
     @Test
@@ -432,6 +489,313 @@ public class DogBattleServiceTest {
 
         assertNull(DogBattleService.handleInput(left, room, directHitInput()));
         assertEquals(1, rewardCalls[0]);
+    }
+
+    @Test
+    public void matchOverAppliesDirectHitInteractionRewardForDeclaredPlayer() {
+        final int[] interactionRewardCalls = {0};
+        final int[] itemSettleCalls = {0};
+        DogBattleService.setRewardApplierForTest((winnerAccountId, loserAccountId, winnerBones, loserBones) -> true);
+        DogBattleService.setInteractionRewardApplierForTest((accountId, itemId, requestedBones) -> {
+            interactionRewardCalls[0]++;
+            assertEquals(left.getAccountId(), accountId);
+            assertEquals("item_battle_direct_hit", itemId);
+            assertEquals(40, requestedBones);
+        });
+        DogBattleService.setGameItemSettlerForTest((targetRoom, playerKey, itemId, slot, status, rewardBones) -> {
+            itemSettleCalls[0]++;
+            assertEquals(room.getId(), targetRoom.getId());
+            assertEquals(left.getIdentityKey(), playerKey);
+            assertEquals("item_battle_direct_hit", itemId);
+            assertEquals("interaction", slot);
+            assertEquals("succeeded", status);
+            assertEquals(40, rewardBones);
+        });
+        room.setDogBattleRoundCount(1);
+        room.addUser(left);
+        room.addUser(right);
+        room.getUsers().get(left.getIdentityKey()).setPetInteractionItemId("item_battle_direct_hit");
+        startMatch();
+
+        DogBattleDTO result = null;
+        for (int i = 0; i < 8; i++) {
+            result = DogBattleService.handleInput(left, room, directHitInput());
+            if (result != null && result.isMatchOver()) {
+                break;
+            }
+            DogBattleService.handleInput(right, room, missInput());
+        }
+
+        assertNotNull(result);
+        assertTrue(result.isMatchOver());
+        assertTrue(result.getItemEffects().stream().anyMatch(effect ->
+                left.getIdentityKey().equals(effect.getPlayerKey())
+                        && "item_battle_direct_hit".equals(effect.getItemId())
+                        && "DIRECT_HIT_MARKED".equals(effect.getEffectType())
+                        && effect.getRewardBones() == 40));
+        assertTrue(result.getItemEffects().stream().anyMatch(effect ->
+                left.getIdentityKey().equals(effect.getPlayerKey())
+                        && "item_battle_direct_hit".equals(effect.getItemId())
+                        && "INTERACTION_SUCCEEDED".equals(effect.getEffectType())
+                        && effect.getRewardBones() == 40));
+        assertEquals(1, interactionRewardCalls[0]);
+        assertEquals(1, itemSettleCalls[0]);
+
+        assertNull(DogBattleService.handleInput(left, room, directHitInput()));
+        assertEquals(1, interactionRewardCalls[0]);
+        assertEquals(1, itemSettleCalls[0]);
+    }
+
+    @Test
+    public void matchOverConsumesDirectHitInteractionItemWhenChallengeFails() {
+        final int[] interactionRewardCalls = {0};
+        final int[] itemSettleCalls = {0};
+        DogBattleService.setRewardApplierForTest((winnerAccountId, loserAccountId, winnerBones, loserBones) -> true);
+        DogBattleService.setInteractionRewardApplierForTest((accountId, itemId, requestedBones) -> interactionRewardCalls[0]++);
+        DogBattleService.setGameItemSettlerForTest((targetRoom, playerKey, itemId, slot, status, rewardBones) -> {
+            itemSettleCalls[0]++;
+            assertEquals(room.getId(), targetRoom.getId());
+            assertEquals(left.getIdentityKey(), playerKey);
+            assertEquals("item_battle_direct_hit", itemId);
+            assertEquals("interaction", slot);
+            assertEquals("failed", status);
+            assertEquals(0, rewardBones);
+        });
+        room.setDogBattleRoundCount(1);
+        room.addUser(left);
+        room.addUser(right);
+        room.getUsers().get(left.getIdentityKey()).setPetInteractionItemId("item_battle_direct_hit");
+        startMatch();
+
+        DogBattleDTO result = null;
+        for (int i = 0; i < 8; i++) {
+            DogBattleService.handleInput(left, room, missInput());
+            result = DogBattleService.handleInput(right, room, directHitInput());
+            if (result != null && result.isMatchOver()) {
+                break;
+            }
+        }
+
+        assertNotNull(result);
+        assertTrue(result.isMatchOver());
+        assertTrue(result.getItemEffects().stream().anyMatch(effect ->
+                left.getIdentityKey().equals(effect.getPlayerKey())
+                        && "item_battle_direct_hit".equals(effect.getItemId())
+                        && "INTERACTION_FAILED".equals(effect.getEffectType())));
+        assertEquals(0, interactionRewardCalls[0]);
+        assertEquals(1, itemSettleCalls[0]);
+    }
+
+    @Test
+    public void matchOverAppliesProphecyRewardWhenDeclaredPlayerWins() {
+        final int[] interactionRewardCalls = {0};
+        final int[] itemSettleCalls = {0};
+        DogBattleService.setRewardApplierForTest((winnerAccountId, loserAccountId, winnerBones, loserBones) -> true);
+        DogBattleService.setInteractionRewardApplierForTest((accountId, itemId, requestedBones) -> {
+            interactionRewardCalls[0]++;
+            assertEquals(left.getAccountId(), accountId);
+            assertEquals("item_prophecy", itemId);
+            assertEquals(20, requestedBones);
+        });
+        DogBattleService.setGameItemSettlerForTest((targetRoom, playerKey, itemId, slot, status, rewardBones) -> {
+            if (!"item_prophecy".equals(itemId)) {
+                return;
+            }
+            itemSettleCalls[0]++;
+            assertEquals(room.getId(), targetRoom.getId());
+            assertEquals(left.getIdentityKey(), playerKey);
+            assertEquals("interaction", slot);
+            assertEquals("succeeded", status);
+            assertEquals(20, rewardBones);
+        });
+        room.setDogBattleRoundCount(1);
+        room.addUser(left);
+        room.addUser(right);
+        room.getUsers().get(left.getIdentityKey()).setPetInteractionItemId("item_prophecy");
+        startMatch();
+
+        DogBattleDTO result = null;
+        for (int i = 0; i < 8; i++) {
+            result = DogBattleService.handleInput(left, room, directHitInput());
+            if (result != null && result.isMatchOver()) {
+                break;
+            }
+            DogBattleService.handleInput(right, room, missInput());
+        }
+
+        assertNotNull(result);
+        assertTrue(result.isMatchOver());
+        assertTrue(result.getItemEffects().stream().anyMatch(effect ->
+                left.getIdentityKey().equals(effect.getPlayerKey())
+                        && "item_prophecy".equals(effect.getItemId())
+                        && "INTERACTION_SUCCEEDED".equals(effect.getEffectType())
+                        && effect.getRewardBones() == 20));
+        assertEquals(1, interactionRewardCalls[0]);
+        assertEquals(1, itemSettleCalls[0]);
+    }
+
+    @Test
+    public void matchOverConsumesProphecyWhenDeclaredPlayerLoses() {
+        final int[] interactionRewardCalls = {0};
+        final int[] itemSettleCalls = {0};
+        DogBattleService.setRewardApplierForTest((winnerAccountId, loserAccountId, winnerBones, loserBones) -> true);
+        DogBattleService.setInteractionRewardApplierForTest((accountId, itemId, requestedBones) -> interactionRewardCalls[0]++);
+        DogBattleService.setGameItemSettlerForTest((targetRoom, playerKey, itemId, slot, status, rewardBones) -> {
+            if (!"item_prophecy".equals(itemId)) {
+                return;
+            }
+            itemSettleCalls[0]++;
+            assertEquals(room.getId(), targetRoom.getId());
+            assertEquals(left.getIdentityKey(), playerKey);
+            assertEquals("interaction", slot);
+            assertEquals("failed", status);
+            assertEquals(0, rewardBones);
+        });
+        room.setDogBattleRoundCount(1);
+        room.addUser(left);
+        room.addUser(right);
+        room.getUsers().get(left.getIdentityKey()).setPetInteractionItemId("item_prophecy");
+        startMatch();
+
+        DogBattleDTO result = null;
+        for (int i = 0; i < 8; i++) {
+            DogBattleService.handleInput(left, room, missInput());
+            result = DogBattleService.handleInput(right, room, directHitInput());
+            if (result != null && result.isMatchOver()) {
+                break;
+            }
+        }
+
+        assertNotNull(result);
+        assertTrue(result.isMatchOver());
+        assertTrue(result.getItemEffects().stream().anyMatch(effect ->
+                left.getIdentityKey().equals(effect.getPlayerKey())
+                        && "item_prophecy".equals(effect.getItemId())
+                        && "INTERACTION_FAILED".equals(effect.getEffectType())));
+        assertEquals(0, interactionRewardCalls[0]);
+        assertEquals(1, itemSettleCalls[0]);
+    }
+
+    @Test
+    public void matchOverConsumesTriggeredPebblePlayItem() {
+        final int[] itemSettleCalls = {0};
+        DogBattleService.setRewardApplierForTest((winnerAccountId, loserAccountId, winnerBones, loserBones) -> true);
+        DogBattleService.setGameItemSettlerForTest((targetRoom, playerKey, itemId, slot, status, rewardBones) -> {
+            if (!"item_battle_pebble".equals(itemId)) {
+                return;
+            }
+            itemSettleCalls[0]++;
+            assertEquals(left.getIdentityKey(), playerKey);
+            assertEquals("gameplay", slot);
+            assertEquals("consumed", status);
+            assertEquals(0, rewardBones);
+        });
+        room.setDogBattleRoundCount(1);
+        room.addUser(left);
+        room.addUser(right);
+        room.getUsers().get(left.getIdentityKey()).setPetPlayItemId("item_battle_pebble");
+        startMatch();
+
+        DogBattleDTO preview = DogBattleService.handleInput(left, room, directHitInput());
+        assertNotNull(preview);
+        assertEquals(0, preview.getHit().getDamage());
+
+        DogBattleDTO result = null;
+        for (int i = 0; i < 8; i++) {
+            result = DogBattleService.handleInput(left, room, directHitInput());
+            if (result != null && result.isMatchOver()) {
+                break;
+            }
+            DogBattleService.handleInput(right, room, missInput());
+        }
+
+        assertNotNull(result);
+        assertTrue(result.isMatchOver());
+        assertTrue(result.getItemEffects().stream().anyMatch(effect ->
+                left.getIdentityKey().equals(effect.getPlayerKey())
+                        && "item_battle_pebble".equals(effect.getItemId())
+                        && "PLAY_CONSUMED".equals(effect.getEffectType())));
+        assertEquals(1, itemSettleCalls[0]);
+    }
+
+    @Test
+    public void matchOverRefundsUntriggeredAirbagPlayItem() {
+        final int[] itemSettleCalls = {0};
+        DogBattleService.setRewardApplierForTest((winnerAccountId, loserAccountId, winnerBones, loserBones) -> true);
+        DogBattleService.setGameItemSettlerForTest((targetRoom, playerKey, itemId, slot, status, rewardBones) -> {
+            if (!"item_battle_airbag".equals(itemId)) {
+                return;
+            }
+            itemSettleCalls[0]++;
+            assertEquals(left.getIdentityKey(), playerKey);
+            assertEquals("gameplay", slot);
+            assertEquals("refunded", status);
+            assertEquals(0, rewardBones);
+        });
+        room.setDogBattleRoundCount(1);
+        room.addUser(left);
+        room.addUser(right);
+        room.getUsers().get(left.getIdentityKey()).setPetPlayItemId("item_battle_airbag");
+        startMatch();
+
+        DogBattleDTO result = null;
+        for (int i = 0; i < 8; i++) {
+            result = DogBattleService.handleInput(left, room, directHitInput());
+            if (result != null && result.isMatchOver()) {
+                break;
+            }
+            DogBattleService.handleInput(right, room, missInput());
+        }
+
+        assertNotNull(result);
+        assertTrue(result.isMatchOver());
+        assertTrue(result.getItemEffects().stream().anyMatch(effect ->
+                left.getIdentityKey().equals(effect.getPlayerKey())
+                        && "item_battle_airbag".equals(effect.getItemId())
+                        && "PLAY_REFUNDED".equals(effect.getEffectType())));
+        assertEquals(1, itemSettleCalls[0]);
+    }
+
+    @Test
+    public void reconnectSnapshotIncludesLastTurnAndItemStates() {
+        room.addUser(left);
+        room.addUser(right);
+        room.getUsers().get(left.getIdentityKey()).setPetPlayItemId("item_battle_pebble");
+        room.getUsers().get(left.getIdentityKey()).setPetInteractionItemId("item_battle_direct_hit");
+        room.getUsers().get(right.getIdentityKey()).setPetPlayItemId("item_battle_airbag");
+        startMatch();
+
+        DogBattleDTO pebblePreview = DogBattleService.handleInput(left, room, directHitInput());
+        assertNotNull(pebblePreview);
+        DogBattleDTO formalAttack = DogBattleService.handleInput(left, room, directHitInput());
+        assertNotNull(formalAttack);
+
+        DogBattleDTO snapshot = DogBattleService.playerStarted(room, left);
+
+        assertNotNull(snapshot);
+        assertEquals("SNAPSHOT", snapshot.getEvent());
+        assertEquals(left.getIdentityKey(), snapshot.getLastActorPlayerKey());
+        assertEquals(formalAttack.getTrajectory().size(), snapshot.getLastTrajectory().size());
+        assertEquals(formalAttack.getHit().getTargetType(), snapshot.getLastHit().getTargetType());
+        assertTrue(snapshot.getLastItemEffects().stream().anyMatch(effect ->
+                left.getIdentityKey().equals(effect.getPlayerKey())
+                        && "item_battle_direct_hit".equals(effect.getItemId())
+                        && "DIRECT_HIT_MARKED".equals(effect.getEffectType())));
+        assertTrue(snapshot.getItemStates().stream().anyMatch(item ->
+                left.getIdentityKey().equals(item.getPlayerKey())
+                        && "item_battle_pebble".equals(item.getItemId())
+                        && "gameplay".equals(item.getSlot())
+                        && "triggered".equals(item.getStatus())));
+        assertTrue(snapshot.getItemStates().stream().anyMatch(item ->
+                right.getIdentityKey().equals(item.getPlayerKey())
+                        && "item_battle_airbag".equals(item.getItemId())
+                        && "gameplay".equals(item.getSlot())
+                        && "triggered".equals(item.getStatus())));
+        assertTrue(snapshot.getItemStates().stream().anyMatch(item ->
+                left.getIdentityKey().equals(item.getPlayerKey())
+                        && "item_battle_direct_hit".equals(item.getItemId())
+                        && "interaction".equals(item.getSlot())
+                        && "challenge_met".equals(item.getStatus())));
     }
 
     @Test

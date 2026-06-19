@@ -56,6 +56,8 @@ public class TurtleSoupDTO extends GameDTO {
 
     private boolean finished;
 
+    private String petItemNotice;
+
     public TurtleSoupDTO(String roomId) {
         super(roomId, Game.TURTLE_SOUP);
     }

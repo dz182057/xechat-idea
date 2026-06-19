@@ -4,6 +4,7 @@ import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.*;
 import cn.xeblog.commons.entity.game.GameInviteDTO;
 import cn.xeblog.commons.entity.game.GameInviteResultDTO;
+import cn.xeblog.commons.entity.game.GamePlayerPetItemsDTO;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.GameRoomMsgDTO;
 import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
@@ -19,10 +20,12 @@ import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.game.dogbattle.DogBattleService;
 import cn.xeblog.server.game.dograce.DogRaceService;
+import cn.xeblog.server.game.gobang.GobangPetItemService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
 import cn.xeblog.server.game.tacitquiz.TacitQuizService;
 import cn.xeblog.server.game.minesweeper.MinesweeperService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
+import cn.xeblog.server.pet.PetGameItemDeclarationService;
 
 import java.util.List;
 
@@ -62,22 +65,35 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                 gameRoom.getUsers().forEach((k, v) -> v.setReadied(false));
                 body.setContent(gameRoom);
                 sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                if (gameRoom.getGame() == Game.GOBANG) {
+                    GobangPetItemService.clearRoom(gameRoom);
+                }
                 if (gameRoom.getGame() == Game.DOG_RACE) {
                     DogRaceService.startRace(gameRoom);
                 }
                 break;
             case PLAYER_READY:
+                GamePlayerPetItemsDTO petItems = PetGameItemDeclarationService.applyDeclarationForUser(
+                        user,
+                        gameRoom,
+                        castContent(body, GamePlayerPetItemsDTO.class));
+                body.setContent(petItems);
                 if (gameRoom.readied(user)) {
                     sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 }
                 break;
             case PLAYER_CANCEL_READY:
                 if (gameRoom.readyCancelled(user)) {
+                    PetGameItemDeclarationService.releaseReservedForPlayer(gameRoom, user);
                     sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 }
                 break;
             case GAME_OVER:
                 if (gameRoom.isPlayerConnection(user)) {
+                    PetGameItemDeclarationService.releaseReservedForRoom(gameRoom);
+                    if (gameRoom.getGame() == Game.GOBANG) {
+                        GobangPetItemService.clearRoom(gameRoom);
+                    }
                     user.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 }
                 break;
@@ -86,7 +102,12 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                     if (gameRoom.getGame() == Game.DOG_BATTLE) {
                         DogBattleDTO snapshot = DogBattleService.playerStarted(gameRoom, user);
                         if (snapshot != null) {
-                            sendMsg(gameRoom, ResponseBuilder.build(null, snapshot, MessageType.GAME));
+                            Response response = ResponseBuilder.build(null, snapshot, MessageType.GAME);
+                            if ("SNAPSHOT".equals(snapshot.getEvent())) {
+                                user.send(response);
+                            } else {
+                                sendMsg(gameRoom, response);
+                            }
                         }
                     }
                     gameRoom.getHomeowner().send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
@@ -109,6 +130,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
     }
 
     private void roomClose(User user, GameRoom gameRoom) {
+        PetGameItemDeclarationService.releaseReservedForRoom(gameRoom);
         GameRoomCache.removeRoom(gameRoom.getId());
         QuickQuizService.clearRoom(gameRoom);
         TacitQuizService.clearRoom(gameRoom);
@@ -116,6 +138,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         TurtleSoupService.clearRoom(gameRoom.getId());
         DogRaceService.clearRoom(gameRoom.getId());
         DogBattleService.clearRoom(gameRoom.getId());
+        GobangPetItemService.clearRoom(gameRoom);
 
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
         msg.setRoomId(gameRoom.getId());
@@ -212,6 +235,15 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
     }
 
     private void playerLeft(User user, GameRoom gameRoom, GameRoomMsgDTO body) {
+        if (!gameRoom.isPlayerConnection(user)) {
+            return;
+        }
+        boolean homeowner = gameRoom.isHomeowner(user);
+        if (homeowner) {
+            PetGameItemDeclarationService.releaseReservedForRoom(gameRoom);
+        } else {
+            PetGameItemDeclarationService.releaseReservedForPlayer(gameRoom, user);
+        }
         user.setStatus(UserStatus.FISHING);
         ChannelAction.updateUserStatus(user);
 
@@ -222,9 +254,10 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             TurtleSoupService.clearRoom(gameRoom.getId());
             DogRaceService.clearRoom(gameRoom.getId());
             DogBattleService.clearRoom(gameRoom.getId());
+            GobangPetItemService.clearRoom(gameRoom);
             Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);
             sendMsg(gameRoom, resp);
-            if (gameRoom.isHomeowner(user)) {
+            if (homeowner) {
                 roomClose(user, gameRoom);
             }
         }

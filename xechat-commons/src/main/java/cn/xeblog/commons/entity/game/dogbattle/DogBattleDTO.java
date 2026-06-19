@@ -21,6 +21,11 @@ public class DogBattleDTO extends GameDTO {
     private List<DogBattleObstacleDTO> obstacles;
     private String phase;
     private String winnerPlayerKey;
+    private List<DogBattleItemStateDTO> itemStates;
+    private String lastActorPlayerKey;
+    private List<DogBattleTrajectoryPointDTO> lastTrajectory;
+    private DogBattleHitDTO lastHit;
+    private List<DogBattleItemEffectDTO> lastItemEffects;
 
     private String actorPlayerKey;
     private List<DogBattleTrajectoryPointDTO> trajectory;
@@ -29,6 +34,7 @@ public class DogBattleDTO extends GameDTO {
     private DogBattleWindDTO nextWind;
     private boolean usedSkill;
     private String skillName;
+    private List<DogBattleItemEffectDTO> itemEffects;
     private boolean roundOver;
     private boolean matchOver;
     private DogBattleRewardPreviewDTO rewardPreview;
@@ -96,6 +102,23 @@ public class DogBattleDTO extends GameDTO {
         private int y;
         private boolean directHit;
         private int damage;
+    }
+
+    @Data
+    public static class DogBattleItemEffectDTO implements Serializable {
+        private String playerKey;
+        private String itemId;
+        private String effectType;
+        private int damageBlocked;
+        private int rewardBones;
+    }
+
+    @Data
+    public static class DogBattleItemStateDTO implements Serializable {
+        private String playerKey;
+        private String itemId;
+        private String slot;
+        private String status;
     }
 
     @Data

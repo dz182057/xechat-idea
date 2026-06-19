@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetTrainingMapper">
+
+    <select id="listSkillsByAccountId" resultType="cn.xeblog.server.pet.PetTrainingSkillRecord">
+        SELECT account_id, skill_id, level, definition_version, updated_at
+        FROM pet_training_skills
+        WHERE account_id = #{accountId}
+        ORDER BY skill_id ASC
+    </select>
+
+    <select id="findSkill" resultType="cn.xeblog.server.pet.PetTrainingSkillRecord">
+        SELECT account_id, skill_id, level, definition_version, updated_at
+        FROM pet_training_skills
+        WHERE account_id = #{accountId}
+          AND skill_id = #{skillId}
+    </select>
+
+    <insert id="insertSkill">
+        INSERT INTO pet_training_skills (
+            account_id, skill_id, level, definition_version, updated_at
+        ) VALUES (
+            #{accountId}, #{skillId}, #{level}, #{definitionVersion}, #{updatedAt}
+        )
+    </insert>
+
+    <update id="updateSkillLevel">
+        UPDATE pet_training_skills
+        SET level = #{level},
+            definition_version = #{definitionVersion},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND skill_id = #{skillId}
+    </update>
+
+    <select id="findFlags" resultType="cn.xeblog.server.pet.PetTrainingFlagRecord">
+        SELECT account_id, first_explore_free_available, first_explore_free_used, updated_at
+        FROM pet_training_flags
+        WHERE account_id = #{accountId}
+    </select>
+
+    <insert id="ensureFlags">
+        INSERT OR IGNORE INTO pet_training_flags (
+            account_id, first_explore_free_available, first_explore_free_used, updated_at
+        ) VALUES (
+            #{accountId}, 0, 0, #{updatedAt}
+        )
+    </insert>
+
+    <update id="grantFirstExploreFreeLearn">
+        UPDATE pet_training_flags
+        SET first_explore_free_available = 1,
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND first_explore_free_available = 0
+          AND first_explore_free_used = 0
+    </update>
+
+    <update id="consumeFirstExploreFreeLearn">
+        UPDATE pet_training_flags
+        SET first_explore_free_available = 0,
+            first_explore_free_used = 1,
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND first_explore_free_available = 1
+          AND first_explore_free_used = 0
+    </update>
+
+</mapper>

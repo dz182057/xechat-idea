@@ -6,18 +6,21 @@
 
     <sql id="cols">
         id, owner_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, energy_date, status,
-        explore_location, explore_ends_at, explore_duration_hours, race_count, race_first_count, weekly_points,
-        created_at, updated_at
+        explore_location, explore_ends_at, explore_duration_hours, explore_skill_id,
+        explore_skill_snapshot_id, explore_skill_snapshot_level, explore_skill_snapshot_version,
+        race_count, race_first_count, weekly_points, created_at, updated_at
     </sql>
 
     <insert id="insert" parameterType="cn.xeblog.server.pet.PetDogRecord">
         INSERT INTO dogs (
             id, owner_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, energy_date, status,
-            explore_location, explore_ends_at, explore_duration_hours, race_count, race_first_count, weekly_points,
-            created_at, updated_at
+            explore_location, explore_ends_at, explore_duration_hours, explore_skill_id,
+            explore_skill_snapshot_id, explore_skill_snapshot_level, explore_skill_snapshot_version,
+            race_count, race_first_count, weekly_points, created_at, updated_at
         ) VALUES (
             #{id}, #{ownerId}, #{name}, #{breed}, #{stage}, #{speed}, #{stamina}, #{burst}, #{wisdom}, #{bond},
             #{energy}, #{energyDate}, #{status}, #{exploreLocation}, #{exploreEndsAt}, #{exploreDurationHours},
+            #{exploreSkillId}, #{exploreSkillSnapshotId}, #{exploreSkillSnapshotLevel}, #{exploreSkillSnapshotVersion},
             #{raceCount}, #{raceFirstCount}, #{weeklyPoints}, #{createdAt}, #{updatedAt}
         )
     </insert>
@@ -65,20 +68,6 @@
           AND owner_id = #{ownerId}
     </update>
 
-    <update id="updateTrainingStats">
-        UPDATE dogs
-        SET speed = #{speed},
-            stamina = #{stamina},
-            burst = #{burst},
-            wisdom = #{wisdom},
-            bond = #{bond},
-            energy = #{energy},
-            updated_at = #{updatedAt}
-        WHERE id = #{id}
-          AND owner_id = #{ownerId}
-          AND status = 'idle'
-    </update>
-
     <update id="updateStage">
         UPDATE dogs
         SET stage = #{stage},
@@ -105,11 +94,34 @@
             explore_location = #{location},
             explore_ends_at = #{exploreEndsAt},
             explore_duration_hours = #{durationHours},
+            explore_skill_snapshot_id = #{snapshotSkillId},
+            explore_skill_snapshot_level = #{snapshotSkillLevel},
+            explore_skill_snapshot_version = #{snapshotSkillVersion},
             updated_at = #{updatedAt}
         WHERE id = #{id}
           AND owner_id = #{ownerId}
           AND status = 'idle'
           AND energy &gt;= #{energyCost}
+    </update>
+
+    <update id="updateExploreSkill">
+        UPDATE dogs
+        SET explore_skill_id = #{skillId},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+    </update>
+
+    <update id="addEnergyIfUnderLimit">
+        UPDATE dogs
+        SET energy = CASE
+                WHEN energy + #{amount} &gt; #{energyLimit} THEN #{energyLimit}
+                ELSE energy + #{amount}
+            END,
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND owner_id = #{ownerId}
+          AND energy &lt; #{energyLimit}
     </update>
 
     <update id="openExplore">
@@ -118,6 +130,9 @@
             explore_location = NULL,
             explore_ends_at = NULL,
             explore_duration_hours = NULL,
+            explore_skill_snapshot_id = NULL,
+            explore_skill_snapshot_level = NULL,
+            explore_skill_snapshot_version = NULL,
             updated_at = #{updatedAt}
         WHERE id = #{id}
           AND owner_id = #{ownerId}
@@ -130,6 +145,9 @@
             explore_location = NULL,
             explore_ends_at = NULL,
             explore_duration_hours = NULL,
+            explore_skill_snapshot_id = NULL,
+            explore_skill_snapshot_level = NULL,
+            explore_skill_snapshot_version = NULL,
             updated_at = #{updatedAt}
         WHERE id = #{id}
           AND owner_id = #{ownerId}

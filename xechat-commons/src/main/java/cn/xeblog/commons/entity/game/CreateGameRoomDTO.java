@@ -76,6 +76,11 @@ public class CreateGameRoomDTO implements Serializable {
      */
     private Boolean dogBattleAllowSkill;
 
+    /**
+     * 房主玩家级狗狗道具声明。
+     */
+    private GamePlayerPetItemsDTO petItems;
+
     public CreateGameRoomDTO(Game game, int nums, String gameMode) {
         this.game = game;
         this.nums = nums;

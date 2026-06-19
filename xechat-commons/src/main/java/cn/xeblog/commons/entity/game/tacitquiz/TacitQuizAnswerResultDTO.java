@@ -27,4 +27,6 @@ public class TacitQuizAnswerResultDTO implements Serializable {
 
     private boolean finished;
 
+    private List<String> petItemNotices;
+
 }

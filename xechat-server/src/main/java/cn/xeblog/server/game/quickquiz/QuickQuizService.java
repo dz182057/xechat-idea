@@ -11,6 +11,7 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.PetGameItemDeclarationService;
 import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
@@ -26,6 +27,14 @@ import java.util.function.LongSupplier;
 public final class QuickQuizService {
 
     private static final int MAX_PLAYERS = 8;
+    private static final String SLOT_GAMEPLAY = "gameplay";
+    private static final String SLOT_INTERACTION = "interaction";
+    private static final String ITEM_SCORE_PAD = "item_quiz_score_pad";
+    private static final String ITEM_WRONG_OPTION = "item_quiz_wrong_option";
+    private static final String ITEM_DUEL = "item_quiz_duel";
+    private static final String ITEM_PROPHECY = "item_prophecy";
+    private static final int SCORE_PAD_BLOCK_POINTS = 2;
+    private static final int DUEL_REWARD_BONES = 30;
 
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
 
@@ -131,7 +140,7 @@ public final class QuickQuizService {
             if (now > state.currentQuestion.getDeadlineAt()) {
                 return revealLocked(room, state, now);
             }
-            QuickQuizAnswerViewDTO answer = buildAnswer(user, state.currentQuestion, body, now, state);
+            QuickQuizAnswerViewDTO answer = buildAnswer(user, room, state.currentQuestion, body, now, state);
             state.answers.putIfAbsent(key, answer);
             if (state.answers.size() >= state.expectedPlayerKeys.size()) {
                 return revealLocked(room, state, now);
@@ -202,7 +211,7 @@ public final class QuickQuizService {
         nowSupplier = System::currentTimeMillis;
     }
 
-    private static QuickQuizAnswerViewDTO buildAnswer(User user, QuickQuizQuestionDTO question,
+    private static QuickQuizAnswerViewDTO buildAnswer(User user, GameRoom room, QuickQuizQuestionDTO question,
                                                        QuickQuizSubmitAnswerDTO body, long answeredAt,
                                                        RoomState state) {
         int choiceIndex = body.getChoiceIndex();
@@ -211,10 +220,29 @@ public final class QuickQuizService {
         boolean correct = !skipped && choiceIndex == question.getCorrectAnswerIndex();
         int delta = skipped ? 0 : (correct ? question.getScore() : -wrongPenalty(question.getScore()));
         String key = playerKey(user);
+        if (!correct && !skipped) {
+            delta = applyScorePadIfNeeded(user, room, state, key, delta);
+        }
         int totalScore = state.scores.getOrDefault(key, 0) + delta;
         state.scores.put(key, totalScore);
         return new QuickQuizAnswerViewDTO(key, user.getUsername(), choiceIndex, choiceText, answeredAt,
                 correct, skipped, delta, totalScore);
+    }
+
+    private static int applyScorePadIfNeeded(User user, GameRoom room, RoomState state, String playerKey, int delta) {
+        GameRoom.Player player = room.getUsers().get(playerKey);
+        if (player == null || !ITEM_SCORE_PAD.equals(player.getPetPlayItemId()) || delta >= 0) {
+            return delta;
+        }
+        int reducedPenalty = Math.max(0, Math.abs(delta) - SCORE_PAD_BLOCK_POINTS);
+        PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_SCORE_PAD, SLOT_GAMEPLAY);
+        player.setPetPlayItemId(null);
+        if (reducedPenalty == 0) {
+            state.petItemNotices.add("护分爪垫触发，" + displayName(user) + " 本题答错扣分被抵消。");
+        } else {
+            state.petItemNotices.add("护分爪垫触发，" + displayName(user) + " 本题答错少扣 " + SCORE_PAD_BLOCK_POINTS + " 分。");
+        }
+        return -reducedPenalty;
     }
 
     private static String optionText(QuickQuizQuestionDTO question, int choiceIndex) {
@@ -237,7 +265,7 @@ public final class QuickQuizService {
             String key = playerKey(player);
             if (!state.answers.containsKey(key)) {
                 QuickQuizSubmitAnswerDTO skip = new QuickQuizSubmitAnswerDTO(room.getId(), state.currentQuestion.getId(), -1, "不作答");
-                state.answers.put(key, buildAnswer(player, state.currentQuestion, skip, now, state));
+                state.answers.put(key, buildAnswer(player, room, state.currentQuestion, skip, now, state));
             }
         }
 
@@ -252,18 +280,24 @@ public final class QuickQuizService {
         List<QuickQuizPlayerScoreDTO> rankings = rankings(state, finished);
         if (finished) {
             applyMiniGameRewards(state, rankings, now);
+            applyDuelSettlements(room, state, rankings);
+            applyProphecySettlements(room, state, rankings);
+            refundUntriggeredPlayItems(room, state);
         }
         int rewardPerWinner = finished ? applyRewards(state, rankings) : 0;
         QuickQuizQuestionDTO resultQuestion = copyQuestion(state.currentQuestion, true);
         QuickQuizAnswerResultDTO result = new QuickQuizAnswerResultDTO(room.getId(), resultQuestion, answers, rankings,
                 state.roundNo, room.getQuickQuizQuestionCount(), finished, state.prizePool, rewardPerWinner,
                 finished && state.economyApplied);
+        result.setPetItemNotices(new ArrayList<>(state.petItemNotices));
         sendToRoom(room, ResponseBuilder.build(null, result,
                 finished ? MessageType.QUICK_QUIZ_MATCH_RESULT : MessageType.QUICK_QUIZ_ROUND_RESULT));
 
         state.currentQuestion = null;
         state.answers.clear();
         state.expectedPlayerKeys.clear();
+        state.disabledWrongOptionByPlayerKey.clear();
+        state.petItemNotices.clear();
         if (finished) {
             state.closed = true;
             state.prizePool = 0;
@@ -287,9 +321,60 @@ public final class QuickQuizService {
         dto.setTotalRounds(room.getQuickQuizQuestionCount());
 
         state.start(dto, players);
-        QuickQuizQuestionDTO visibleQuestion = copyQuestion(dto, false);
-        sendToRoom(room, ResponseBuilder.build(null, visibleQuestion, MessageType.QUICK_QUIZ_QUESTION));
-        return visibleQuestion;
+        applyWrongOptionItems(room, state);
+        QuickQuizQuestionDTO callerQuestion = copyQuestion(dto, false);
+        for (User player : players) {
+            QuickQuizQuestionDTO visibleQuestion = visibleQuestionForPlayer(dto, state, playerKey(player));
+            User target = UserCache.get(player.getId());
+            if (target != null) {
+                target.send(ResponseBuilder.build(null, visibleQuestion, MessageType.QUICK_QUIZ_QUESTION));
+            }
+            if (playerKey(player).equals(playerKey(room.getHomeowner()))) {
+                callerQuestion = visibleQuestion;
+            }
+        }
+        return callerQuestion;
+    }
+
+    private static void applyWrongOptionItems(GameRoom room, RoomState state) {
+        QuickQuizQuestionDTO question = state.currentQuestion;
+        if (question == null || question.getOptions() == null || question.getOptions().size() < 3) {
+            return;
+        }
+        int disabledOptionIndex = firstWrongOptionIndex(question);
+        if (disabledOptionIndex < 0) {
+            return;
+        }
+        for (User player : state.players) {
+            String key = playerKey(player);
+            GameRoom.Player roomPlayer = room.getUsers().get(key);
+            if (roomPlayer == null || !ITEM_WRONG_OPTION.equals(roomPlayer.getPetPlayItemId())) {
+                continue;
+            }
+            state.disabledWrongOptionByPlayerKey.put(key, disabledOptionIndex);
+            PetGameItemDeclarationService.settleConsumed(room, key, ITEM_WRONG_OPTION, SLOT_GAMEPLAY);
+            roomPlayer.setPetPlayItemId(null);
+        }
+    }
+
+    private static int firstWrongOptionIndex(QuickQuizQuestionDTO question) {
+        for (int i = 0; i < question.getOptions().size(); i++) {
+            if (i != question.getCorrectAnswerIndex()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static QuickQuizQuestionDTO visibleQuestionForPlayer(QuickQuizQuestionDTO question, RoomState state,
+                                                                 String playerKey) {
+        QuickQuizQuestionDTO visible = copyQuestion(question, false);
+        Integer disabledOptionIndex = state.disabledWrongOptionByPlayerKey.get(playerKey);
+        if (disabledOptionIndex != null) {
+            visible.setPetItemDisabledOptionIndex(disabledOptionIndex);
+            visible.setPetItemNotice("错项嗅探触发，已为你排除一个错误选项。");
+        }
+        return visible;
     }
 
     private static int resolveTimeLimitSeconds(GameRoom room) {
@@ -386,6 +471,150 @@ public final class QuickQuizService {
         return reward;
     }
 
+    private static void applyDuelSettlements(GameRoom room, RoomState state, List<QuickQuizPlayerScoreDTO> rankings) {
+        Map<String, QuickQuizPlayerScoreDTO> rankingsByPlayer = new HashMap<>();
+        for (QuickQuizPlayerScoreDTO ranking : rankings) {
+            rankingsByPlayer.put(ranking.getPlayerKey(), ranking);
+        }
+        for (GameRoom.Player player : room.getUsers().values()) {
+            String playerKey = player.getId();
+            if (!ITEM_DUEL.equals(player.getPetInteractionItemId())) {
+                continue;
+            }
+            GameRoom.Player target = defaultDuelTarget(room, playerKey);
+            QuickQuizPlayerScoreDTO carrierScore = rankingsByPlayer.get(playerKey);
+            QuickQuizPlayerScoreDTO targetScore = target == null ? null : rankingsByPlayer.get(target.getId());
+            if (target == null || carrierScore == null || targetScore == null || carrierScore.getScore() == targetScore.getScore()) {
+                PetGameItemDeclarationService.settleRefunded(room, playerKey, ITEM_DUEL, SLOT_INTERACTION);
+                state.petItemNotices.add("点名对决未结算，" + displayName(player) + " 的道具已返还。");
+            } else if (carrierScore.getScore() > targetScore.getScore()) {
+                int reward = PetGameItemDeclarationService.settleSucceededWithInteractionReward(
+                        room, playerKey, ITEM_DUEL, SLOT_INTERACTION, DUEL_REWARD_BONES);
+                if (reward > 0) {
+                    state.petItemNotices.add("点名对决命中，" + displayName(player) + " 得分高于 "
+                            + displayName(target) + "，返还道具并获得 🦴" + reward + "。");
+                } else {
+                    state.petItemNotices.add("点名对决命中，" + displayName(player) + " 得分高于 "
+                            + displayName(target) + "，返还道具；今日互动奖励额度已用完。");
+                }
+            } else {
+                PetGameItemDeclarationService.settleFailed(room, playerKey, ITEM_DUEL, SLOT_INTERACTION);
+                state.petItemNotices.add("点名对决未命中，" + displayName(player) + " 得分未高于 "
+                        + displayName(target) + "，道具已消耗。");
+            }
+            player.setPetInteractionItemId(null);
+        }
+    }
+
+    private static GameRoom.Player defaultDuelTarget(GameRoom room, String playerKey) {
+        if (room.getUsers().size() < 3) {
+            return null;
+        }
+        for (GameRoom.Player candidate : room.getUsers().values()) {
+            if (!Objects.equals(candidate.getId(), playerKey)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static void applyProphecySettlements(GameRoom room, RoomState state,
+                                                 List<QuickQuizPlayerScoreDTO> rankings) {
+        List<QuickQuizPlayerScoreDTO> winners = new ArrayList<>();
+        for (QuickQuizPlayerScoreDTO ranking : rankings) {
+            if (ranking.isWinner()) {
+                winners.add(ranking);
+            }
+        }
+        boolean uniqueWinner = winners.size() == 1;
+        String winnerKey = uniqueWinner ? winners.get(0).getPlayerKey() : null;
+        int rewardBones = prophecyRewardBones(room.getUsers().size());
+        for (GameRoom.Player player : room.getUsers().values()) {
+            String playerKey = player.getId();
+            if (!ITEM_PROPHECY.equals(player.getPetInteractionItemId())) {
+                continue;
+            }
+            if (!uniqueWinner) {
+                PetGameItemDeclarationService.settleRefunded(room, playerKey, ITEM_PROPHECY, SLOT_INTERACTION);
+                state.petItemNotices.add("胜负预言贴未结算，快问快答出现并列胜者，"
+                        + displayName(player) + " 的道具已返还。");
+            } else if (Objects.equals(playerKey, winnerKey)) {
+                int reward = PetGameItemDeclarationService.settleSucceededWithInteractionReward(
+                        room, playerKey, ITEM_PROPHECY, SLOT_INTERACTION, rewardBones);
+                if (reward > 0) {
+                    state.petItemNotices.add("胜负预言贴命中，" + displayName(player)
+                            + " 成为唯一胜者，返还道具并获得 🦴" + reward + "。");
+                } else {
+                    state.petItemNotices.add("胜负预言贴命中，" + displayName(player)
+                            + " 成为唯一胜者，返还道具；今日互动奖励额度已用完。");
+                }
+            } else {
+                PetGameItemDeclarationService.settleFailed(room, playerKey, ITEM_PROPHECY, SLOT_INTERACTION);
+                state.petItemNotices.add("胜负预言贴未命中，" + displayName(player)
+                        + " 未成为唯一胜者，道具已消耗。");
+            }
+            player.setPetInteractionItemId(null);
+        }
+    }
+
+    private static int prophecyRewardBones(int candidateCount) {
+        if (candidateCount <= 2) {
+            return 20;
+        }
+        if (candidateCount <= 4) {
+            return 35;
+        }
+        return 50;
+    }
+
+    private static void refundUntriggeredPlayItems(GameRoom room, RoomState state) {
+        for (GameRoom.Player player : room.getUsers().values()) {
+            String itemId = player.getPetPlayItemId();
+            if (!ITEM_SCORE_PAD.equals(itemId) && !ITEM_WRONG_OPTION.equals(itemId)) {
+                continue;
+            }
+            PetGameItemDeclarationService.settleRefunded(room, player.getId(), itemId, SLOT_GAMEPLAY);
+            state.petItemNotices.add(itemName(itemId) + "未触发，" + displayName(player) + " 的道具已返还。");
+            player.setPetPlayItemId(null);
+        }
+    }
+
+    private static String itemName(String itemId) {
+        if (ITEM_SCORE_PAD.equals(itemId)) {
+            return "护分爪垫";
+        }
+        if (ITEM_WRONG_OPTION.equals(itemId)) {
+            return "错项嗅探";
+        }
+        return "道具";
+    }
+
+    private static String displayName(User user) {
+        if (user == null) {
+            return "玩家";
+        }
+        if (StrUtil.isNotBlank(user.getNickname())) {
+            return user.getNickname();
+        }
+        if (StrUtil.isNotBlank(user.getUsername())) {
+            return user.getUsername();
+        }
+        return "玩家" + user.getAccountId();
+    }
+
+    private static String displayName(GameRoom.Player player) {
+        if (player == null) {
+            return "玩家";
+        }
+        if (StrUtil.isNotBlank(player.getNickname())) {
+            return player.getNickname();
+        }
+        if (StrUtil.isNotBlank(player.getUsername())) {
+            return player.getUsername();
+        }
+        return "玩家" + player.getAccountId();
+    }
+
     private static List<QuickQuizPlayerScoreDTO> rankings(RoomState state, boolean markWinners) {
         int best = Integer.MIN_VALUE;
         for (Integer score : state.scores.values()) {
@@ -464,9 +693,12 @@ public final class QuickQuizService {
     }
 
     private static QuickQuizQuestionDTO copyQuestion(QuickQuizQuestionDTO question, boolean includeAnswer) {
-        return new QuickQuizQuestionDTO(question.getId(), question.getQuestion(), question.getOptions(),
+        QuickQuizQuestionDTO copy = new QuickQuizQuestionDTO(question.getId(), question.getQuestion(), question.getOptions(),
                 includeAnswer ? question.getCorrectAnswerIndex() : -1, question.getScore(),
                 question.getStartedAt(), question.getDeadlineAt(), question.getRoundNo(), question.getTotalRounds());
+        copy.setPetItemNotice(question.getPetItemNotice());
+        copy.setPetItemDisabledOptionIndex(question.getPetItemDisabledOptionIndex());
+        return copy;
     }
 
     private static List<QuickQuizQuestionDTO> normalizeQuestions(List<QuickQuizQuestionDTO> questions) {
@@ -566,6 +798,8 @@ public final class QuickQuizService {
         private final Map<String, Long> accountIds = new HashMap<>();
         private final Set<String> expectedPlayerKeys = new HashSet<>();
         private final List<User> players = new ArrayList<>();
+        private final Map<String, Integer> disabledWrongOptionByPlayerKey = new HashMap<>();
+        private final List<String> petItemNotices = new ArrayList<>();
         private QuickQuizQuestionDTO currentQuestion;
         private int roundNo;
         private int prizePool;

@@ -4,14 +4,17 @@ import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameInviteDTO;
 import cn.xeblog.commons.entity.game.GameInviteResultDTO;
+import cn.xeblog.commons.entity.game.GamePlayerPetItemsDTO;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.GameRoomMsgDTO;
+import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.InviteStatus;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.game.dogbattle.DogBattleService;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.After;
 import org.junit.Assert;
@@ -24,10 +27,13 @@ import java.util.Set;
 public class GameRoomEndpointRoutingTest {
 
     private final String roomId = "endpoint-routing-room";
+    private final String dogBattleRoomId = "dog-battle-reconnect-routing-room";
 
     @After
     public void tearDown() {
         GameRoomCache.removeRoom(roomId);
+        GameRoomCache.removeRoom(dogBattleRoomId);
+        DogBattleService.clearRoom(dogBattleRoomId);
         UserCache.clear();
     }
 
@@ -78,8 +84,13 @@ public class GameRoomEndpointRoutingTest {
         Assert.assertNull(readResponse(otherEndpoint));
 
         GameRoomMsgDTO ready = new GameRoomMsgDTO(roomId, null,
-                GameRoomMsgDTO.MsgType.PLAYER_READY, null);
+                GameRoomMsgDTO.MsgType.PLAYER_READY,
+                new GamePlayerPetItemsDTO(null, null));
         handler.process(acceptedEndpoint, room, ready);
+
+        GameRoom.Player acceptedPlayer = room.getUsers().get(acceptedEndpoint.getIdentityKey());
+        Assert.assertNull("空玩法槽道具不应写入房间状态", acceptedPlayer.getPetPlayItemId());
+        Assert.assertNull("空互动槽道具不应写入房间状态", acceptedPlayer.getPetInteractionItemId());
 
         Response homeownerReadyResponse = readResponse(homeowner);
         Response acceptedReadyResponse = readResponse(acceptedEndpoint);
@@ -94,6 +105,51 @@ public class GameRoomEndpointRoutingTest {
         Assert.assertNull("未绑定进房间的同账号其它端不能代替玩家触发房间广播", readResponse(homeowner));
         Assert.assertNull(readResponse(acceptedEndpoint));
         Assert.assertNull(readResponse(otherEndpoint));
+    }
+
+    @Test
+    public void dogBattleReconnectSnapshotOnlySendsToReconnectingPlayer() throws Exception {
+        User left = user("left-channel", 2001L, "左侧");
+        User right = user("right-channel", 2002L, "右侧");
+        addOnline(left);
+        addOnline(right);
+
+        GameRoom room = GameRoomCache.seize(dogBattleRoomId);
+        room.setGame(Game.DOG_BATTLE);
+        room.setNums(2);
+        room.setHomeowner(left);
+        room.addUser(left);
+        room.addUser(right);
+
+        GameRoomActionHandler handler = new GameRoomActionHandler();
+        GameRoomMsgDTO started = new GameRoomMsgDTO(room.getId(), Game.DOG_BATTLE,
+                GameRoomMsgDTO.MsgType.PLAYER_GAME_STARTED, null);
+
+        handler.process(left, room, started);
+        Response leftWaiting = readResponse(left);
+        Assert.assertEquals(MessageType.GAME_ROOM, leftWaiting.getType());
+        Assert.assertNull(readResponse(right));
+        drain(left);
+        drain(right);
+
+        handler.process(right, room, started);
+        Response leftMatchStart = readResponse(left);
+        Response rightMatchStart = readResponse(right);
+        Assert.assertEquals("MATCH_START", ((DogBattleDTO) leftMatchStart.getBody()).getEvent());
+        Assert.assertEquals("MATCH_START", ((DogBattleDTO) rightMatchStart.getBody()).getEvent());
+        Response homeownerNotice = readResponse(left);
+        Assert.assertEquals(MessageType.GAME_ROOM, homeownerNotice.getType());
+        drain(left);
+        drain(right);
+
+        handler.process(left, room, started);
+        Response leftSnapshot = readResponse(left);
+        Assert.assertEquals(MessageType.GAME, leftSnapshot.getType());
+        Assert.assertEquals("SNAPSHOT", ((DogBattleDTO) leftSnapshot.getBody()).getEvent());
+        drain(left);
+        Assert.assertNull("重连 snapshot 不应广播给对手", readResponse(right));
+
+        DogBattleService.clearRoom(room.getId());
     }
 
     private static User user(String channelId, long accountId, String username) {

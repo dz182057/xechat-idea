@@ -30,6 +30,10 @@ public class PetDogRecord {
     private String exploreLocation;
     private Long exploreEndsAt;
     private Integer exploreDurationHours;
+    private String exploreSkillId;
+    private String exploreSkillSnapshotId;
+    private Integer exploreSkillSnapshotLevel;
+    private String exploreSkillSnapshotVersion;
     private int raceCount;
     private int raceFirstCount;
     private int weeklyPoints;
