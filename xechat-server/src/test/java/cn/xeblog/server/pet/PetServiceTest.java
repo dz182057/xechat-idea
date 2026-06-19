@@ -4,11 +4,16 @@ import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
+import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
+import cn.xeblog.commons.entity.pet.PetExploreOpenResultDTO;
+import cn.xeblog.commons.entity.pet.PetExploreRewardDTO;
+import cn.xeblog.commons.entity.pet.PetExploreStartDTO;
 import cn.xeblog.commons.entity.pet.PetFeedDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
 import cn.xeblog.commons.entity.pet.PetShopBuyDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDefinitionDTO;
+import cn.xeblog.commons.entity.pet.PetUseItemDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.account.DbInitializer;
@@ -35,6 +40,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntSupplier;
 
 public class PetServiceTest {
 
@@ -342,6 +348,43 @@ public class PetServiceTest {
     }
 
     @Test
+    public void feastShouldRestoreEnergyToSnowMountainCollectionLimit() throws Exception {
+        User user = accountUser(990022L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "雪山餐狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+        insertSnowMountainCollections(user.getAccountId());
+        insertItem(user.getAccountId(), "item_feast", 1);
+        setDogEnergy(user.getAccountId(), dogId, 10, LocalDate.now().toString());
+
+        PetProfileDTO profile = PetProfileService.useItem(user.getAccountId(), useItem("item_feast", dogId));
+
+        Assert.assertEquals(20, profile.getAssets().getEnergyLimit());
+        Assert.assertEquals(20, profile.getDogs().get(0).getEnergy());
+        Assert.assertEquals(0, findItemCount(user.getAccountId(), "item_feast"));
+    }
+
+    @Test
+    public void exploreOpenShouldApplyOldLibraryCollectionBonesBonus() throws Exception {
+        User user = accountUser(990021L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "书馆狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+        insertOldLibraryCollections(user.getAccountId());
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 99);
+        try {
+            PetProfileService.exploreStart(user.getAccountId(), exploreStart(dogId, "back_hill", 1));
+            setExploreEnded(user.getAccountId(), dogId);
+
+            PetExploreOpenResultDTO result = PetProfileService.exploreOpen(user.getAccountId(), exploreOpen(dogId));
+
+            Assert.assertEquals("bones", result.getRewards().get(0).getType());
+            Assert.assertEquals(11, result.getRewards().get(0).getAmount());
+            Assert.assertEquals(326, result.getProfile().getAssets().getBones());
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
+    }
+
+    @Test
     public void walkDogShouldConsumeEnergyAndGrantOutingBondOncePerDay() {
         User user = accountUser(990016L);
         PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "散步狗"));
@@ -498,6 +541,28 @@ public class PetServiceTest {
         return dto;
     }
 
+    private static PetExploreStartDTO exploreStart(String dogId, String location, int durationHours) {
+        PetExploreStartDTO dto = new PetExploreStartDTO();
+        dto.setDogId(dogId);
+        dto.setLocation(location);
+        dto.setDurationHours(durationHours);
+        return dto;
+    }
+
+    private static PetExploreOpenDTO exploreOpen(String dogId) {
+        PetExploreOpenDTO dto = new PetExploreOpenDTO();
+        dto.setDogId(dogId);
+        return dto;
+    }
+
+    private static PetUseItemDTO useItem(String itemId, String dogId) {
+        PetUseItemDTO dto = new PetUseItemDTO();
+        dto.setItemId(itemId);
+        dto.setDogId(dogId);
+        dto.setQuantity(1);
+        return dto;
+    }
+
     private static PetShopBuyDTO shopBuy(String itemId, int quantity) {
         PetShopBuyDTO dto = new PetShopBuyDTO();
         dto.setItemId(itemId);
@@ -632,6 +697,31 @@ public class PetServiceTest {
         }
     }
 
+    private static void insertOldLibraryCollections(long accountId) throws Exception {
+        long now = System.currentTimeMillis();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "INSERT INTO pet_collections (account_id, item_id, count, discovered, updated_at) " +
+                             "VALUES (?, ?, 1, 1, ?) " +
+                             "ON CONFLICT(account_id, item_id) DO UPDATE SET count = 1, " +
+                             "discovered = 1, updated_at = excluded.updated_at")) {
+            for (String itemId : new String[]{
+                    "old_library_scroll",
+                    "old_library_pen",
+                    "old_library_key",
+                    "old_library_candle",
+                    "old_library_book",
+                    "old_library_bookmark"
+            }) {
+                statement.setLong(1, accountId);
+                statement.setString(2, itemId);
+                statement.setLong(3, now);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
     private static void setDogEnergy(long accountId, String dogId, int energy, String energyDate) throws Exception {
         try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
              PreparedStatement statement = session.getConnection().prepareStatement(
@@ -642,6 +732,40 @@ public class PetServiceTest {
             statement.setString(4, dogId);
             statement.executeUpdate();
         }
+    }
+
+    private static void setExploreEnded(long accountId, String dogId) throws Exception {
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "UPDATE dogs SET explore_ends_at = ? WHERE owner_id = ? AND id = ?")) {
+            statement.setLong(1, System.currentTimeMillis() - 1000L);
+            statement.setLong(2, accountId);
+            statement.setString(3, dogId);
+            Assert.assertEquals(1, statement.executeUpdate());
+        }
+    }
+
+    private static void insertItem(long accountId, String itemId, int count) throws Exception {
+        long now = System.currentTimeMillis();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "INSERT INTO pet_items (account_id, item_id, count, updated_at) VALUES (?, ?, ?, ?) " +
+                             "ON CONFLICT(account_id, item_id) DO UPDATE SET count = excluded.count, " +
+                             "updated_at = excluded.updated_at")) {
+            statement.setLong(1, accountId);
+            statement.setString(2, itemId);
+            statement.setInt(3, count);
+            statement.setLong(4, now);
+            statement.executeUpdate();
+        }
+    }
+
+    private static IntSupplier setExploreRollSupplier(IntSupplier supplier) throws Exception {
+        Field field = PetProfileService.class.getDeclaredField("exploreRollSupplier");
+        field.setAccessible(true);
+        IntSupplier original = (IntSupplier) field.get(null);
+        field.set(null, supplier);
+        return original;
     }
 
     private static void insertCheckins(long accountId, int count) throws Exception {

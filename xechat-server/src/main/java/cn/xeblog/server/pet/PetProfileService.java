@@ -244,6 +244,15 @@ public final class PetProfileService {
             "creek_coral",
             "creek_drop"
     ));
+    private static final List<String> OLD_LIBRARY_COLLECTION_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "old_library_scroll",
+            "old_library_pen",
+            "old_library_key",
+            "old_library_candle",
+            "old_library_book",
+            "old_library_bookmark"
+    ));
+    private static final int OLD_LIBRARY_COLLECTION_BASE_BONES_BONUS_PERCENT = 10;
     private static final List<String> SNOW_MOUNTAIN_COLLECTION_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "snow_mountain_snowflake",
             "snow_mountain_ice",
@@ -849,7 +858,8 @@ public final class PetProfileService {
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             PetAssetsRecord assets = ensureAssets(session, accountId);
             PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
-            refreshExpiredDogEnergy(dogMapper, accountId, assets.getEnergyLimit(), today, now);
+            int energyLimit = effectiveEnergyLimit(session, accountId, assets.getEnergyLimit());
+            refreshExpiredDogEnergy(dogMapper, accountId, energyLimit, today, now);
             PetDogRecord dog = dogMapper.findByIdAndOwner(dogId, accountId);
             if (dog == null) {
                 throw new IllegalArgumentException("只能派遣自己的狗狗探险");
@@ -919,12 +929,13 @@ public final class PetProfileService {
 
             int durationHours = inferExploreDurationHours(dog);
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
             addExploreBones(assetsMapper, accountId,
-                    applyExploreBonesTraining(exploreBaseBones(durationHours), dog), rewards, now);
+                    applyExploreBonesTraining(effectiveExploreBaseBones(collectionMapper, accountId,
+                            exploreBaseBones(durationHours)), dog), rewards, now);
             applyExploreRolls(session, accountId, durationHours, dog, rewards, today, now);
             if (EXPLORE_LOCATION_MYSTERY_CAVE.equals(location)) {
-                session.getMapper(PetCollectionMapper.class).addCollection(
-                        accountId, MYSTERY_CAVE_COMPLETED_COLLECTION_ID, now);
+                collectionMapper.addCollection(accountId, MYSTERY_CAVE_COMPLETED_COLLECTION_ID, now);
                 rewards.add(new PetExploreRewardDTO("collection", MYSTERY_CAVE_COMPLETED_COLLECTION_ID, 1));
             }
             grantFirstExploreFreeLearnIfEligible(session.getMapper(PetTrainingMapper.class),
@@ -933,8 +944,7 @@ public final class PetProfileService {
                 throw new IllegalArgumentException("探险开箱失败，请刷新后重试");
             }
             PetAssetsRecord assets = assetsMapper.findByAccountId(accountId);
-            int energyLimit = effectiveEnergyLimit(session.getMapper(PetCollectionMapper.class),
-                    accountId, assets.getEnergyLimit());
+            int energyLimit = effectiveEnergyLimit(collectionMapper, accountId, assets.getEnergyLimit());
             applyExploreEnergyTraining(dogMapper, accountId, dog, energyLimit, rewards, now);
             session.commit();
         }
@@ -1093,7 +1103,9 @@ public final class PetProfileService {
                 throw new IllegalArgumentException("道具数量不足");
             }
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
-            addExploreBones(assetsMapper, accountId, exploreBaseBones(EXPLORE_ONE_HOUR), rewards, now);
+            addExploreBones(assetsMapper, accountId, effectiveExploreBaseBones(
+                    session.getMapper(PetCollectionMapper.class), accountId, exploreBaseBones(EXPLORE_ONE_HOUR)),
+                    rewards, now);
             applyExploreRolls(session, accountId, EXPLORE_ONE_HOUR, null, rewards, today, now);
             session.commit();
         }
@@ -1107,12 +1119,13 @@ public final class PetProfileService {
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             PetAssetsRecord assets = ensureAssets(session, accountId);
             PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
-            refreshExpiredDogEnergy(dogMapper, accountId, assets.getEnergyLimit(), today, now);
+            int energyLimit = effectiveEnergyLimit(session, accountId, assets.getEnergyLimit());
+            refreshExpiredDogEnergy(dogMapper, accountId, energyLimit, today, now);
             PetDogRecord dog = dogMapper.findByIdAndOwner(dogId, accountId);
             if (dog == null) {
                 throw new IllegalArgumentException("只能给自己的狗狗使用道具");
             }
-            if (dog.getEnergy() >= assets.getEnergyLimit()) {
+            if (dog.getEnergy() >= energyLimit) {
                 throw new IllegalArgumentException("狗狗活力已满");
             }
 
@@ -1124,7 +1137,7 @@ public final class PetProfileService {
             if (itemMapper.decrementItemIfEnough(accountId, ITEM_FEAST, 1, now) <= 0) {
                 throw new IllegalArgumentException("道具数量不足");
             }
-            dogMapper.updateCareStats(dog.getId(), accountId, dog.getBond(), assets.getEnergyLimit(), now);
+            dogMapper.updateCareStats(dog.getId(), accountId, dog.getBond(), energyLimit, now);
             session.commit();
         }
 
@@ -1137,7 +1150,8 @@ public final class PetProfileService {
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             PetAssetsRecord assets = ensureAssets(session, accountId);
             PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
-            refreshExpiredDogEnergy(dogMapper, accountId, assets.getEnergyLimit(), today, now);
+            int energyLimit = effectiveEnergyLimit(session, accountId, assets.getEnergyLimit());
+            refreshExpiredDogEnergy(dogMapper, accountId, energyLimit, today, now);
             PetDogRecord dog = dogMapper.findByIdAndOwner(dogId, accountId);
             if (dog == null) {
                 throw new IllegalArgumentException("只能给自己的狗狗使用加急快递");
@@ -1312,7 +1326,8 @@ public final class PetProfileService {
     private static void applyCompanionGameBondInSession(SqlSession session, long accountId, long now, String today) {
         PetAssetsRecord assets = ensureAssets(session, accountId);
         PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
-        refreshExpiredDogEnergy(dogMapper, accountId, assets.getEnergyLimit(), today, now);
+        int energyLimit = effectiveEnergyLimit(session, accountId, assets.getEnergyLimit());
+        refreshExpiredDogEnergy(dogMapper, accountId, energyLimit, today, now);
 
         List<PetDogRecord> dogs = dogMapper.listByOwner(accountId);
         if (dogs.isEmpty()) {
@@ -2219,6 +2234,17 @@ public final class PetProfileService {
             energyLimit += SNOW_MOUNTAIN_COLLECTION_ENERGY_LIMIT_BONUS;
         }
         return energyLimit;
+    }
+
+    private static int effectiveEnergyLimit(SqlSession session, long accountId, int baseEnergyLimit) {
+        return effectiveEnergyLimit(session.getMapper(PetCollectionMapper.class), accountId, baseEnergyLimit);
+    }
+
+    private static int effectiveExploreBaseBones(PetCollectionMapper collectionMapper, long accountId, int baseBones) {
+        if (!hasCompletedCollectionSet(collectionMapper, accountId, OLD_LIBRARY_COLLECTION_ITEM_IDS)) {
+            return baseBones;
+        }
+        return (int) Math.ceil(baseBones * (100 + OLD_LIBRARY_COLLECTION_BASE_BONES_BONUS_PERCENT) / 100D);
     }
 
     private static boolean hasCompletedCollectionSet(PetCollectionMapper collectionMapper, long accountId,
