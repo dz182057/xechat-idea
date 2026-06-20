@@ -7,6 +7,7 @@ import cn.xeblog.commons.entity.pet.PetAssetsDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinStatusDTO;
 import cn.xeblog.commons.entity.pet.PetCollectionItemDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
+import cn.xeblog.commons.entity.pet.PetExploreChestDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenResultDTO;
 import cn.xeblog.commons.entity.pet.PetExploreRewardDTO;
@@ -136,6 +137,19 @@ public final class PetProfileService {
     private static final String ITEM_CONSTRUCTION_SITE_CHEST = "chest_construction_site";
     private static final String ITEM_OLD_LIBRARY_CHEST = "chest_old_library";
     private static final int MAX_EXPLORE_CHEST_COUNT = 99;
+    private static final String EXPLORE_CHEST_STATUS_AVAILABLE = "available";
+    private static final String ITEM_LEDGER_GAIN = "gain";
+    private static final String ITEM_LEDGER_SPEND = "spend";
+    private static final String ITEM_LEDGER_SOURCE_EXPLORE_RETURN_CHEST = "explore_return_chest";
+    private static final String ITEM_LEDGER_SOURCE_OPEN_EXPLORE_CHEST = "open_explore_chest";
+    private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_NORMAL = "shop_buy_normal";
+    private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_DAILY_RARE = "shop_buy_daily_rare";
+    private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_LUCKY_BAG = "shop_buy_lucky_bag";
+    private static final String ITEM_LEDGER_SOURCE_EXPLORE_REWARD = "explore_reward";
+    private static final String ITEM_LEDGER_SOURCE_LEGACY_CHEST_MIGRATION = "legacy_chest_migration";
+    private static final String ITEM_LEDGER_SOURCE_USE_ITEM = "use_item";
+    private static final String ITEM_LEDGER_SOURCE_SELL_ITEM = "sell_item";
+    private static final String ITEM_LEDGER_SOURCE_CHECKIN_REWARD = "checkin_reward";
     private static final String BACK_HILL_CHEST_FULL_ERROR = "后山箱子已达上限，打开后再探险";
     private static final String CREEK_CHEST_FULL_ERROR = "小溪箱子已达上限，打开后再探险";
     private static final String CONSTRUCTION_SITE_CHEST_FULL_ERROR = "工地箱子已达上限，打开后再探险";
@@ -389,15 +403,20 @@ public final class PetProfileService {
                     energyLimit, todayText, now);
             List<PetDogRecord> rows = dogMapper.listByOwner(accountId);
             PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
+            PetExploreChestMapper chestMapper = session.getMapper(PetExploreChestMapper.class);
+            PetItemLedgerMapper ledgerMapper = session.getMapper(PetItemLedgerMapper.class);
             PetTrainingMapper trainingMapper = session.getMapper(PetTrainingMapper.class);
             PetDailyCounterMapper dailyCounterMapper = session.getMapper(PetDailyCounterMapper.class);
-            boolean exploreSettled = settleEndedExploresAsChests(accountId, dogMapper, itemMapper,
-                    trainingMapper, dailyCounterMapper, rows, now);
+            boolean legacyChestMigrated = migrateLegacyExploreChests(accountId, itemMapper, chestMapper,
+                    ledgerMapper, now);
+            boolean exploreSettled = settleEndedExploresAsChests(accountId, dogMapper, chestMapper,
+                    ledgerMapper, trainingMapper, dailyCounterMapper, rows, now);
             if (exploreSettled) {
                 rows = dogMapper.listByOwner(accountId);
             }
             boolean dogStageChanged = updateDogGrowthStages(dogMapper, accountId, rows, now);
             List<PetItemRecord> itemRows = itemMapper.listPositiveByAccountId(accountId);
+            List<PetExploreChestRecord> chestRows = chestMapper.listAvailableByAccountId(accountId);
             List<PetCollectionRecord> collectionRows = collectionMapper.listByAccountId(accountId);
             PetCheckinMapper checkinMapper = session.getMapper(PetCheckinMapper.class);
             PetCheckinRecord todayCheckin = checkinMapper.findByAccountIdAndDate(accountId, todayText);
@@ -419,6 +438,11 @@ public final class PetProfileService {
                 items.add(toDTO(row));
             }
             profile.setItems(items);
+            List<PetExploreChestDTO> exploreChests = new ArrayList<>(chestRows.size());
+            for (PetExploreChestRecord row : chestRows) {
+                exploreChests.add(toDTO(row));
+            }
+            profile.setExploreChests(exploreChests);
             List<PetCollectionItemDTO> collections = new ArrayList<>(collectionRows.size());
             for (PetCollectionRecord row : collectionRows) {
                 collections.add(toDTO(row));
@@ -458,7 +482,7 @@ public final class PetProfileService {
                     pendingOldTennisBall(dailyCounterMapper, accountId, rows)));
             profile.setInteractionStatus(buildInteractionStatus(dailyCounterMapper, accountId, todayText));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
-            if (dogEnergyRefreshed || exploreSettled || dogStageChanged) {
+            if (dogEnergyRefreshed || legacyChestMigrated || exploreSettled || dogStageChanged) {
                 session.commit();
             }
             return profile;
@@ -1008,8 +1032,9 @@ public final class PetProfileService {
             } else {
                 ensureExploreLocationUnlocked(session, accountId, location);
                 ensureExploreStageUnlocked(dog, durationHours);
-                if (exploreChestCount(session.getMapper(PetItemMapper.class), accountId,
-                        exploreChestItemId(location)) >= MAX_EXPLORE_CHEST_COUNT) {
+                if (exploreChestCount(session.getMapper(PetExploreChestMapper.class),
+                        session.getMapper(PetItemMapper.class), accountId, exploreChestItemId(location))
+                        >= MAX_EXPLORE_CHEST_COUNT) {
                     throw new IllegalArgumentException(exploreChestFullError(location));
                 }
             }
@@ -1210,6 +1235,8 @@ public final class PetProfileService {
             if (itemMapper.decrementItemIfEnough(accountId, ITEM_LUCKY_DAY, 1, now) <= 0) {
                 throw new IllegalArgumentException("道具数量不足");
             }
+            recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, ITEM_LUCKY_DAY, 1,
+                    ITEM_LEDGER_SPEND, ITEM_LEDGER_SOURCE_USE_ITEM, null, null, now);
             session.commit();
         }
 
@@ -1218,6 +1245,7 @@ public final class PetProfileService {
 
     private static PetExploreOpenResultDTO openBackHillChestLocked(long accountId, PetUseItemDTO request) {
         String itemId = request == null ? null : StrUtil.trim(request.getItemId());
+        String chestId = request == null ? null : StrUtil.trim(request.getChestId());
         Integer quantity = request == null ? null : request.getQuantity();
         String location = exploreLocationByChestItemId(itemId);
         if (location == null) {
@@ -1233,14 +1261,57 @@ public final class PetProfileService {
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             ensureAssets(session, accountId);
             PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
-            if (itemMapper.decrementItemIfEnough(accountId, itemId, 1, now) <= 0) {
-                throw new IllegalArgumentException("道具数量不足");
+            PetExploreChestMapper chestMapper = session.getMapper(PetExploreChestMapper.class);
+            PetItemLedgerMapper ledgerMapper = session.getMapper(PetItemLedgerMapper.class);
+            PetDogRecord snapshotDog = null;
+            int durationHours = EXPLORE_ONE_HOUR;
+            PetExploreChestRecord chest = null;
+            if (StrUtil.isNotBlank(chestId)) {
+                chest = chestMapper.findAvailableByIdAndAccountId(chestId, accountId);
+                if (chest == null || !itemId.equals(chest.getChestItemId())) {
+                    throw new IllegalArgumentException("箱子不存在或已打开");
+                }
+            } else {
+                for (PetExploreChestRecord candidate : chestMapper.listAvailableByAccountId(accountId)) {
+                    if (itemId.equals(candidate.getChestItemId())) {
+                        chest = candidate;
+                        break;
+                    }
+                }
+            }
+            if (chest != null) {
+                location = StrUtil.trim(chest.getLocation());
+                if (!isSupportedExploreLocation(location)) {
+                    throw new IllegalArgumentException("箱子地点数据异常");
+                }
+                durationHours = isSupportedExploreDuration(chest.getDurationHours())
+                        ? chest.getDurationHours()
+                        : EXPLORE_ONE_HOUR;
+                snapshotDog = exploreSnapshotDog(chest);
+                if (chestMapper.markOpened(chest.getId(), accountId, now) <= 0) {
+                    throw new IllegalArgumentException("箱子已打开，请刷新后重试");
+                }
+                recordItemLedger(ledgerMapper, accountId, itemId, 1, ITEM_LEDGER_SPEND,
+                        ITEM_LEDGER_SOURCE_OPEN_EXPLORE_CHEST, chest.getId(), null, now);
+            } else {
+                if (itemMapper.decrementItemIfEnough(accountId, itemId, 1, now) <= 0) {
+                    throw new IllegalArgumentException("道具数量不足");
+                }
+                recordItemLedger(ledgerMapper, accountId, itemId, 1, ITEM_LEDGER_SPEND,
+                        ITEM_LEDGER_SOURCE_OPEN_EXPLORE_CHEST, null, null, now);
             }
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
-            addExploreBones(assetsMapper, accountId, effectiveExploreBaseBones(
-                    session.getMapper(PetCollectionMapper.class), accountId, exploreBaseBones(EXPLORE_ONE_HOUR)),
+            PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
+            addExploreBones(assetsMapper, accountId, applyExploreBonesTraining(effectiveExploreBaseBones(
+                    collectionMapper, accountId, exploreBaseBones(durationHours)), snapshotDog),
                     rewards, now);
-            applyExploreRolls(session, accountId, EXPLORE_ONE_HOUR, null, location, rewards, today, now);
+            applyExploreRolls(session, accountId, durationHours, snapshotDog, location, rewards, today, now);
+            if (snapshotDog != null) {
+                PetAssetsRecord assets = assetsMapper.findByAccountId(accountId);
+                int energyLimit = effectiveEnergyLimit(collectionMapper, accountId, assets.getEnergyLimit());
+                applyExploreEnergyTraining(session.getMapper(PetDogMapper.class), accountId,
+                        snapshotDog, energyLimit, rewards, now);
+            }
             session.commit();
         }
 
@@ -1271,6 +1342,8 @@ public final class PetProfileService {
             if (itemMapper.decrementItemIfEnough(accountId, ITEM_FEAST, 1, now) <= 0) {
                 throw new IllegalArgumentException("道具数量不足");
             }
+            recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, ITEM_FEAST, 1,
+                    ITEM_LEDGER_SPEND, ITEM_LEDGER_SOURCE_USE_ITEM, dogId, null, now);
             dogMapper.updateCareStats(dog.getId(), accountId, dog.getBond(), energyLimit, now);
             session.commit();
         }
@@ -1308,6 +1381,8 @@ public final class PetProfileService {
             if (itemMapper.decrementItemIfEnough(accountId, ITEM_EXPRESS, 1, now) <= 0) {
                 throw new IllegalArgumentException("道具数量不足");
             }
+            recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, ITEM_EXPRESS, 1,
+                    ITEM_LEDGER_SPEND, ITEM_LEDGER_SOURCE_USE_ITEM, dogId, null, now);
             if (dogMapper.finishExploreNow(dogId, accountId, now, inferExploreDurationHours(dog), now) <= 0) {
                 throw new IllegalArgumentException("加急快递使用失败，请刷新后重试");
             }
@@ -1628,6 +1703,8 @@ public final class PetProfileService {
             if (itemMapper.decrementItemIfEnough(accountId, itemId, quantity, now) <= 0) {
                 throw new IllegalArgumentException("道具数量不足");
             }
+            recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, quantity,
+                    ITEM_LEDGER_SPEND, ITEM_LEDGER_SOURCE_SELL_ITEM, null, null, now);
             if (session.getMapper(PetAssetsMapper.class).addBones(accountId, bones, now) <= 0) {
                 throw new IllegalArgumentException("资源变更失败");
             }
@@ -1758,6 +1835,8 @@ public final class PetProfileService {
             if (itemMapper.addItemIfUnderLimit(accountId, itemId, quantity, MAX_ITEM_COUNT, now) <= 0) {
                 throw new IllegalArgumentException("道具卡持有数量不能超过 9");
             }
+            recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, quantity,
+                    ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_SHOP_BUY_NORMAL, null, null, now);
             session.commit();
         }
 
@@ -1800,6 +1879,8 @@ public final class PetProfileService {
             if (itemMapper.addItemIfUnderLimit(accountId, itemId, quantity, MAX_ITEM_COUNT, now) <= 0) {
                 throw new IllegalArgumentException("道具卡持有数量不能超过 9");
             }
+            recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, quantity,
+                    ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_SHOP_BUY_DAILY_RARE, todayText, null, now);
             session.commit();
         }
 
@@ -1848,6 +1929,8 @@ public final class PetProfileService {
                 if (itemMapper.addItemIfUnderLimit(accountId, rewardItemId, 1, MAX_ITEM_COUNT, now) <= 0) {
                     throw new IllegalArgumentException("道具背包已满");
                 }
+                recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, rewardItemId, 1,
+                        ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_SHOP_BUY_LUCKY_BAG, null, null, now);
             }
             session.commit();
         }
@@ -1857,7 +1940,8 @@ public final class PetProfileService {
 
     private static boolean settleEndedExploresAsChests(long accountId,
                                                        PetDogMapper dogMapper,
-                                                       PetItemMapper itemMapper,
+                                                       PetExploreChestMapper chestMapper,
+                                                       PetItemLedgerMapper ledgerMapper,
                                                        PetTrainingMapper trainingMapper,
                                                        PetDailyCounterMapper counterMapper,
                                                        List<PetDogRecord> dogs,
@@ -1875,10 +1959,13 @@ public final class PetProfileService {
             if (dog.getExploreEndsAt() == null || dog.getExploreEndsAt() > now) {
                 continue;
             }
-            if (itemMapper.addItemIfUnderLimit(accountId, chestItemId, 1,
-                    MAX_EXPLORE_CHEST_COUNT, now) <= 0) {
+            if (chestMapper.countAvailableByAccountIdAndChestItemId(accountId, chestItemId) >= MAX_EXPLORE_CHEST_COUNT) {
                 throw new IllegalArgumentException(exploreChestFullError(location));
             }
+            PetExploreChestRecord chest = buildExploreChest(accountId, chestItemId, location, dog, now);
+            chestMapper.insert(chest);
+            recordItemLedger(ledgerMapper, accountId, chestItemId, 1, ITEM_LEDGER_GAIN,
+                    ITEM_LEDGER_SOURCE_EXPLORE_RETURN_CHEST, chest.getId(), null, now);
             recordExploreCompletion(counterMapper, accountId, location, now);
             grantFirstExploreFreeLearnIfEligible(trainingMapper, accountId, inferExploreDurationHours(dog), now);
             if (dogMapper.openExplore(dog.getId(), accountId, now) <= 0) {
@@ -1889,9 +1976,106 @@ public final class PetProfileService {
         return settled;
     }
 
-    private static int exploreChestCount(PetItemMapper itemMapper, long accountId, String chestItemId) {
+    private static boolean migrateLegacyExploreChests(long accountId,
+                                                      PetItemMapper itemMapper,
+                                                      PetExploreChestMapper chestMapper,
+                                                      PetItemLedgerMapper ledgerMapper,
+                                                      long now) {
+        boolean migrated = false;
+        for (PetItemRecord item : itemMapper.listPositiveByAccountId(accountId)) {
+            String location = exploreLocationByChestItemId(item.getItemId());
+            if (location == null || item.getCount() <= 0) {
+                continue;
+            }
+            int availableCount = chestMapper.countAvailableByAccountIdAndChestItemId(accountId, item.getItemId());
+            if (availableCount + item.getCount() > MAX_EXPLORE_CHEST_COUNT) {
+                throw new IllegalArgumentException(exploreChestFullError(location));
+            }
+            for (int i = 0; i < item.getCount(); i++) {
+                PetExploreChestRecord chest = buildLegacyExploreChest(accountId, item.getItemId(), location, now + i);
+                chestMapper.insert(chest);
+                recordItemLedger(ledgerMapper, accountId, item.getItemId(), 1, ITEM_LEDGER_GAIN,
+                        ITEM_LEDGER_SOURCE_LEGACY_CHEST_MIGRATION, chest.getId(), null, now + i);
+            }
+            if (itemMapper.decrementItemIfEnough(accountId, item.getItemId(), item.getCount(), now) <= 0) {
+                throw new IllegalArgumentException("箱子库存迁移失败，请刷新后重试");
+            }
+            migrated = true;
+        }
+        return migrated;
+    }
+
+    private static int exploreChestCount(PetExploreChestMapper chestMapper, PetItemMapper itemMapper,
+                                         long accountId, String chestItemId) {
+        int count = chestMapper.countAvailableByAccountIdAndChestItemId(accountId, chestItemId);
         PetItemRecord item = itemMapper.findByAccountIdAndItemId(accountId, chestItemId);
-        return item == null ? 0 : item.getCount();
+        return count + (item == null ? 0 : Math.max(0, item.getCount()));
+    }
+
+    private static PetExploreChestRecord buildExploreChest(long accountId, String chestItemId,
+                                                           String location, PetDogRecord dog, long now) {
+        return PetExploreChestRecord.builder()
+                .id(UUID.randomUUID().toString())
+                .accountId(accountId)
+                .chestItemId(chestItemId)
+                .location(location)
+                .sourceDogId(dog.getId())
+                .sourceDogName(dog.getName())
+                .sourceDogBreed(dog.getBreed())
+                .durationHours(inferExploreDurationHours(dog))
+                .skillSnapshotId(dog.getExploreSkillSnapshotId())
+                .skillSnapshotLevel(dog.getExploreSkillSnapshotLevel())
+                .skillSnapshotDefinitionVersion(dog.getExploreSkillSnapshotVersion())
+                .status(EXPLORE_CHEST_STATUS_AVAILABLE)
+                .createdAt(now)
+                .build();
+    }
+
+    private static PetExploreChestRecord buildLegacyExploreChest(long accountId, String chestItemId,
+                                                                 String location, long now) {
+        return PetExploreChestRecord.builder()
+                .id(UUID.randomUUID().toString())
+                .accountId(accountId)
+                .chestItemId(chestItemId)
+                .location(location)
+                .sourceDogId(null)
+                .sourceDogName("旧箱子")
+                .sourceDogBreed(null)
+                .durationHours(EXPLORE_ONE_HOUR)
+                .status(EXPLORE_CHEST_STATUS_AVAILABLE)
+                .createdAt(now)
+                .build();
+    }
+
+    private static PetDogRecord exploreSnapshotDog(PetExploreChestRecord chest) {
+        if (chest == null || StrUtil.isBlank(chest.getSourceDogId())) {
+            return null;
+        }
+        PetDogRecord dog = new PetDogRecord();
+        dog.setId(chest.getSourceDogId());
+        dog.setOwnerId(chest.getAccountId());
+        dog.setName(StrUtil.blankToDefault(chest.getSourceDogName(), "探险狗狗"));
+        dog.setBreed(chest.getSourceDogBreed());
+        dog.setExploreSkillSnapshotId(chest.getSkillSnapshotId());
+        dog.setExploreSkillSnapshotLevel(chest.getSkillSnapshotLevel());
+        dog.setExploreSkillSnapshotVersion(chest.getSkillSnapshotDefinitionVersion());
+        return dog;
+    }
+
+    private static void recordItemLedger(PetItemLedgerMapper mapper, long accountId, String itemId, int quantity,
+                                         String direction, String source, String sourceRef,
+                                         String metadataJson, long now) {
+        PetItemLedgerRecord record = new PetItemLedgerRecord();
+        record.setId(UUID.randomUUID().toString());
+        record.setAccountId(accountId);
+        record.setItemId(itemId);
+        record.setQuantity(quantity);
+        record.setDirection(direction);
+        record.setSource(source);
+        record.setSourceRef(sourceRef);
+        record.setMetadataJson(metadataJson);
+        record.setCreatedAt(now);
+        mapper.insert(record);
     }
 
     private static void grantFirstExploreFreeLearnIfEligible(PetTrainingMapper mapper, long accountId,
@@ -2252,16 +2436,17 @@ public final class PetProfileService {
         PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
         PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
         PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
+        PetItemLedgerMapper ledgerMapper = session.getMapper(PetItemLedgerMapper.class);
         Map<String, Integer> itemCounts = exploreItemCounts(itemMapper, accountId);
         int collectionBonus = exploreSnapshotEffect(dog, TRAINING_SKILL_COLLECTION);
         int treasureBonus = exploreSnapshotEffect(dog, TRAINING_SKILL_TREASURE);
         for (int i = 0; i < exploreRollCount(durationHours); i++) {
             int roll = nextExploreRoll();
             if (roll < 50) {
-                applyExploreItemReward(assetsMapper, counterMapper, itemMapper, accountId,
+                applyExploreItemReward(assetsMapper, counterMapper, itemMapper, ledgerMapper, accountId,
                         exploreNormalItemIds(location), itemCounts, rewards, today, now);
             } else if (roll < 58) {
-                applyExploreItemReward(assetsMapper, counterMapper, itemMapper, accountId,
+                applyExploreItemReward(assetsMapper, counterMapper, itemMapper, ledgerMapper, accountId,
                         exploreRareItemIds(location), itemCounts, rewards, today, now);
             } else if (roll < 78) {
                 applyExploreCollectionReward(session, accountId, location, rewards, now);
@@ -2369,7 +2554,8 @@ public final class PetProfileService {
     }
 
     private static void applyExploreItemReward(PetAssetsMapper assetsMapper, PetDailyCounterMapper counterMapper,
-                                               PetItemMapper itemMapper, long accountId, List<String> pool,
+                                               PetItemMapper itemMapper, PetItemLedgerMapper ledgerMapper,
+                                               long accountId, List<String> pool,
                                                Map<String, Integer> itemCounts,
                                                List<PetExploreRewardDTO> rewards, String today, long now) {
         String itemId = pickAvailableLuckyBagItem(pool, itemCounts);
@@ -2386,6 +2572,8 @@ public final class PetProfileService {
             addExploreBones(assetsMapper, accountId, EXPLORE_ITEM_OVERFLOW_BONES, rewards, now);
             return;
         }
+        recordItemLedger(ledgerMapper, accountId, itemId, 1, ITEM_LEDGER_GAIN,
+                ITEM_LEDGER_SOURCE_EXPLORE_REWARD, null, null, now);
         itemCounts.put(itemId, itemCounts.getOrDefault(itemId, 0) + 1);
         rewards.add(new PetExploreRewardDTO("item", itemId, 1));
     }
@@ -2652,6 +2840,10 @@ public final class PetProfileService {
             itemId = null;
             overflowBones = CHECKIN_MILESTONE_RARE_ITEM_OVERFLOW_BONES;
             session.getMapper(PetAssetsMapper.class).addBones(accountId, overflowBones, now);
+        } else {
+            recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, 1,
+                    ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_CHECKIN_REWARD,
+                    "milestone:" + milestoneIndex, null, now);
         }
 
         return new PetCheckinMilestoneRewardDTO(milestoneIndex, decorationId, itemId, overflowBones);
@@ -2704,6 +2896,8 @@ public final class PetProfileService {
             }
             if (itemMapper.addItemIfUnderLimit(accountId, itemId, 1, MAX_ITEM_COUNT, now) > 0) {
                 itemCounts.put(itemId, itemCounts.getOrDefault(itemId, 0) + 1);
+                recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, 1,
+                        ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_CHECKIN_REWARD, "cycle_day:7", null, now);
             } else {
                 overflowItemCount++;
             }
@@ -2933,6 +3127,13 @@ public final class PetProfileService {
 
     private static PetInventoryItemDTO toDTO(PetItemRecord row) {
         return new PetInventoryItemDTO(row.getItemId(), row.getCount());
+    }
+
+    private static PetExploreChestDTO toDTO(PetExploreChestRecord row) {
+        return new PetExploreChestDTO(row.getId(), row.getChestItemId(), row.getLocation(),
+                row.getSourceDogId(), row.getSourceDogName(), row.getSourceDogBreed(),
+                row.getDurationHours(), row.getSkillSnapshotId(), row.getSkillSnapshotLevel(),
+                row.getSkillSnapshotDefinitionVersion(), row.getCreatedAt());
     }
 
     private static PetCollectionItemDTO toDTO(PetCollectionRecord row) {

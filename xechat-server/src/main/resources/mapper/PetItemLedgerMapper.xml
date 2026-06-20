@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetItemLedgerMapper">
+
+    <insert id="insert" parameterType="cn.xeblog.server.pet.PetItemLedgerRecord">
+        INSERT INTO pet_item_ledger (
+            id, account_id, item_id, quantity, direction, source, source_ref, metadata_json, created_at
+        ) VALUES (
+            #{id}, #{accountId}, #{itemId}, #{quantity}, #{direction}, #{source}, #{sourceRef}, #{metadataJson}, #{createdAt}
+        )
+    </insert>
+
+</mapper>

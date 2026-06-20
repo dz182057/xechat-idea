@@ -22,6 +22,11 @@ public final class PetGameItemDeclarationService {
     private static final String STATUS_FAILED = "failed";
     private static final String STATUS_CONSUMED = "consumed";
     private static final String STATUS_REFUNDED = "refunded";
+    private static final String ITEM_LEDGER_GAIN = "gain";
+    private static final String ITEM_LEDGER_SPEND = "spend";
+    private static final String ITEM_LEDGER_SOURCE_GAME_ITEM_RESERVE = "game_item_reserve";
+    private static final String ITEM_LEDGER_SOURCE_GAME_ITEM_REFUND = "game_item_refund";
+    private static final String ITEM_LEDGER_SOURCE_GAME_ITEM_INTERACTION_RETURN = "game_item_interaction_return";
     private static OwnershipChecker ownershipChecker = PetProfileService::hasPositiveItem;
 
     private PetGameItemDeclarationService() {
@@ -156,6 +161,9 @@ public final class PetGameItemDeclarationService {
                 record.setRewardBones(0);
                 record.setCreatedAt(now);
                 session.getMapper(PetGameItemUseMapper.class).insert(record);
+                recordItemLedger(session.getMapper(PetItemLedgerMapper.class), player.getAccountId(),
+                        sourceItemId, 1, ITEM_LEDGER_SPEND,
+                        ITEM_LEDGER_SOURCE_GAME_ITEM_RESERVE, record.getId(), now);
                 session.commit();
                 return true;
             }
@@ -211,6 +219,9 @@ public final class PetGameItemDeclarationService {
                     session.rollback();
                     return;
                 }
+                recordItemLedger(session.getMapper(PetItemLedgerMapper.class), player.getAccountId(),
+                        itemId, 1, ITEM_LEDGER_GAIN,
+                        ITEM_LEDGER_SOURCE_GAME_ITEM_REFUND, record.getId(), now);
                 session.commit();
             }
         }
@@ -243,6 +254,11 @@ public final class PetGameItemDeclarationService {
                 if (useMapper.markSettled(record.getId(), status, rewardBones, now) <= 0) {
                     session.rollback();
                     return;
+                }
+                if (refundItem) {
+                    recordItemLedger(session.getMapper(PetItemLedgerMapper.class), player.getAccountId(),
+                            itemId, 1, ITEM_LEDGER_GAIN,
+                            ITEM_LEDGER_SOURCE_GAME_ITEM_REFUND, record.getId(), now);
                 }
                 session.commit();
             }
@@ -284,6 +300,9 @@ public final class PetGameItemDeclarationService {
                     session.rollback();
                     return 0;
                 }
+                recordItemLedger(session.getMapper(PetItemLedgerMapper.class), player.getAccountId(),
+                        itemId, 1, ITEM_LEDGER_GAIN,
+                        ITEM_LEDGER_SOURCE_GAME_ITEM_INTERACTION_RETURN, record.getId(), now);
                 session.commit();
                 return acceptedReward;
             }
@@ -300,6 +319,24 @@ public final class PetGameItemDeclarationService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static void recordItemLedger(PetItemLedgerMapper mapper, long accountId, String itemId, int quantity,
+                                         String direction, String source, String sourceRef, long now) {
+        if (accountId <= 0 || itemId == null || itemId.isBlank() || quantity <= 0) {
+            return;
+        }
+        PetItemLedgerRecord record = new PetItemLedgerRecord();
+        record.setId(UUID.randomUUID().toString());
+        record.setAccountId(accountId);
+        record.setItemId(itemId);
+        record.setQuantity(quantity);
+        record.setDirection(direction);
+        record.setSource(source);
+        record.setSourceRef(sourceRef);
+        record.setMetadataJson(null);
+        record.setCreatedAt(now);
+        mapper.insert(record);
     }
 
     private static Object accountLock(long accountId) {

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetExploreChestMapper">
+
+    <sql id="cols">
+        id, account_id, chest_item_id, location, source_dog_id, source_dog_name, source_dog_breed,
+        duration_hours, skill_snapshot_id, skill_snapshot_level, skill_snapshot_definition_version,
+        status, created_at, opened_at
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.pet.PetExploreChestRecord">
+        INSERT INTO pet_explore_chests (
+            id, account_id, chest_item_id, location, source_dog_id, source_dog_name, source_dog_breed,
+            duration_hours, skill_snapshot_id, skill_snapshot_level, skill_snapshot_definition_version,
+            status, created_at, opened_at
+        ) VALUES (
+            #{id}, #{accountId}, #{chestItemId}, #{location}, #{sourceDogId}, #{sourceDogName}, #{sourceDogBreed},
+            #{durationHours}, #{skillSnapshotId}, #{skillSnapshotLevel}, #{skillSnapshotDefinitionVersion},
+            #{status}, #{createdAt}, #{openedAt}
+        )
+    </insert>
+
+    <select id="findAvailableByIdAndAccountId" resultType="cn.xeblog.server.pet.PetExploreChestRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_explore_chests
+        WHERE id = #{id}
+          AND account_id = #{accountId}
+          AND status = 'available'
+    </select>
+
+    <select id="listAvailableByAccountId" resultType="cn.xeblog.server.pet.PetExploreChestRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_explore_chests
+        WHERE account_id = #{accountId}
+          AND status = 'available'
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <select id="countAvailableByAccountIdAndChestItemId" resultType="int">
+        SELECT COUNT(1)
+        FROM pet_explore_chests
+        WHERE account_id = #{accountId}
+          AND chest_item_id = #{chestItemId}
+          AND status = 'available'
+    </select>
+
+    <update id="markOpened">
+        UPDATE pet_explore_chests
+        SET status = 'opened',
+            opened_at = #{openedAt}
+        WHERE id = #{id}
+          AND account_id = #{accountId}
+          AND status = 'available'
+    </update>
+
+</mapper>

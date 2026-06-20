@@ -3,7 +3,9 @@ package cn.xeblog.server.game.dograce;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.dograce.DogRaceDTO;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
+import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
+import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.config.GlobalConfig;
@@ -223,8 +225,8 @@ public class DogRaceServiceTest {
         resetDbFactory();
         try {
             cn.xeblog.commons.entity.User user = accountUser(990101L);
-            PetProfileDTO profile = PetService.adopt(user, adopt("shiba", "真狗"));
-            String realDogId = profile.getDogs().get(0).getId();
+            PetProfileDTO profile = adoptUnlockedShiba(user, "真狗");
+            String realDogId = findDogId(profile, "真狗");
             GameRoom room = new GameRoom();
             room.setId("dog-race-owned-dog");
             room.setGame(Game.DOG_RACE);
@@ -328,8 +330,8 @@ public class DogRaceServiceTest {
         resetDbFactory();
         try {
             cn.xeblog.commons.entity.User user = accountUser(990102L);
-            PetProfileDTO profile = PetService.adopt(user, adopt("shiba", "技能狗"));
-            String realDogId = profile.getDogs().get(0).getId();
+            PetProfileDTO profile = adoptUnlockedShiba(user, "技能狗");
+            String realDogId = findDogId(profile, "技能狗");
 
             for (long seed = 1L; seed <= 2000L; seed++) {
                 GameRoom room = ownedDogRoom("dog-race-skill-" + seed, user);
@@ -609,6 +611,56 @@ public class DogRaceServiceTest {
         dto.setBreed(breed);
         dto.setName(name);
         return dto;
+    }
+
+    private static PetProfileDTO adoptUnlockedShiba(cn.xeblog.commons.entity.User user, String name) {
+        PetProfileDTO unlockerProfile = PetService.adopt(user, adopt("corgi", "解锁犬"));
+        String unlockerDogId = findDogId(unlockerProfile, "解锁犬");
+        for (int i = 0; i < 3; i++) {
+            PetRaceResultDTO result = new PetRaceResultDTO();
+            result.setDogId(unlockerDogId);
+            result.setRank(1);
+            result.setWeeklyPoints(0);
+            PetService.applyRaceResult(user, result);
+        }
+        setDogSlots(user.getAccountId(), 2);
+        PetService.adopt(user, adopt("shiba", name));
+        deleteDog(user.getAccountId(), unlockerDogId);
+        return PetService.profile(user);
+    }
+
+    private static String findDogId(PetProfileDTO profile, String name) {
+        for (PetDogDTO dog : profile.getDogs()) {
+            if (name.equals(dog.getName())) {
+                return dog.getId();
+            }
+        }
+        Assert.fail("未找到测试狗狗: " + name);
+        return null;
+    }
+
+    private static void setDogSlots(long accountId, int dogSlots) {
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
+                     "UPDATE pet_assets SET dog_slots = ? WHERE account_id = ?")) {
+            statement.setInt(1, dogSlots);
+            statement.setLong(2, accountId);
+            Assert.assertEquals(1, statement.executeUpdate());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void deleteDog(long accountId, String dogId) {
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
+                     "DELETE FROM dogs WHERE owner_id = ? AND id = ?")) {
+            statement.setLong(1, accountId);
+            statement.setString(2, dogId);
+            Assert.assertEquals(1, statement.executeUpdate());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static GameRoom ownedDogRoom(String roomId, cn.xeblog.commons.entity.User user) {

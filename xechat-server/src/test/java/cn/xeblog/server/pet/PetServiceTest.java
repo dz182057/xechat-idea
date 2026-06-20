@@ -4,6 +4,7 @@ import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
+import cn.xeblog.commons.entity.pet.PetExploreChestDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenResultDTO;
 import cn.xeblog.commons.entity.pet.PetExploreRewardDTO;
@@ -12,6 +13,7 @@ import cn.xeblog.commons.entity.pet.PetFeedDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
 import cn.xeblog.commons.entity.pet.PetShopBuyDTO;
+import cn.xeblog.commons.entity.pet.PetTrainingSkillActionDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDefinitionDTO;
 import cn.xeblog.commons.entity.pet.PetUseItemDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
@@ -305,6 +307,8 @@ public class PetServiceTest {
         Assert.assertEquals(28, profile.getCheckinStatus().getMilestoneRemaining());
         Assert.assertEquals(1, findCollectionCount(user.getAccountId(), reward.getDecorationId()));
         Assert.assertEquals(1, findItemCount(user.getAccountId(), reward.getItemId()));
+        Assert.assertEquals(1, countItemLedger(user.getAccountId(), reward.getItemId(),
+                "gain", "checkin_reward"));
     }
 
     @Test
@@ -360,6 +364,74 @@ public class PetServiceTest {
         Assert.assertEquals(20, profile.getAssets().getEnergyLimit());
         Assert.assertEquals(20, profile.getDogs().get(0).getEnergy());
         Assert.assertEquals(0, findItemCount(user.getAccountId(), "item_feast"));
+    }
+
+    @Test
+    public void endedExploreShouldStoreChestInstanceWithSnapshotAndLedger() throws Exception {
+        User user = accountUser(990027L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "实例狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+        PetProfileService.trainingLearn(user.getAccountId(), trainingSkill("explore_bones", null));
+        PetProfileService.trainingEquip(user.getAccountId(), trainingSkill("explore_bones", dogId));
+
+        PetProfileService.exploreStart(user.getAccountId(), exploreStart(dogId, "back_hill", 4));
+        setExploreEnded(user.getAccountId(), dogId);
+
+        PetProfileDTO settled = PetProfileService.profile(user.getAccountId());
+
+        Assert.assertEquals(1, settled.getExploreChests().size());
+        PetExploreChestDTO chest = settled.getExploreChests().get(0);
+        Assert.assertEquals("chest_back_hill", chest.getChestItemId());
+        Assert.assertEquals("back_hill", chest.getLocation());
+        Assert.assertEquals(dogId, chest.getSourceDogId());
+        Assert.assertEquals("实例狗", chest.getSourceDogName());
+        Assert.assertEquals("corgi", chest.getSourceDogBreed());
+        Assert.assertEquals(4, chest.getDurationHours());
+        Assert.assertEquals("explore_bones", chest.getSkillSnapshotId());
+        Assert.assertEquals(Integer.valueOf(1), chest.getSkillSnapshotLevel());
+        Assert.assertEquals("v5-explore-training", chest.getSkillSnapshotDefinitionVersion());
+        Assert.assertEquals(0, findItemCount(user.getAccountId(), "chest_back_hill"));
+        Assert.assertEquals(1, countItemLedger(user.getAccountId(), "chest_back_hill",
+                "gain", "explore_return_chest"));
+    }
+
+    @Test
+    public void openChestInstanceShouldUseStoredDurationSkillSnapshotAndLedger() throws Exception {
+        User user = accountUser(990028L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "开箱狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+        PetProfileService.trainingLearn(user.getAccountId(), trainingSkill("explore_bones", null));
+        PetProfileService.trainingEquip(user.getAccountId(), trainingSkill("explore_bones", dogId));
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 99);
+        try {
+            PetProfileService.exploreStart(user.getAccountId(), exploreStart(dogId, "back_hill", 4));
+            setExploreEnded(user.getAccountId(), dogId);
+            PetProfileDTO settled = PetProfileService.profile(user.getAccountId());
+            String chestId = settled.getExploreChests().get(0).getId();
+
+            PetExploreOpenResultDTO result = PetProfileService.openBackHillChest(
+                    user.getAccountId(), useChest("chest_back_hill", chestId));
+
+            Assert.assertTrue(result.getRewards().stream()
+                    .anyMatch(reward -> "bones".equals(reward.getType())
+                            && reward.getAmount() == 27));
+            Assert.assertTrue(result.getProfile().getExploreChests().isEmpty());
+            Assert.assertEquals(1, countItemLedger(user.getAccountId(), "chest_back_hill",
+                    "spend", "open_explore_chest"));
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
+    }
+
+    @Test
+    public void buyingNormalItemShouldRecordItemLedger() throws Exception {
+        User user = accountUser(990029L);
+
+        PetProfileService.shopBuy(user.getAccountId(), shopBuy("item_hint", 2));
+
+        Assert.assertEquals(2, findItemCount(user.getAccountId(), "item_hint"));
+        Assert.assertEquals(1, countItemLedger(user.getAccountId(), "item_hint",
+                "gain", "shop_buy_normal"));
     }
 
     @Test
@@ -706,6 +778,21 @@ public class PetServiceTest {
         return dto;
     }
 
+    private static PetUseItemDTO useChest(String itemId, String chestId) {
+        PetUseItemDTO dto = new PetUseItemDTO();
+        dto.setItemId(itemId);
+        dto.setChestId(chestId);
+        dto.setQuantity(1);
+        return dto;
+    }
+
+    private static PetTrainingSkillActionDTO trainingSkill(String skillId, String dogId) {
+        PetTrainingSkillActionDTO dto = new PetTrainingSkillActionDTO();
+        dto.setSkillId(skillId);
+        dto.setDogId(dogId);
+        return dto;
+    }
+
     private static PetShopBuyDTO shopBuy(String itemId, int quantity) {
         PetShopBuyDTO dto = new PetShopBuyDTO();
         dto.setItemId(itemId);
@@ -916,6 +1003,21 @@ public class PetServiceTest {
             statement.setInt(3, count);
             statement.setLong(4, now);
             statement.executeUpdate();
+        }
+    }
+
+    private static int countItemLedger(long accountId, String itemId, String direction, String source) throws Exception {
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "SELECT COUNT(1) FROM pet_item_ledger " +
+                             "WHERE account_id = ? AND item_id = ? AND direction = ? AND source = ?")) {
+            statement.setLong(1, accountId);
+            statement.setString(2, itemId);
+            statement.setString(3, direction);
+            statement.setString(4, source);
+            try (ResultSet rs = statement.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
         }
     }
 

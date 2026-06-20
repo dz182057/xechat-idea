@@ -20,6 +20,8 @@ public class PetUseItemDTO implements Serializable {
 
     private String dogId;
 
+    private String chestId;
+
     private Integer quantity;
 
 }

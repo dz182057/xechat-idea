@@ -26,6 +26,8 @@ public class PetProfileDTO implements Serializable {
 
     private List<PetInventoryItemDTO> items;
 
+    private List<PetExploreChestDTO> exploreChests;
+
     private List<PetCollectionItemDTO> collections;
 
     private String companionDogId;
@@ -44,6 +46,7 @@ public class PetProfileDTO implements Serializable {
         profile.setAssets(new PetAssetsDTO(300, 6, 0, 1, 10));
         profile.setDogs(new ArrayList<>());
         profile.setItems(new ArrayList<>());
+        profile.setExploreChests(new ArrayList<>());
         profile.setCollections(new ArrayList<>());
         profile.setExploreStatus(new PetExploreStatusDTO(3, 0, 5, 0, 0,
                 false, false, false, 0, 0, 0, 0, null));

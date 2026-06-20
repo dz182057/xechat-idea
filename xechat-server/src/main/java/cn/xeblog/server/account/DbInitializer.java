@@ -498,6 +498,39 @@ public final class DbInitializer {
                         "updated_at INTEGER NOT NULL," +
                         "PRIMARY KEY (account_id, item_id)" +
                         ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_explore_chests (" +
+                        "id TEXT PRIMARY KEY," +
+                        "account_id INTEGER NOT NULL," +
+                        "chest_item_id TEXT NOT NULL," +
+                        "location TEXT NOT NULL," +
+                        "source_dog_id TEXT," +
+                        "source_dog_name TEXT," +
+                        "source_dog_breed TEXT," +
+                        "duration_hours INTEGER NOT NULL DEFAULT 1," +
+                        "skill_snapshot_id TEXT," +
+                        "skill_snapshot_level INTEGER," +
+                        "skill_snapshot_definition_version TEXT," +
+                        "status TEXT NOT NULL DEFAULT 'available'," +
+                        "created_at INTEGER NOT NULL," +
+                        "opened_at INTEGER" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_explore_chests_account " +
+                        "ON pet_explore_chests(account_id, status, chest_item_id, created_at)");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_item_ledger (" +
+                        "id TEXT PRIMARY KEY," +
+                        "account_id INTEGER NOT NULL," +
+                        "item_id TEXT NOT NULL," +
+                        "quantity INTEGER NOT NULL," +
+                        "direction TEXT NOT NULL," +
+                        "source TEXT NOT NULL," +
+                        "source_ref TEXT," +
+                        "metadata_json TEXT," +
+                        "created_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_item_ledger_account " +
+                        "ON pet_item_ledger(account_id, created_at)");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_item_ledger_item " +
+                        "ON pet_item_ledger(account_id, item_id, created_at)");
                 st.execute("CREATE TABLE IF NOT EXISTS game_item_uses (" +
                         "id TEXT PRIMARY KEY," +
                         "game_id TEXT NOT NULL," +
