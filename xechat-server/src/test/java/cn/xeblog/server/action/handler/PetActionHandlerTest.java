@@ -3952,8 +3952,7 @@ public class PetActionHandlerTest {
                 "item_gomoku_guard",
                 "item_turtle_probe",
                 "item_battle_pebble",
-                "item_battle_airbag",
-                "item_race_knee"
+                "item_battle_airbag"
         ));
     }
 
@@ -3971,8 +3970,7 @@ public class PetActionHandlerTest {
                 "item_gomoku_guard",
                 "item_turtle_probe",
                 "item_battle_pebble",
-                "item_battle_airbag",
-                "item_race_knee"
+                "item_battle_airbag"
         );
         int itemIndex = (int) Math.floorMod(date.toEpochDay(), itemIds.size());
         return itemIds.get(itemIndex);

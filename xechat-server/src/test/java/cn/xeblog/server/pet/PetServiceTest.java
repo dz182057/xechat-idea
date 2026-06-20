@@ -57,8 +57,7 @@ public class PetServiceTest {
             "item_gomoku_guard",
             "item_turtle_probe",
             "item_battle_pebble",
-            "item_battle_airbag",
-            "item_race_knee"
+            "item_battle_airbag"
     ));
 
     private Path tempDir;

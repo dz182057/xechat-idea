@@ -1,6 +1,7 @@
 package cn.xeblog.server.pet;
 
 import cn.xeblog.commons.enums.Game;
+import cn.xeblog.server.pet.PetItemDefinition.ReleaseStage;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -11,11 +12,16 @@ public class PetItemDefinitionsTest {
         Assert.assertTrue(PetItemDefinitions.shopNormalItemIds().contains("item_hint"));
         Assert.assertFalse(PetItemDefinitions.shopNormalItemIds().contains("item_turtle_probe"));
         Assert.assertTrue(PetItemDefinitions.luckyBagRareItemIds().contains("item_turtle_probe"));
+        Assert.assertFalse(PetItemDefinitions.luckyBagRareItemIds().contains("item_race_knee"));
         Assert.assertTrue(PetItemDefinitions.luckyBagEpicItemIds().contains("item_lucky_day"));
 
         Assert.assertEquals(Integer.valueOf(20), PetItemDefinitions.sellItemPrices().get("item_hint"));
         Assert.assertEquals(Integer.valueOf(80), PetItemDefinitions.sellItemPrices().get("item_turtle_probe"));
+        Assert.assertEquals(Integer.valueOf(80), PetItemDefinitions.sellItemPrices().get("item_race_knee"));
         Assert.assertEquals(Integer.valueOf(200), PetItemDefinitions.sellItemPrices().get("item_lucky_day"));
+
+        Assert.assertEquals(ReleaseStage.EXPANSION,
+                PetItemDefinitions.byId("item_race_knee").getReleaseStage());
 
         Assert.assertEquals(Integer.valueOf(40),
                 PetItemDefinitions.interactionRewardBones().get("item_battle_direct_hit"));

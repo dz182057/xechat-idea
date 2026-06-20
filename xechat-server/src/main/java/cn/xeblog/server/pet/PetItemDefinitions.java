@@ -135,7 +135,7 @@ public final class PetItemDefinitions {
         play(items, "item_turtle_probe", Rarity.RARE, false, Game.TURTLE_SOUP);
         play(items, "item_battle_pebble", Rarity.RARE, false, Game.DOG_BATTLE);
         play(items, "item_battle_airbag", Rarity.RARE, false, Game.DOG_BATTLE);
-        utility(items, "item_race_knee", Rarity.RARE, Game.DOG_RACE);
+        utility(items, "item_race_knee", Rarity.RARE, ReleaseStage.EXPANSION, Game.DOG_RACE);
 
         utility(items, ITEM_WILD_COMMON, Rarity.EPIC);
         utility(items, ITEM_PARTY_EQUALIZER, Rarity.EPIC);
@@ -158,7 +158,12 @@ public final class PetItemDefinitions {
     }
 
     private static void utility(List<PetItemDefinition> items, String itemId, Rarity rarity, Game... games) {
-        items.add(new PetItemDefinition(itemId, rarity, ReleaseStage.CORE, Slot.UTILITY, sellPrice(rarity),
+        utility(items, itemId, rarity, ReleaseStage.CORE, games);
+    }
+
+    private static void utility(List<PetItemDefinition> items, String itemId, Rarity rarity,
+                                ReleaseStage releaseStage, Game... games) {
+        items.add(new PetItemDefinition(itemId, rarity, releaseStage, Slot.UTILITY, sellPrice(rarity),
                 null, true, false, games));
     }
 
@@ -185,7 +190,7 @@ public final class PetItemDefinitions {
     private static List<String> itemIdsByRarity(Rarity rarity) {
         List<String> itemIds = new ArrayList<>();
         for (PetItemDefinition definition : DEFINITIONS) {
-            if (definition.getRarity() == rarity) {
+            if (definition.getRarity() == rarity && definition.getReleaseStage() == ReleaseStage.CORE) {
                 itemIds.add(definition.getItemId());
             }
         }
