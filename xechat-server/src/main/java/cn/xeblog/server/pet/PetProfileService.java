@@ -227,6 +227,8 @@ public final class PetProfileService {
             "item_mine_guard",
             "item_metal_detector"
     ));
+    private static final Set<String> CONSTRUCTION_SITE_LUCKY_BAG_ITEM_IDS =
+            Collections.unmodifiableSet(createConstructionSiteLuckyBagItemIds());
     private static final List<String> OLD_LIBRARY_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "item_gomoku_prediction",
             "item_gomoku_review",
@@ -282,6 +284,13 @@ public final class PetProfileService {
     private static final Set<String> SELLABLE_COLLECTION_ITEM_IDS = Collections.unmodifiableSet(
             new HashSet<>(BACK_HILL_COLLECTION_ITEM_IDS));
 
+    private static Set<String> createConstructionSiteLuckyBagItemIds() {
+        Set<String> itemIds = new HashSet<>();
+        itemIds.addAll(CONSTRUCTION_SITE_NORMAL_ITEM_IDS);
+        itemIds.addAll(CONSTRUCTION_SITE_RARE_ITEM_IDS);
+        return itemIds;
+    }
+
     private static List<PetTrainingSkillDefinitionDTO> createTrainingSkillDefinitions() {
         List<PetTrainingSkillDefinitionDTO> definitions = new ArrayList<>();
         definitions.add(new PetTrainingSkillDefinitionDTO(TRAINING_SKILL_ROUTE, "熟路口令", "🧭",
@@ -320,6 +329,8 @@ public final class PetProfileService {
     private static final Map<Long, Object> ACCOUNT_LOCKS = new ConcurrentHashMap<>();
     private static IntSupplier exploreRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);
     private static IntSupplier exploreEasterEventSupplier = () -> ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
+    private static IntSupplier luckyBagRarityRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);
+    private static IntSupplier luckyBagItemIndexSupplier = () -> ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
 
     private PetProfileService() {
     }
@@ -1666,9 +1677,12 @@ public final class PetProfileService {
             }
 
             Map<String, Integer> itemCounts = luckyBagItemCounts(itemMapper, accountId);
+            boolean constructionSiteCollectionCompleted = hasCompletedCollectionSet(
+                    session.getMapper(PetCollectionMapper.class), accountId,
+                    CONSTRUCTION_SITE_COLLECTION_ITEM_IDS);
             List<String> rewards = new ArrayList<>(quantity);
             for (int i = 0; i < quantity; i++) {
-                String rewardItemId = rollLuckyBagItem(itemCounts);
+                String rewardItemId = rollLuckyBagItem(itemCounts, constructionSiteCollectionCompleted);
                 if (rewardItemId == null) {
                     throw new IllegalArgumentException("道具背包已满");
                 }
@@ -2241,8 +2255,9 @@ public final class PetProfileService {
         return counts;
     }
 
-    private static String rollLuckyBagItem(Map<String, Integer> itemCounts) {
-        int rarityRoll = ThreadLocalRandom.current().nextInt(100);
+    private static String rollLuckyBagItem(Map<String, Integer> itemCounts,
+                                           boolean constructionSiteCollectionCompleted) {
+        int rarityRoll = nextLuckyBagRarityRoll();
         List<String> pool;
         if (rarityRoll < 70) {
             pool = LUCKY_BAG_NORMAL_ITEM_IDS;
@@ -2252,11 +2267,11 @@ public final class PetProfileService {
             pool = LUCKY_BAG_EPIC_ITEM_IDS;
         }
 
-        String itemId = pickAvailableLuckyBagItem(pool, itemCounts);
+        String itemId = pickAvailableLuckyBagItem(pool, itemCounts, constructionSiteCollectionCompleted);
         if (itemId != null) {
             return itemId;
         }
-        return pickAvailableLuckyBagItem(LUCKY_BAG_ITEM_IDS, itemCounts);
+        return pickAvailableLuckyBagItem(LUCKY_BAG_ITEM_IDS, itemCounts, constructionSiteCollectionCompleted);
     }
 
     private static String dailyRareShopItemId(LocalDate date) {
@@ -2274,7 +2289,34 @@ public final class PetProfileService {
         if (availableItems.isEmpty()) {
             return null;
         }
-        return availableItems.get(ThreadLocalRandom.current().nextInt(availableItems.size()));
+        return availableItems.get(nextLuckyBagItemIndex(availableItems.size()));
+    }
+
+    private static String pickAvailableLuckyBagItem(List<String> pool, Map<String, Integer> itemCounts,
+                                                    boolean constructionSiteCollectionCompleted) {
+        if (!constructionSiteCollectionCompleted) {
+            return pickAvailableLuckyBagItem(pool, itemCounts);
+        }
+        return pickAvailableLuckyBagItem(applyConstructionSiteLuckyBagWeight(pool), itemCounts);
+    }
+
+    private static List<String> applyConstructionSiteLuckyBagWeight(List<String> pool) {
+        List<String> weightedPool = new ArrayList<>(pool.size() + CONSTRUCTION_SITE_LUCKY_BAG_ITEM_IDS.size());
+        for (String itemId : pool) {
+            weightedPool.add(itemId);
+            if (CONSTRUCTION_SITE_LUCKY_BAG_ITEM_IDS.contains(itemId)) {
+                weightedPool.add(itemId);
+            }
+        }
+        return weightedPool;
+    }
+
+    private static int nextLuckyBagRarityRoll() {
+        return Math.floorMod(luckyBagRarityRollSupplier.getAsInt(), 100);
+    }
+
+    private static int nextLuckyBagItemIndex(int size) {
+        return Math.floorMod(luckyBagItemIndexSupplier.getAsInt(), size);
     }
 
     private static PetProfileDTO buySlotLocked(long accountId) {

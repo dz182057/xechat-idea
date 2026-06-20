@@ -1228,6 +1228,42 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void shopBuyLuckyBagDoublesMineItemWeightAfterConstructionSiteCollectionSet() {
+        IntSupplier originalRarityRollSupplier = setLuckyBagRarityRollSupplier(() -> 0);
+        IntSupplier originalItemIndexSupplier = setLuckyBagItemIndexSupplier(() -> 4);
+
+        try {
+            User normalUser = user(92114L, "normal_lucky_bag_user");
+            setAssets(normalUser.getAccountId(), 300, 1);
+
+            new PetActionHandler().process(normalUser, shopBuyRequest("lucky_bag", 1, 92114L));
+
+            PetResponseDTO normalBody = readPetBody(normalUser);
+            Assert.assertTrue(normalBody.isSuccess());
+            PetProfileDTO normalProfile = (PetProfileDTO) normalBody.getContent();
+            Assert.assertEquals(1, findInventoryCount(normalProfile, "item_hint"));
+            Assert.assertEquals(0, findInventoryCount(normalProfile, "item_mine_scout"));
+
+            User bonusUser = user(92115L, "construction_collection_user");
+            setAssets(bonusUser.getAccountId(), 300, 1);
+            for (String itemId : constructionSiteCollectionItemIds()) {
+                insertPetCollection(bonusUser.getAccountId(), itemId, 1, true);
+            }
+
+            new PetActionHandler().process(bonusUser, shopBuyRequest("lucky_bag", 1, 92115L));
+
+            PetResponseDTO bonusBody = readPetBody(bonusUser);
+            Assert.assertTrue(bonusBody.isSuccess());
+            PetProfileDTO bonusProfile = (PetProfileDTO) bonusBody.getContent();
+            Assert.assertEquals(0, findInventoryCount(bonusProfile, "item_hint"));
+            Assert.assertEquals(1, findInventoryCount(bonusProfile, "item_mine_scout"));
+        } finally {
+            setLuckyBagRarityRollSupplier(originalRarityRollSupplier);
+            setLuckyBagItemIndexSupplier(originalItemIndexSupplier);
+        }
+    }
+
+    @Test
     public void shopBuyNormalItemRejectsInvalidQuantityWithoutSideEffects() {
         User user = user();
         setAssets(user.getAccountId(), 300, 1);
@@ -4156,6 +4192,17 @@ public class PetActionHandlerTest {
         ));
     }
 
+    private static Set<String> constructionSiteCollectionItemIds() {
+        return new HashSet<>(Arrays.asList(
+                "construction_site_helmet",
+                "construction_site_gear",
+                "construction_site_nut",
+                "construction_site_brick",
+                "construction_site_driver",
+                "construction_site_clip"
+        ));
+    }
+
     private static Set<String> luckyBagItemIds() {
         Set<String> itemIds = new HashSet<>();
         itemIds.addAll(normalLuckyBagItemIds());
@@ -4775,6 +4822,30 @@ public class PetActionHandlerTest {
     private static IntSupplier setExploreEasterEventSupplier(IntSupplier supplier) {
         try {
             Field field = PetProfileService.class.getDeclaredField("exploreEasterEventSupplier");
+            field.setAccessible(true);
+            IntSupplier original = (IntSupplier) field.get(null);
+            field.set(null, supplier);
+            return original;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static IntSupplier setLuckyBagRarityRollSupplier(IntSupplier supplier) {
+        try {
+            Field field = PetProfileService.class.getDeclaredField("luckyBagRarityRollSupplier");
+            field.setAccessible(true);
+            IntSupplier original = (IntSupplier) field.get(null);
+            field.set(null, supplier);
+            return original;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static IntSupplier setLuckyBagItemIndexSupplier(IntSupplier supplier) {
+        try {
+            Field field = PetProfileService.class.getDeclaredField("luckyBagItemIndexSupplier");
             field.setAccessible(true);
             IntSupplier original = (IntSupplier) field.get(null);
             field.set(null, supplier);
