@@ -10,6 +10,7 @@ import cn.xeblog.commons.entity.pet.PetExploreOpenResultDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStatusDTO;
 import cn.xeblog.commons.entity.pet.PetInventoryItemDTO;
 import cn.xeblog.commons.entity.pet.PetInteractionStatusDTO;
+import cn.xeblog.commons.entity.pet.PetPendingOldTennisBallDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRequestDTO;
 import cn.xeblog.commons.entity.pet.PetRenameDTO;
@@ -3722,6 +3723,74 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void exploreOpenFindsOldTennisBallAndKeepsPendingChoiceForExplorerDog() {
+        User user = user(97060L, "old_tennis_found_user");
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        insertPetCollection(user.getAccountId(), "easter_neighbor_slipper", 1, true);
+        insertPetCollection(user.getAccountId(), "treasure_map_fragment", 3, true);
+        insertPetCollection(user.getAccountId(), "easter_snail", 1, true);
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 78);
+        IntSupplier originalEasterEventSupplier = setExploreEasterEventSupplier(() -> 0);
+
+        try {
+            openEndedOneHourExplore(user, dog.getId(), 97060L, 97061L);
+
+            PetProfileDTO profile = requestProfile(user);
+            PetPendingOldTennisBallDTO pending = profile.getExploreStatus().getPendingOldTennisBall();
+            Assert.assertNotNull(pending);
+            Assert.assertEquals(dog.getId(), pending.getDogId());
+            Assert.assertEquals(dog.getName(), pending.getDogName());
+            Assert.assertNull(findCollection(profile, "easter_old_tennis"));
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+            setExploreEasterEventSupplier(originalEasterEventSupplier);
+        }
+    }
+
+    @Test
+    public void resolveOldTennisBallReturnGrantsBondWithinDailyLimitAndClearsPending() {
+        User user = user(97062L, "old_tennis_return_user");
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        insertDailyCounter(user.getAccountId(), "lifetime", "old_tennis_pending:" + dog.getId(), 1);
+        PetProfileDTO before = requestProfile(user);
+
+        new PetActionHandler().process(user, resolveOldTennisBallRequest("return", 97062L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertTrue(body.isSuccess());
+        Assert.assertEquals(PetAction.RESOLVE_OLD_TENNIS_BALL, body.getPetAction());
+        PetProfileDTO after = (PetProfileDTO) body.getContent();
+        Assert.assertNull(after.getExploreStatus().getPendingOldTennisBall());
+        Assert.assertEquals(findDog(before, dog.getId()).getBond() + 2,
+                findDog(after, dog.getId()).getBond());
+        Assert.assertEquals(2, countDailyCounter(user.getAccountId(), "bond_total:" + dog.getId()));
+        Assert.assertEquals(0, countCounter(user.getAccountId(), "lifetime",
+                "old_tennis_pending:" + dog.getId()));
+    }
+
+    @Test
+    public void resolveOldTennisBallCollectAddsEasterCollectionWithoutChangingBond() {
+        User user = user(97063L, "old_tennis_collect_user");
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        insertDailyCounter(user.getAccountId(), "lifetime", "old_tennis_pending:" + dog.getId(), 1);
+        PetProfileDTO before = requestProfile(user);
+
+        new PetActionHandler().process(user, resolveOldTennisBallRequest("collect", 97063L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertTrue(body.isSuccess());
+        Assert.assertEquals(PetAction.RESOLVE_OLD_TENNIS_BALL, body.getPetAction());
+        PetProfileDTO after = (PetProfileDTO) body.getContent();
+        Assert.assertNull(after.getExploreStatus().getPendingOldTennisBall());
+        Assert.assertEquals(findDog(before, dog.getId()).getBond(),
+                findDog(after, dog.getId()).getBond());
+        PetCollectionItemDTO collection = findCollection(after, "easter_old_tennis");
+        Assert.assertNotNull(collection);
+        Assert.assertEquals(1, collection.getCount());
+        Assert.assertTrue(collection.isDiscovered());
+    }
+
+    @Test
     public void mysteryCaveRequiresFragmentsAndCompletesHuskyUnlockOnce() {
         User user = user(97034L, "mystery_cave_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
@@ -4042,6 +4111,16 @@ public class PetActionHandlerTest {
         content.put("dogId", dogId);
         PetRequestDTO request = new PetRequestDTO();
         request.setPetAction(action);
+        request.setRequestId(requestId);
+        request.setContent(content);
+        return request;
+    }
+
+    private static PetRequestDTO resolveOldTennisBallRequest(String choice, long requestId) {
+        Map<String, Object> content = new HashMap<>();
+        content.put("choice", choice);
+        PetRequestDTO request = new PetRequestDTO();
+        request.setPetAction(PetAction.RESOLVE_OLD_TENNIS_BALL);
         request.setRequestId(requestId);
         request.setContent(content);
         return request;

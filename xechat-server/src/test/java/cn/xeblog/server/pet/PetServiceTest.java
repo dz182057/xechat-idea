@@ -427,6 +427,7 @@ public class PetServiceTest {
         insertCollection(user.getAccountId(), "easter_neighbor_slipper", 0);
         insertCollection(user.getAccountId(), "treasure_map_fragment", 3);
         insertCollection(user.getAccountId(), "easter_snail", 1);
+        insertCollection(user.getAccountId(), "easter_old_tennis", 1);
         IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 79);
         try {
             PetProfileService.exploreStart(user.getAccountId(), exploreStart(dogId, "back_hill", 1));

@@ -16,8 +16,10 @@ import cn.xeblog.commons.entity.pet.PetFeedDTO;
 import cn.xeblog.commons.entity.pet.PetInventoryItemDTO;
 import cn.xeblog.commons.entity.pet.PetInteractionStatusDTO;
 import cn.xeblog.commons.entity.pet.PetMakeupCheckinDTO;
+import cn.xeblog.commons.entity.pet.PetPendingOldTennisBallDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
+import cn.xeblog.commons.entity.pet.PetResolveOldTennisBallDTO;
 import cn.xeblog.commons.entity.pet.PetRenameDTO;
 import cn.xeblog.commons.entity.pet.PetSellItemDTO;
 import cn.xeblog.commons.entity.pet.PetSetCompanionDTO;
@@ -170,6 +172,10 @@ public final class PetProfileService {
     private static final String MYSTERY_CAVE_COMPLETED_COLLECTION_ID = "mystery_cave_completed";
     private static final String EASTER_NEIGHBOR_SLIPPER_COLLECTION_ID = "easter_neighbor_slipper";
     private static final String EASTER_SNAIL_COLLECTION_ID = "easter_snail";
+    private static final String EASTER_OLD_TENNIS_COLLECTION_ID = "easter_old_tennis";
+    private static final String EASTER_OLD_TENNIS_PENDING_PREFIX = "old_tennis_pending:";
+    private static final String DAILY_COUNTER_OLD_TENNIS_BOND_PREFIX = "bond_old_tennis:";
+    private static final int EASTER_OLD_TENNIS_RETURN_BOND = 2;
     private static final int EASTER_NEIGHBOR_SLIPPER_CHECKIN_BONES = 50;
     private static final String ITEM_FEAST = "item_feast";
     private static final String ITEM_EXPRESS = "item_express";
@@ -437,7 +443,8 @@ public final class PetProfileService {
                     backHillCompletions,
                     creekCompletions,
                     minesweeperWins,
-                    oldLibraryWins));
+                    oldLibraryWins,
+                    pendingOldTennisBall(dailyCounterMapper, accountId, rows)));
             profile.setInteractionStatus(buildInteractionStatus(dailyCounterMapper, accountId, todayText));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             if (dogEnergyRefreshed || exploreSettled || dogStageChanged) {
@@ -466,6 +473,30 @@ public final class PetProfileService {
                 definitions,
                 skills,
                 freeLearnAvailable);
+    }
+
+    private static PetPendingOldTennisBallDTO pendingOldTennisBall(PetDailyCounterMapper mapper,
+                                                                   long accountId,
+                                                                   List<PetDogRecord> dogs) {
+        String pendingCounter = firstPendingOldTennisCounter(mapper, accountId);
+        if (pendingCounter == null) {
+            return null;
+        }
+        String dogId = pendingCounter.substring(EASTER_OLD_TENNIS_PENDING_PREFIX.length());
+        String dogName = "";
+        for (PetDogRecord dog : dogs) {
+            if (dog.getId().equals(dogId)) {
+                dogName = dog.getName();
+                break;
+            }
+        }
+        return new PetPendingOldTennisBallDTO(dogId, dogName);
+    }
+
+    private static String firstPendingOldTennisCounter(PetDailyCounterMapper mapper, long accountId) {
+        List<String> counters = mapper.listCountersByPrefix(accountId, COUNTER_DATE_LIFETIME,
+                EASTER_OLD_TENNIS_PENDING_PREFIX);
+        return counters.isEmpty() ? null : counters.get(0);
     }
 
     public static boolean addDogBattleReward(long winnerAccountId, long loserAccountId, int winnerBones, int loserBones) {
@@ -623,6 +654,12 @@ public final class PetProfileService {
         }
     }
 
+    public static PetProfileDTO resolveOldTennisBall(long accountId, PetResolveOldTennisBallDTO request) {
+        synchronized (accountLock(accountId)) {
+            return resolveOldTennisBallLocked(accountId, request);
+        }
+    }
+
     private static PetProfileDTO greetAllDogsLocked(long accountId) {
         String today = LocalDate.now().toString();
         long now = System.currentTimeMillis();
@@ -687,6 +724,45 @@ public final class PetProfileService {
             if (dogMapper.updateCareStats(dog.getId(), accountId, bond, energy, now) <= 0) {
                 throw new IllegalArgumentException("狗狗散步失败，请刷新后重试");
             }
+            session.commit();
+        }
+
+        return profile(accountId);
+    }
+
+    private static PetProfileDTO resolveOldTennisBallLocked(long accountId, PetResolveOldTennisBallDTO request) {
+        String choice = request == null ? null : StrUtil.trim(request.getChoice());
+        if (!"return".equals(choice) && !"collect".equals(choice)) {
+            throw new IllegalArgumentException("请选择扔回去或收藏旧网球");
+        }
+
+        String today = LocalDate.now().toString();
+        long now = System.currentTimeMillis();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            String pendingCounter = firstPendingOldTennisCounter(counterMapper, accountId);
+            if (pendingCounter == null) {
+                throw new IllegalArgumentException("没有待处理的旧网球");
+            }
+            String dogId = pendingCounter.substring(EASTER_OLD_TENNIS_PENDING_PREFIX.length());
+            PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
+            PetDogRecord dog = dogMapper.findByIdAndOwner(dogId, accountId);
+            if (dog == null) {
+                throw new IllegalArgumentException("发现旧网球的狗狗不存在");
+            }
+
+            if ("collect".equals(choice)) {
+                session.getMapper(PetCollectionMapper.class).addCollection(accountId,
+                        EASTER_OLD_TENNIS_COLLECTION_ID, now);
+            } else {
+                int bond = grantDailyDogBondAmount(counterMapper, accountId, today, dog,
+                        DAILY_COUNTER_OLD_TENNIS_BOND_PREFIX, EASTER_OLD_TENNIS_RETURN_BOND, now);
+                if (bond != dog.getBond()
+                        && dogMapper.updateCareStats(dog.getId(), accountId, bond, dog.getEnergy(), now) <= 0) {
+                    throw new IllegalArgumentException("旧网球亲密度更新失败");
+                }
+            }
+            counterMapper.deleteCounter(accountId, COUNTER_DATE_LIFETIME, pendingCounter);
             session.commit();
         }
 
@@ -2119,7 +2195,7 @@ public final class PetProfileService {
             } else if (roll < 78) {
                 applyExploreCollectionReward(session, accountId, location, rewards, now);
             } else if (roll < 80) {
-                applyExploreEasterEventReward(session, accountId, assetsMapper, rewards, now);
+                applyExploreEasterEventReward(session, accountId, dog, assetsMapper, rewards, now);
             } else if (roll < 80 + collectionBonus) {
                 applyExploreCollectionReward(session, accountId, location, rewards, now);
             } else if (roll < 80 + collectionBonus + treasureBonus) {
@@ -2148,21 +2224,35 @@ public final class PetProfileService {
     }
 
     private static void applyExploreEasterEventReward(SqlSession session, long accountId,
+                                                      PetDogRecord dog,
                                                       PetAssetsMapper assetsMapper,
                                                       List<PetExploreRewardDTO> rewards, long now) {
         PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
-        List<String> eventIds = availableExploreEasterEventIds(collectionMapper, accountId);
+        PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+        List<String> eventIds = availableExploreEasterEventIds(collectionMapper, counterMapper, accountId, dog);
         if (eventIds.isEmpty()) {
             addExploreBones(assetsMapper, accountId, EXPLORE_EASTER_EVENT_OVERFLOW_BONES, rewards, now);
             return;
         }
 
         String eventId = eventIds.get(Math.floorMod(nextExploreEasterEventIndex(), eventIds.size()));
+        if (EASTER_OLD_TENNIS_COLLECTION_ID.equals(eventId)) {
+            if (dog == null || counterMapper.incrementIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
+                    EASTER_OLD_TENNIS_PENDING_PREFIX + dog.getId(), 1, now) <= 0) {
+                addExploreBones(assetsMapper, accountId, EXPLORE_EASTER_EVENT_OVERFLOW_BONES, rewards, now);
+                return;
+            }
+            rewards.add(new PetExploreRewardDTO("easter_event", EASTER_OLD_TENNIS_COLLECTION_ID, 1));
+            return;
+        }
         collectionMapper.addCollection(accountId, eventId, now);
         rewards.add(new PetExploreRewardDTO("collection", eventId, 1));
     }
 
-    private static List<String> availableExploreEasterEventIds(PetCollectionMapper collectionMapper, long accountId) {
+    private static List<String> availableExploreEasterEventIds(PetCollectionMapper collectionMapper,
+                                                               PetDailyCounterMapper counterMapper,
+                                                               long accountId,
+                                                               PetDogRecord dog) {
         List<String> eventIds = new ArrayList<>();
         if (!isCollectionDiscovered(collectionMapper, accountId, EASTER_NEIGHBOR_SLIPPER_COLLECTION_ID)) {
             eventIds.add(EASTER_NEIGHBOR_SLIPPER_COLLECTION_ID);
@@ -2173,6 +2263,11 @@ public final class PetProfileService {
         }
         if (!isCollectionDiscovered(collectionMapper, accountId, EASTER_SNAIL_COLLECTION_ID)) {
             eventIds.add(EASTER_SNAIL_COLLECTION_ID);
+        }
+        if (dog != null
+                && !isCollectionDiscovered(collectionMapper, accountId, EASTER_OLD_TENNIS_COLLECTION_ID)
+                && firstPendingOldTennisCounter(counterMapper, accountId) == null) {
+            eventIds.add(EASTER_OLD_TENNIS_COLLECTION_ID);
         }
         return eventIds;
     }
@@ -2643,6 +2738,33 @@ public final class PetProfileService {
             return dog.getBond();
         }
         return clampDogStat(dog.getBond() + 1);
+    }
+
+    private static int grantDailyDogBondAmount(PetDailyCounterMapper counterMapper,
+                                               long accountId,
+                                               String today,
+                                               PetDogRecord dog,
+                                               String sourceCounterPrefix,
+                                               int amount,
+                                               long now) {
+        String totalCounter = DAILY_COUNTER_DOG_BOND_TOTAL_PREFIX + dog.getId();
+        int currentBond = dog.getBond();
+        int granted = 0;
+        for (int i = 0; i < amount; i++) {
+            if (findDailyCounterValue(counterMapper, accountId, today, totalCounter) >= DAILY_DOG_BOND_LIMIT) {
+                break;
+            }
+            if (counterMapper.incrementIfUnderLimit(accountId, today,
+                    totalCounter, DAILY_DOG_BOND_LIMIT, now) <= 0) {
+                break;
+            }
+            granted++;
+        }
+        if (granted > 0) {
+            counterMapper.incrementByIfUnderLimit(accountId, today,
+                    sourceCounterPrefix + dog.getId(), granted, DAILY_DOG_BOND_LIMIT, now);
+        }
+        return clampDogStat(currentBond + granted);
     }
 
     private static PetInteractionStatusDTO buildInteractionStatus(PetDailyCounterMapper mapper, long accountId,

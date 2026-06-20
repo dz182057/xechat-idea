@@ -11,6 +11,7 @@ import cn.xeblog.commons.entity.pet.PetMakeupCheckinDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
 import cn.xeblog.commons.entity.pet.PetRequestDTO;
+import cn.xeblog.commons.entity.pet.PetResolveOldTennisBallDTO;
 import cn.xeblog.commons.entity.pet.PetRenameDTO;
 import cn.xeblog.commons.entity.pet.PetResponseDTO;
 import cn.xeblog.commons.entity.pet.PetSellItemDTO;
@@ -163,6 +164,15 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                     PetExploreOpenResultDTO openResult = PetProfileService.exploreOpen(user.getAccountId(),
                             toBean(body.getContent(), PetExploreOpenDTO.class));
                     send(user, PetResponseDTO.ok(petAction, requestId, openResult));
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
+            case RESOLVE_OLD_TENNIS_BALL:
+                try {
+                    PetProfileDTO oldTennisBallProfile = PetProfileService.resolveOldTennisBall(user.getAccountId(),
+                            toBean(body.getContent(), PetResolveOldTennisBallDTO.class));
+                    send(user, PetResponseDTO.ok(petAction, requestId, oldTennisBallProfile));
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }

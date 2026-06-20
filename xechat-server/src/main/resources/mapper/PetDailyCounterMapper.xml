@@ -36,4 +36,21 @@
         WHERE value + #{amount} &lt;= #{limit}
     </insert>
 
+    <select id="listCountersByPrefix" resultType="string">
+        SELECT counter
+        FROM pet_daily_counters
+        WHERE account_id = #{accountId}
+          AND counter_date = #{counterDate}
+          AND counter LIKE #{prefix} || '%'
+          AND value &gt; 0
+        ORDER BY updated_at ASC
+    </select>
+
+    <delete id="deleteCounter">
+        DELETE FROM pet_daily_counters
+        WHERE account_id = #{accountId}
+          AND counter_date = #{counterDate}
+          AND counter = #{counter}
+    </delete>
+
 </mapper>
