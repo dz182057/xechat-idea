@@ -89,9 +89,6 @@ public final class PetProfileService {
     private static final int SHOP_NORMAL_ITEM_PRICE = 80;
     private static final int SHOP_DAILY_RARE_ITEM_PRICE = 320;
     private static final int SHOP_LUCKY_BAG_PRICE = 250;
-    private static final int SELL_NORMAL_ITEM_PRICE = 20;
-    private static final int SELL_RARE_ITEM_PRICE = 80;
-    private static final int SELL_EPIC_ITEM_PRICE = 200;
     private static final int MAX_FOOD = 99;
     private static final int MAX_MAKEUP_CARDS = 3;
     private static final int MAX_ITEM_COUNT = 9;
@@ -182,48 +179,11 @@ public final class PetProfileService {
     private static final String DAILY_COUNTER_INTERACTION_BONUS_BONES = "interaction_bonus_bones";
     private static final String DAILY_COUNTER_INTERACTION_ITEM_PREFIX = "interaction_item_";
     private static final String MONTHLY_COUNTER_SHOP_MAKEUP_CARD_BUY = "shop_makeup_card_buy";
-    private static final Map<String, Integer> INTERACTION_ITEM_REWARD_BONES = interactionItemRewardBones();
-    private static final List<String> LUCKY_BAG_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_mine_mark",
-            "item_mine_area",
-            "item_mine_scout",
-            "item_mine_shield",
-            "item_hint",
-            "item_peek",
-            "item_time",
-            "item_inspiration",
-            "item_sync_prophecy",
-            "item_quiz_score_pad",
-            "item_quiz_duel",
-            "item_gomoku_prediction",
-            "item_gomoku_review",
-            "item_battle_echo",
-            "item_battle_direct_hit",
-            "item_prophecy"
-    ));
-    private static final List<String> LUCKY_BAG_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_mine_guard",
-            "item_metal_detector",
-            "item_draw_inspiration",
-            "item_draw_peek",
-            "item_draw_time",
-            "item_draw_replay",
-            "item_sync_perspective",
-            "item_sync_secret_question",
-            "item_quiz_wrong_option",
-            "item_gomoku_guard",
-            "item_turtle_probe",
-            "item_battle_pebble",
-            "item_battle_airbag",
-            "item_race_knee"
-    ));
-    private static final List<String> LUCKY_BAG_EPIC_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_wild_common",
-            "item_party_equalizer",
-            "item_gift_pack",
-            "item_express",
-            "item_lucky_day"
-    ));
+    private static final Map<String, Integer> INTERACTION_ITEM_REWARD_BONES =
+            PetItemDefinitions.interactionRewardBones();
+    private static final List<String> LUCKY_BAG_NORMAL_ITEM_IDS = PetItemDefinitions.luckyBagNormalItemIds();
+    private static final List<String> LUCKY_BAG_RARE_ITEM_IDS = PetItemDefinitions.luckyBagRareItemIds();
+    private static final List<String> LUCKY_BAG_EPIC_ITEM_IDS = PetItemDefinitions.luckyBagEpicItemIds();
     private static final List<String> BACK_HILL_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "item_hint",
             "item_time",
@@ -302,21 +262,9 @@ public final class PetProfileService {
         return effects;
     }
 
-    private static Map<String, Integer> interactionItemRewardBones() {
-        Map<String, Integer> rewards = new HashMap<>();
-        rewards.put("item_sync_prophecy", 20);
-        rewards.put("item_sync_perspective", 30);
-        rewards.put("item_quiz_duel", 30);
-        rewards.put("item_gomoku_prediction", 50);
-        rewards.put("item_battle_direct_hit", 40);
-        rewards.put("item_prophecy", 50);
-        return Collections.unmodifiableMap(rewards);
-    }
-
-    private static final List<String> LUCKY_BAG_ITEM_IDS = createLuckyBagItemIds();
-    private static final Set<String> SHOP_NORMAL_ITEM_IDS = Collections.unmodifiableSet(
-            new HashSet<>(LUCKY_BAG_NORMAL_ITEM_IDS));
-    private static final Map<String, Integer> SELL_ITEM_PRICES = createSellItemPrices();
+    private static final List<String> LUCKY_BAG_ITEM_IDS = PetItemDefinitions.luckyBagAllItemIds();
+    private static final Set<String> SHOP_NORMAL_ITEM_IDS = PetItemDefinitions.shopNormalItemIds();
+    private static final Map<String, Integer> SELL_ITEM_PRICES = PetItemDefinitions.sellItemPrices();
     private static final Map<Long, Object> ACCOUNT_LOCKS = new ConcurrentHashMap<>();
     private static IntSupplier exploreRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);
     private static IntSupplier exploreEasterEventSupplier = () -> ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
@@ -2468,28 +2416,6 @@ public final class PetProfileService {
     private static boolean isUniqueConstraint(PersistenceException e) {
         String message = e.getMessage();
         return message != null && message.contains("SQLITE_CONSTRAINT");
-    }
-
-    private static List<String> createLuckyBagItemIds() {
-        List<String> itemIds = new ArrayList<>();
-        itemIds.addAll(LUCKY_BAG_NORMAL_ITEM_IDS);
-        itemIds.addAll(LUCKY_BAG_RARE_ITEM_IDS);
-        itemIds.addAll(LUCKY_BAG_EPIC_ITEM_IDS);
-        return Collections.unmodifiableList(itemIds);
-    }
-
-    private static Map<String, Integer> createSellItemPrices() {
-        Map<String, Integer> prices = new java.util.HashMap<>();
-        for (String itemId : SHOP_NORMAL_ITEM_IDS) {
-            prices.put(itemId, SELL_NORMAL_ITEM_PRICE);
-        }
-        for (String itemId : LUCKY_BAG_RARE_ITEM_IDS) {
-            prices.put(itemId, SELL_RARE_ITEM_PRICE);
-        }
-        for (String itemId : LUCKY_BAG_EPIC_ITEM_IDS) {
-            prices.put(itemId, SELL_EPIC_ITEM_PRICE);
-        }
-        return Collections.unmodifiableMap(prices);
     }
 
     private static PetDogDTO toDTO(PetDogRecord row) {

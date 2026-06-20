@@ -3515,6 +3515,7 @@ public class PetActionHandlerTest {
         User user = user(97033L, "explore_husky_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 78);
+        IntSupplier originalEasterEventSupplier = setExploreEasterEventSupplier(() -> 1);
 
         try {
             openEndedOneHourExplore(user, dog.getId(), 97033L, 97034L);
@@ -3528,6 +3529,7 @@ public class PetActionHandlerTest {
             Assert.assertFalse(profile.getExploreStatus().isHuskyUnlocked());
         } finally {
             setExploreRollSupplier(originalRollSupplier);
+            setExploreEasterEventSupplier(originalEasterEventSupplier);
         }
     }
 
@@ -4516,6 +4518,18 @@ public class PetActionHandlerTest {
     private static IntSupplier setExploreRollSupplier(IntSupplier supplier) {
         try {
             Field field = PetProfileService.class.getDeclaredField("exploreRollSupplier");
+            field.setAccessible(true);
+            IntSupplier original = (IntSupplier) field.get(null);
+            field.set(null, supplier);
+            return original;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static IntSupplier setExploreEasterEventSupplier(IntSupplier supplier) {
+        try {
+            Field field = PetProfileService.class.getDeclaredField("exploreEasterEventSupplier");
             field.setAccessible(true);
             IntSupplier original = (IntSupplier) field.get(null);
             field.set(null, supplier);
