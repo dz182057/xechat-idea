@@ -123,10 +123,16 @@ public final class PetProfileService {
     private static final Map<String, List<Integer>> TRAINING_SKILL_EFFECTS =
             Collections.unmodifiableMap(createTrainingSkillEffects());
     private static final String EXPLORE_LOCATION_BACK_HILL = "back_hill";
+    private static final String EXPLORE_LOCATION_CREEK = "creek";
     private static final String EXPLORE_LOCATION_MYSTERY_CAVE = "mystery_cave";
     private static final String ITEM_BACK_HILL_CHEST = "chest_back_hill";
-    private static final int MAX_BACK_HILL_CHEST_COUNT = 99;
+    private static final String ITEM_CREEK_CHEST = "chest_creek";
+    private static final int MAX_EXPLORE_CHEST_COUNT = 99;
     private static final String BACK_HILL_CHEST_FULL_ERROR = "后山箱子已达上限，打开后再探险";
+    private static final String CREEK_CHEST_FULL_ERROR = "小溪箱子已达上限，打开后再探险";
+    private static final String COUNTER_DATE_LIFETIME = "lifetime";
+    private static final String COUNTER_EXPLORE_COMPLETE_PREFIX = "explore_complete_";
+    private static final int CREEK_UNLOCK_BACK_HILL_COMPLETIONS = 3;
     private static final int EXPLORE_ONE_HOUR = 1;
     private static final int EXPLORE_FOUR_HOURS = 4;
     private static final int EXPLORE_EIGHT_HOURS = 8;
@@ -191,6 +197,15 @@ public final class PetProfileService {
     ));
     private static final List<String> BACK_HILL_RARE_ITEM_IDS = Collections.unmodifiableList(Collections.singletonList(
             "item_turtle_probe"
+    ));
+    private static final List<String> CREEK_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "item_hint",
+            "item_peek",
+            "item_time",
+            "item_sync_prophecy"
+    ));
+    private static final List<String> CREEK_RARE_ITEM_IDS = Collections.unmodifiableList(Collections.singletonList(
+            "item_sync_perspective"
     ));
     private static final List<String> BACK_HILL_COLLECTION_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "back_hill_ball",
@@ -310,8 +325,9 @@ public final class PetProfileService {
             List<PetDogRecord> rows = dogMapper.listByOwner(accountId);
             PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
             PetTrainingMapper trainingMapper = session.getMapper(PetTrainingMapper.class);
+            PetDailyCounterMapper dailyCounterMapper = session.getMapper(PetDailyCounterMapper.class);
             boolean exploreSettled = settleEndedExploresAsChests(accountId, dogMapper, itemMapper,
-                    trainingMapper, rows, now);
+                    trainingMapper, dailyCounterMapper, rows, now);
             if (exploreSettled) {
                 rows = dogMapper.listByOwner(accountId);
             }
@@ -319,7 +335,6 @@ public final class PetProfileService {
             List<PetItemRecord> itemRows = itemMapper.listPositiveByAccountId(accountId);
             List<PetCollectionRecord> collectionRows = collectionMapper.listByAccountId(accountId);
             PetCheckinMapper checkinMapper = session.getMapper(PetCheckinMapper.class);
-            PetDailyCounterMapper dailyCounterMapper = session.getMapper(PetDailyCounterMapper.class);
             PetCheckinRecord todayCheckin = checkinMapper.findByAccountIdAndDate(accountId, todayText);
             List<String> checkedDatesInMonth = checkinMapper.listDatesByAccountIdAndMonthPrefix(
                     accountId, todayText.substring(0, 7));
@@ -830,9 +845,11 @@ public final class PetProfileService {
             if (EXPLORE_LOCATION_MYSTERY_CAVE.equals(location)) {
                 ensureMysteryCaveAvailable(session, accountId);
             } else {
+                ensureExploreLocationUnlocked(session, accountId, location);
                 ensureExploreStageUnlocked(dog, durationHours);
-                if (backHillChestCount(session.getMapper(PetItemMapper.class), accountId) >= MAX_BACK_HILL_CHEST_COUNT) {
-                    throw new IllegalArgumentException(BACK_HILL_CHEST_FULL_ERROR);
+                if (exploreChestCount(session.getMapper(PetItemMapper.class), accountId,
+                        exploreChestItemId(location)) >= MAX_EXPLORE_CHEST_COUNT) {
+                    throw new IllegalArgumentException(exploreChestFullError(location));
                 }
             }
             if (session.getMapper(PetDailyCounterMapper.class).incrementIfUnderLimit(accountId,
@@ -886,10 +903,12 @@ public final class PetProfileService {
             addExploreBones(assetsMapper, accountId,
                     applyExploreBonesTraining(effectiveExploreBaseBones(collectionMapper, accountId,
                             exploreBaseBones(durationHours)), dog), rewards, now);
-            applyExploreRolls(session, accountId, durationHours, dog, rewards, today, now);
+            applyExploreRolls(session, accountId, durationHours, dog, location, rewards, today, now);
             if (EXPLORE_LOCATION_MYSTERY_CAVE.equals(location)) {
                 collectionMapper.addCollection(accountId, MYSTERY_CAVE_COMPLETED_COLLECTION_ID, now);
                 rewards.add(new PetExploreRewardDTO("collection", MYSTERY_CAVE_COMPLETED_COLLECTION_ID, 1));
+            } else {
+                recordExploreCompletion(session.getMapper(PetDailyCounterMapper.class), accountId, location, now);
             }
             grantFirstExploreFreeLearnIfEligible(session.getMapper(PetTrainingMapper.class),
                     accountId, durationHours, now);
@@ -1039,7 +1058,8 @@ public final class PetProfileService {
     private static PetExploreOpenResultDTO openBackHillChestLocked(long accountId, PetUseItemDTO request) {
         String itemId = request == null ? null : StrUtil.trim(request.getItemId());
         Integer quantity = request == null ? null : request.getQuantity();
-        if (!ITEM_BACK_HILL_CHEST.equals(itemId)) {
+        String location = exploreLocationByChestItemId(itemId);
+        if (location == null) {
             throw new IllegalArgumentException("暂不支持该道具");
         }
         if (quantity == null || quantity != 1) {
@@ -1052,14 +1072,14 @@ public final class PetProfileService {
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             ensureAssets(session, accountId);
             PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
-            if (itemMapper.decrementItemIfEnough(accountId, ITEM_BACK_HILL_CHEST, 1, now) <= 0) {
+            if (itemMapper.decrementItemIfEnough(accountId, itemId, 1, now) <= 0) {
                 throw new IllegalArgumentException("道具数量不足");
             }
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
             addExploreBones(assetsMapper, accountId, effectiveExploreBaseBones(
                     session.getMapper(PetCollectionMapper.class), accountId, exploreBaseBones(EXPLORE_ONE_HOUR)),
                     rewards, now);
-            applyExploreRolls(session, accountId, EXPLORE_ONE_HOUR, null, rewards, today, now);
+            applyExploreRolls(session, accountId, EXPLORE_ONE_HOUR, null, location, rewards, today, now);
             session.commit();
         }
 
@@ -1625,6 +1645,7 @@ public final class PetProfileService {
                                                        PetDogMapper dogMapper,
                                                        PetItemMapper itemMapper,
                                                        PetTrainingMapper trainingMapper,
+                                                       PetDailyCounterMapper counterMapper,
                                                        List<PetDogRecord> dogs,
                                                        long now) {
         boolean settled = false;
@@ -1632,16 +1653,19 @@ public final class PetProfileService {
             if (!"exploring".equals(dog.getStatus())) {
                 continue;
             }
-            if (!EXPLORE_LOCATION_BACK_HILL.equals(dog.getExploreLocation())) {
+            String location = StrUtil.trim(dog.getExploreLocation());
+            String chestItemId = exploreChestItemId(location);
+            if (chestItemId == null) {
                 continue;
             }
             if (dog.getExploreEndsAt() == null || dog.getExploreEndsAt() > now) {
                 continue;
             }
-            if (itemMapper.addItemIfUnderLimit(accountId, ITEM_BACK_HILL_CHEST, 1,
-                    MAX_BACK_HILL_CHEST_COUNT, now) <= 0) {
-                throw new IllegalArgumentException(BACK_HILL_CHEST_FULL_ERROR);
+            if (itemMapper.addItemIfUnderLimit(accountId, chestItemId, 1,
+                    MAX_EXPLORE_CHEST_COUNT, now) <= 0) {
+                throw new IllegalArgumentException(exploreChestFullError(location));
             }
+            recordExploreCompletion(counterMapper, accountId, location, now);
             grantFirstExploreFreeLearnIfEligible(trainingMapper, accountId, inferExploreDurationHours(dog), now);
             if (dogMapper.openExplore(dog.getId(), accountId, now) <= 0) {
                 throw new IllegalArgumentException("探险结算失败，请刷新后重试");
@@ -1651,8 +1675,8 @@ public final class PetProfileService {
         return settled;
     }
 
-    private static int backHillChestCount(PetItemMapper itemMapper, long accountId) {
-        PetItemRecord item = itemMapper.findByAccountIdAndItemId(accountId, ITEM_BACK_HILL_CHEST);
+    private static int exploreChestCount(PetItemMapper itemMapper, long accountId, String chestItemId) {
+        PetItemRecord item = itemMapper.findByAccountIdAndItemId(accountId, chestItemId);
         return item == null ? 0 : item.getCount();
     }
 
@@ -1831,7 +1855,85 @@ public final class PetProfileService {
 
     private static boolean isSupportedExploreLocation(String location) {
         return EXPLORE_LOCATION_BACK_HILL.equals(location)
+                || EXPLORE_LOCATION_CREEK.equals(location)
                 || EXPLORE_LOCATION_MYSTERY_CAVE.equals(location);
+    }
+
+    private static void ensureExploreLocationUnlocked(SqlSession session, long accountId, String location) {
+        if (!EXPLORE_LOCATION_CREEK.equals(location)) {
+            return;
+        }
+        int backHillCompletions = findLifetimeCounterValue(
+                session.getMapper(PetDailyCounterMapper.class), accountId,
+                exploreCompleteCounter(EXPLORE_LOCATION_BACK_HILL));
+        if (backHillCompletions < CREEK_UNLOCK_BACK_HILL_COMPLETIONS) {
+            throw new IllegalArgumentException("完成后山探险 3 次后才能进入小溪");
+        }
+    }
+
+    private static String exploreChestItemId(String location) {
+        if (EXPLORE_LOCATION_BACK_HILL.equals(location)) {
+            return ITEM_BACK_HILL_CHEST;
+        }
+        if (EXPLORE_LOCATION_CREEK.equals(location)) {
+            return ITEM_CREEK_CHEST;
+        }
+        return null;
+    }
+
+    private static String exploreLocationByChestItemId(String itemId) {
+        if (ITEM_BACK_HILL_CHEST.equals(itemId)) {
+            return EXPLORE_LOCATION_BACK_HILL;
+        }
+        if (ITEM_CREEK_CHEST.equals(itemId)) {
+            return EXPLORE_LOCATION_CREEK;
+        }
+        return null;
+    }
+
+    private static String exploreChestFullError(String location) {
+        if (EXPLORE_LOCATION_CREEK.equals(location)) {
+            return CREEK_CHEST_FULL_ERROR;
+        }
+        return BACK_HILL_CHEST_FULL_ERROR;
+    }
+
+    private static List<String> exploreNormalItemIds(String location) {
+        if (EXPLORE_LOCATION_CREEK.equals(location)) {
+            return CREEK_NORMAL_ITEM_IDS;
+        }
+        return BACK_HILL_NORMAL_ITEM_IDS;
+    }
+
+    private static List<String> exploreRareItemIds(String location) {
+        if (EXPLORE_LOCATION_CREEK.equals(location)) {
+            return CREEK_RARE_ITEM_IDS;
+        }
+        return BACK_HILL_RARE_ITEM_IDS;
+    }
+
+    private static List<String> exploreCollectionItemIds(String location) {
+        if (EXPLORE_LOCATION_CREEK.equals(location)) {
+            return CREEK_COLLECTION_ITEM_IDS;
+        }
+        return BACK_HILL_COLLECTION_ITEM_IDS;
+    }
+
+    private static void recordExploreCompletion(PetDailyCounterMapper mapper, long accountId,
+                                                String location, long now) {
+        if (exploreChestItemId(location) == null) {
+            return;
+        }
+        mapper.incrementIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
+                exploreCompleteCounter(location), Integer.MAX_VALUE, now);
+    }
+
+    private static String exploreCompleteCounter(String location) {
+        return COUNTER_EXPLORE_COMPLETE_PREFIX + location;
+    }
+
+    private static int findLifetimeCounterValue(PetDailyCounterMapper mapper, long accountId, String counter) {
+        return findDailyCounterValue(mapper, accountId, COUNTER_DATE_LIFETIME, counter);
     }
 
     private static void ensureMysteryCaveAvailable(SqlSession session, long accountId) {
@@ -1873,7 +1975,7 @@ public final class PetProfileService {
     }
 
     private static void applyExploreRolls(SqlSession session, long accountId, int durationHours,
-                                          PetDogRecord dog,
+                                          PetDogRecord dog, String location,
                                           List<PetExploreRewardDTO> rewards, String today, long now) {
         PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
         PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
@@ -1885,16 +1987,16 @@ public final class PetProfileService {
             int roll = nextExploreRoll();
             if (roll < 50) {
                 applyExploreItemReward(assetsMapper, counterMapper, itemMapper, accountId,
-                        BACK_HILL_NORMAL_ITEM_IDS, itemCounts, rewards, today, now);
+                        exploreNormalItemIds(location), itemCounts, rewards, today, now);
             } else if (roll < 58) {
                 applyExploreItemReward(assetsMapper, counterMapper, itemMapper, accountId,
-                        BACK_HILL_RARE_ITEM_IDS, itemCounts, rewards, today, now);
+                        exploreRareItemIds(location), itemCounts, rewards, today, now);
             } else if (roll < 78) {
-                applyExploreCollectionReward(session, accountId, rewards, now);
+                applyExploreCollectionReward(session, accountId, location, rewards, now);
             } else if (roll < 80) {
                 applyExploreEasterEventReward(session, accountId, assetsMapper, rewards, now);
             } else if (roll < 80 + collectionBonus) {
-                applyExploreCollectionReward(session, accountId, rewards, now);
+                applyExploreCollectionReward(session, accountId, location, rewards, now);
             } else if (roll < 80 + collectionBonus + treasureBonus) {
                 applyExploreTreasureMapReward(session, accountId, rewards, now);
             } else {
@@ -1904,9 +2006,11 @@ public final class PetProfileService {
     }
 
     private static void applyExploreCollectionReward(SqlSession session, long accountId,
+                                                     String location,
                                                      List<PetExploreRewardDTO> rewards, long now) {
         PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
-        String itemId = pickBackHillCollectionItem(collectionMapper.listByAccountId(accountId));
+        String itemId = pickExploreCollectionItem(collectionMapper.listByAccountId(accountId),
+                exploreCollectionItemIds(location));
         collectionMapper.addCollection(accountId, itemId, now);
         rewards.add(new PetExploreRewardDTO("collection", itemId, 1));
     }
@@ -1952,14 +2056,15 @@ public final class PetProfileService {
         return collectionMapper.countDiscovered(accountId, itemId) > 0;
     }
 
-    private static String pickBackHillCollectionItem(List<PetCollectionRecord> collections) {
+    private static String pickExploreCollectionItem(List<PetCollectionRecord> collections,
+                                                    List<String> collectionItemIds) {
         Map<String, Integer> counts = new HashMap<>();
         for (PetCollectionRecord collection : collections) {
             counts.put(collection.getItemId(), collection.getCount());
         }
-        String selected = BACK_HILL_COLLECTION_ITEM_IDS.get(0);
+        String selected = collectionItemIds.get(0);
         int selectedCount = Integer.MAX_VALUE;
-        for (String itemId : BACK_HILL_COLLECTION_ITEM_IDS) {
+        for (String itemId : collectionItemIds) {
             int count = counts.getOrDefault(itemId, 0);
             if (count < selectedCount) {
                 selected = itemId;
@@ -2000,8 +2105,7 @@ public final class PetProfileService {
     private static Map<String, Integer> exploreItemCounts(PetItemMapper itemMapper, long accountId) {
         Map<String, Integer> counts = new HashMap<>();
         for (PetItemRecord item : itemMapper.listPositiveByAccountId(accountId)) {
-            if (BACK_HILL_NORMAL_ITEM_IDS.contains(item.getItemId())
-                    || BACK_HILL_RARE_ITEM_IDS.contains(item.getItemId())) {
+            if (LUCKY_BAG_ITEM_IDS.contains(item.getItemId())) {
                 counts.put(item.getItemId(), item.getCount());
             }
         }

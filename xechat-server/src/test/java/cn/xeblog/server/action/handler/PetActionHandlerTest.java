@@ -56,6 +56,7 @@ import java.util.function.IntSupplier;
 public class PetActionHandlerTest {
 
     private static final String BACK_HILL_CHEST_ITEM_ID = "chest_back_hill";
+    private static final String CREEK_CHEST_ITEM_ID = "chest_creek";
 
     @Before
     public void setUp() throws Exception {
@@ -3184,6 +3185,46 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void exploreStartRejectsCreekBeforeBackHillCompletionCount() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+
+        new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "creek", 1, 97043L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertFalse(body.isSuccess());
+        Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(97043L), body.getRequestId());
+        Assert.assertEquals("完成后山探险 3 次后才能进入小溪", body.getError());
+        PetDogDTO persistedDog = findDog(requestProfile(user), dog.getId());
+        Assert.assertEquals("idle", persistedDog.getStatus());
+        Assert.assertNull(persistedDog.getExploreLocation());
+        Assert.assertEquals(5, persistedDog.getEnergy());
+        Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "explore_start"));
+    }
+
+    @Test
+    public void exploreStartAllowsCreekAfterBackHillCompletionCount() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_back_hill", 3);
+
+        new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "creek", 1, 97044L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertTrue(body.isSuccess());
+        Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(97044L), body.getRequestId());
+        PetDogDTO exploringDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
+        Assert.assertEquals("exploring", exploringDog.getStatus());
+        Assert.assertEquals("creek", exploringDog.getExploreLocation());
+        Assert.assertEquals(3, exploringDog.getEnergy());
+        Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "explore_start"));
+    }
+
+    @Test
     public void exploreStartAllowsAdultEightHoursAndOpenUsesEightHourRewards() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
@@ -3439,6 +3480,27 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void petProfileSettlesEndedCreekExploreIntoCreekChestAndIdleDog() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_back_hill", 3);
+        new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "creek", 1, 97047L));
+        Assert.assertTrue(readPetBody(user).isSuccess());
+        setExploreEnded(user.getAccountId(), dog.getId());
+
+        PetProfileDTO profile = requestProfile(user);
+
+        PetDogDTO settledDog = findDog(profile, dog.getId());
+        Assert.assertEquals("idle", settledDog.getStatus());
+        Assert.assertNull(settledDog.getExploreLocation());
+        Assert.assertNull(settledDog.getExploreEndsAt());
+        Assert.assertEquals(0, countItem(user.getAccountId(), BACK_HILL_CHEST_ITEM_ID));
+        Assert.assertEquals(1, countItem(user.getAccountId(), CREEK_CHEST_ITEM_ID));
+        Assert.assertEquals(1, findInventoryCount(profile, CREEK_CHEST_ITEM_ID));
+        Assert.assertEquals(1, countCounter(user.getAccountId(), "lifetime", "explore_complete_creek"));
+    }
+
+    @Test
     public void exploreOpenRejectsBeforeEndsAtWithoutSettlement() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
@@ -3684,6 +3746,36 @@ public class PetActionHandlerTest {
         }
     }
 
+    @Test
+    public void useItemCreekChestConsumesInventoryAndReturnsCreekCollectionReward() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        insertPetItem(user.getAccountId(), CREEK_CHEST_ITEM_ID, 1);
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 58);
+
+        try {
+            new PetActionHandler().process(user, useItemRequest(CREEK_CHEST_ITEM_ID, null, 97048L));
+
+            PetResponseDTO body = readPetBody(user);
+            Assert.assertTrue(body.isSuccess());
+            Assert.assertEquals(PetAction.USE_ITEM, body.getPetAction());
+            Assert.assertEquals(Long.valueOf(97048L), body.getRequestId());
+            JSONObject result = JSONUtil.parseObj(body.getContent());
+            PetProfileDTO profile = result.getBean("profile", PetProfileDTO.class);
+            JSONArray rewards = result.getJSONArray("rewards");
+            Assert.assertEquals(0, countItem(user.getAccountId(), CREEK_CHEST_ITEM_ID));
+            Assert.assertEquals(0, findInventoryCount(profile, CREEK_CHEST_ITEM_ID));
+            Assert.assertEquals("idle", findDog(profile, dog.getId()).getStatus());
+            Assert.assertEquals(310, profile.getAssets().getBones());
+            Assert.assertEquals(1, profile.getCollections().size());
+            PetCollectionItemDTO collection = profile.getCollections().get(0);
+            Assert.assertTrue(creekCollectionItemIds().contains(collection.getItemId()));
+            Assert.assertTrue(hasReward(rewards, "collection", collection.getItemId()));
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
+    }
+
     private static User user() {
         return user(1001L, "dog_user");
     }
@@ -3906,6 +3998,17 @@ public class PetActionHandlerTest {
                 "back_hill_stone",
                 "back_hill_mushroom",
                 "back_hill_feather"
+        ));
+    }
+
+    private static Set<String> creekCollectionItemIds() {
+        return new HashSet<>(Arrays.asList(
+                "creek_shell",
+                "creek_snail",
+                "creek_lotus",
+                "creek_duck",
+                "creek_coral",
+                "creek_drop"
         ));
     }
 

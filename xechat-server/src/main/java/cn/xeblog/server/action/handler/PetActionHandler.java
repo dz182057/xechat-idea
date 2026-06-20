@@ -197,7 +197,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
             case USE_ITEM:
                 try {
                     PetUseItemDTO useItemRequest = toBean(body.getContent(), PetUseItemDTO.class);
-                    if (isBackHillChest(useItemRequest)) {
+                    if (isExploreChest(useItemRequest)) {
                         PetExploreOpenResultDTO chestResult = PetProfileService.openBackHillChest(user.getAccountId(),
                                 useItemRequest);
                         send(user, PetResponseDTO.ok(petAction, requestId, chestResult));
@@ -238,9 +238,9 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
         }
     }
 
-    private boolean isBackHillChest(PetUseItemDTO request) {
+    private boolean isExploreChest(PetUseItemDTO request) {
         String itemId = request == null || request.getItemId() == null ? null : request.getItemId().trim();
-        return "chest_back_hill".equals(itemId);
+        return "chest_back_hill".equals(itemId) || "chest_creek".equals(itemId);
     }
 
     private void send(User user, PetResponseDTO body) {
