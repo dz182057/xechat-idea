@@ -42,6 +42,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -124,15 +125,24 @@ public final class PetProfileService {
             Collections.unmodifiableMap(createTrainingSkillEffects());
     private static final String EXPLORE_LOCATION_BACK_HILL = "back_hill";
     private static final String EXPLORE_LOCATION_CREEK = "creek";
+    private static final String EXPLORE_LOCATION_CONSTRUCTION_SITE = "construction_site";
+    private static final String EXPLORE_LOCATION_OLD_LIBRARY = "old_library";
     private static final String EXPLORE_LOCATION_MYSTERY_CAVE = "mystery_cave";
     private static final String ITEM_BACK_HILL_CHEST = "chest_back_hill";
     private static final String ITEM_CREEK_CHEST = "chest_creek";
+    private static final String ITEM_CONSTRUCTION_SITE_CHEST = "chest_construction_site";
+    private static final String ITEM_OLD_LIBRARY_CHEST = "chest_old_library";
     private static final int MAX_EXPLORE_CHEST_COUNT = 99;
     private static final String BACK_HILL_CHEST_FULL_ERROR = "后山箱子已达上限，打开后再探险";
     private static final String CREEK_CHEST_FULL_ERROR = "小溪箱子已达上限，打开后再探险";
+    private static final String CONSTRUCTION_SITE_CHEST_FULL_ERROR = "工地箱子已达上限，打开后再探险";
+    private static final String OLD_LIBRARY_CHEST_FULL_ERROR = "旧书馆箱子已达上限，打开后再探险";
     private static final String COUNTER_DATE_LIFETIME = "lifetime";
     private static final String COUNTER_EXPLORE_COMPLETE_PREFIX = "explore_complete_";
+    private static final String COUNTER_MINI_GAME_WIN_PREFIX = "mini_game_win_";
     private static final int CREEK_UNLOCK_BACK_HILL_COMPLETIONS = 3;
+    private static final int CONSTRUCTION_SITE_UNLOCK_MINESWEEPER_WINS = 10;
+    private static final int OLD_LIBRARY_UNLOCK_LIBRARY_WINS = 10;
     private static final int EXPLORE_ONE_HOUR = 1;
     private static final int EXPLORE_FOUR_HOURS = 4;
     private static final int EXPLORE_EIGHT_HOURS = 8;
@@ -207,6 +217,25 @@ public final class PetProfileService {
     private static final List<String> CREEK_RARE_ITEM_IDS = Collections.unmodifiableList(Collections.singletonList(
             "item_sync_perspective"
     ));
+    private static final List<String> CONSTRUCTION_SITE_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "item_mine_mark",
+            "item_mine_area",
+            "item_mine_scout",
+            "item_mine_shield"
+    ));
+    private static final List<String> CONSTRUCTION_SITE_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "item_mine_guard",
+            "item_metal_detector"
+    ));
+    private static final List<String> OLD_LIBRARY_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "item_gomoku_prediction",
+            "item_gomoku_review",
+            "item_hint"
+    ));
+    private static final List<String> OLD_LIBRARY_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "item_gomoku_guard",
+            "item_turtle_probe"
+    ));
     private static final List<String> BACK_HILL_COLLECTION_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "back_hill_ball",
             "back_hill_branch",
@@ -222,6 +251,14 @@ public final class PetProfileService {
             "creek_duck",
             "creek_coral",
             "creek_drop"
+    ));
+    private static final List<String> CONSTRUCTION_SITE_COLLECTION_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "construction_site_helmet",
+            "construction_site_gear",
+            "construction_site_nut",
+            "construction_site_brick",
+            "construction_site_driver",
+            "construction_site_clip"
     ));
     private static final List<String> OLD_LIBRARY_COLLECTION_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "old_library_scroll",
@@ -371,6 +408,12 @@ public final class PetProfileService {
                     exploreCompleteCounter(EXPLORE_LOCATION_BACK_HILL));
             int creekCompletions = findLifetimeCounterValue(dailyCounterMapper, accountId,
                     exploreCompleteCounter(EXPLORE_LOCATION_CREEK));
+            int minesweeperWins = findLifetimeCounterValue(dailyCounterMapper, accountId,
+                    miniGameWinCounter(Game.MINESWEEPER));
+            int oldLibraryWins = findLifetimeCounterValue(dailyCounterMapper, accountId,
+                    miniGameWinCounter(Game.GOBANG))
+                    + findLifetimeCounterValue(dailyCounterMapper, accountId,
+                    miniGameWinCounter(Game.TURTLE_SOUP));
             profile.setExploreStatus(new PetExploreStatusDTO(
                     DAILY_EXPLORE_START_LIMIT,
                     findDailyCounterValue(dailyCounterMapper, accountId, todayText, DAILY_COUNTER_EXPLORE_START),
@@ -381,7 +424,9 @@ public final class PetProfileService {
                     mysteryCaveCompleted,
                     mysteryCaveCompleted,
                     backHillCompletions,
-                    creekCompletions));
+                    creekCompletions,
+                    minesweeperWins,
+                    oldLibraryWins));
             profile.setInteractionStatus(buildInteractionStatus(dailyCounterMapper, accountId, todayText));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             if (dogEnergyRefreshed || exploreSettled || dogStageChanged) {
@@ -1234,6 +1279,8 @@ public final class PetProfileService {
                 assetsMapper.addBones(accountId, MINI_GAME_COMPLETE_BONES * rewardMultiplier, now);
             }
             if (win) {
+                counterMapper.incrementIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
+                        miniGameWinCounter(game), Integer.MAX_VALUE, now);
                 if (counterMapper.incrementIfUnderLimit(accountId, today, DAILY_COUNTER_MINI_GAME_FIRST_WIN,
                         1, now) > 0) {
                     assetsMapper.addMakeupCardsIfUnderLimit(accountId, 1, MAX_MAKEUP_CARDS, now);
@@ -1862,18 +1909,35 @@ public final class PetProfileService {
     private static boolean isSupportedExploreLocation(String location) {
         return EXPLORE_LOCATION_BACK_HILL.equals(location)
                 || EXPLORE_LOCATION_CREEK.equals(location)
+                || EXPLORE_LOCATION_CONSTRUCTION_SITE.equals(location)
+                || EXPLORE_LOCATION_OLD_LIBRARY.equals(location)
                 || EXPLORE_LOCATION_MYSTERY_CAVE.equals(location);
     }
 
     private static void ensureExploreLocationUnlocked(SqlSession session, long accountId, String location) {
-        if (!EXPLORE_LOCATION_CREEK.equals(location)) {
+        PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+        if (EXPLORE_LOCATION_CREEK.equals(location)) {
+            int backHillCompletions = findLifetimeCounterValue(counterMapper, accountId,
+                    exploreCompleteCounter(EXPLORE_LOCATION_BACK_HILL));
+            if (backHillCompletions < CREEK_UNLOCK_BACK_HILL_COMPLETIONS) {
+                throw new IllegalArgumentException("完成后山探险 3 次后才能进入小溪");
+            }
             return;
         }
-        int backHillCompletions = findLifetimeCounterValue(
-                session.getMapper(PetDailyCounterMapper.class), accountId,
-                exploreCompleteCounter(EXPLORE_LOCATION_BACK_HILL));
-        if (backHillCompletions < CREEK_UNLOCK_BACK_HILL_COMPLETIONS) {
-            throw new IllegalArgumentException("完成后山探险 3 次后才能进入小溪");
+        if (EXPLORE_LOCATION_CONSTRUCTION_SITE.equals(location)) {
+            int minesweeperWins = findLifetimeCounterValue(counterMapper, accountId,
+                    miniGameWinCounter(Game.MINESWEEPER));
+            if (minesweeperWins < CONSTRUCTION_SITE_UNLOCK_MINESWEEPER_WINS) {
+                throw new IllegalArgumentException("扫雷累计胜利 10 局后才能进入废弃工地");
+            }
+            return;
+        }
+        if (EXPLORE_LOCATION_OLD_LIBRARY.equals(location)) {
+            int oldLibraryWins = findLifetimeCounterValue(counterMapper, accountId, miniGameWinCounter(Game.GOBANG))
+                    + findLifetimeCounterValue(counterMapper, accountId, miniGameWinCounter(Game.TURTLE_SOUP));
+            if (oldLibraryWins < OLD_LIBRARY_UNLOCK_LIBRARY_WINS) {
+                throw new IllegalArgumentException("五子棋和海龟汤累计胜利 10 局后才能进入旧书馆");
+            }
         }
     }
 
@@ -1883,6 +1947,12 @@ public final class PetProfileService {
         }
         if (EXPLORE_LOCATION_CREEK.equals(location)) {
             return ITEM_CREEK_CHEST;
+        }
+        if (EXPLORE_LOCATION_CONSTRUCTION_SITE.equals(location)) {
+            return ITEM_CONSTRUCTION_SITE_CHEST;
+        }
+        if (EXPLORE_LOCATION_OLD_LIBRARY.equals(location)) {
+            return ITEM_OLD_LIBRARY_CHEST;
         }
         return null;
     }
@@ -1894,12 +1964,24 @@ public final class PetProfileService {
         if (ITEM_CREEK_CHEST.equals(itemId)) {
             return EXPLORE_LOCATION_CREEK;
         }
+        if (ITEM_CONSTRUCTION_SITE_CHEST.equals(itemId)) {
+            return EXPLORE_LOCATION_CONSTRUCTION_SITE;
+        }
+        if (ITEM_OLD_LIBRARY_CHEST.equals(itemId)) {
+            return EXPLORE_LOCATION_OLD_LIBRARY;
+        }
         return null;
     }
 
     private static String exploreChestFullError(String location) {
         if (EXPLORE_LOCATION_CREEK.equals(location)) {
             return CREEK_CHEST_FULL_ERROR;
+        }
+        if (EXPLORE_LOCATION_CONSTRUCTION_SITE.equals(location)) {
+            return CONSTRUCTION_SITE_CHEST_FULL_ERROR;
+        }
+        if (EXPLORE_LOCATION_OLD_LIBRARY.equals(location)) {
+            return OLD_LIBRARY_CHEST_FULL_ERROR;
         }
         return BACK_HILL_CHEST_FULL_ERROR;
     }
@@ -1908,6 +1990,12 @@ public final class PetProfileService {
         if (EXPLORE_LOCATION_CREEK.equals(location)) {
             return CREEK_NORMAL_ITEM_IDS;
         }
+        if (EXPLORE_LOCATION_CONSTRUCTION_SITE.equals(location)) {
+            return CONSTRUCTION_SITE_NORMAL_ITEM_IDS;
+        }
+        if (EXPLORE_LOCATION_OLD_LIBRARY.equals(location)) {
+            return OLD_LIBRARY_NORMAL_ITEM_IDS;
+        }
         return BACK_HILL_NORMAL_ITEM_IDS;
     }
 
@@ -1915,12 +2003,24 @@ public final class PetProfileService {
         if (EXPLORE_LOCATION_CREEK.equals(location)) {
             return CREEK_RARE_ITEM_IDS;
         }
+        if (EXPLORE_LOCATION_CONSTRUCTION_SITE.equals(location)) {
+            return CONSTRUCTION_SITE_RARE_ITEM_IDS;
+        }
+        if (EXPLORE_LOCATION_OLD_LIBRARY.equals(location)) {
+            return OLD_LIBRARY_RARE_ITEM_IDS;
+        }
         return BACK_HILL_RARE_ITEM_IDS;
     }
 
     private static List<String> exploreCollectionItemIds(String location) {
         if (EXPLORE_LOCATION_CREEK.equals(location)) {
             return CREEK_COLLECTION_ITEM_IDS;
+        }
+        if (EXPLORE_LOCATION_CONSTRUCTION_SITE.equals(location)) {
+            return CONSTRUCTION_SITE_COLLECTION_ITEM_IDS;
+        }
+        if (EXPLORE_LOCATION_OLD_LIBRARY.equals(location)) {
+            return OLD_LIBRARY_COLLECTION_ITEM_IDS;
         }
         return BACK_HILL_COLLECTION_ITEM_IDS;
     }
@@ -1936,6 +2036,11 @@ public final class PetProfileService {
 
     private static String exploreCompleteCounter(String location) {
         return COUNTER_EXPLORE_COMPLETE_PREFIX + location;
+    }
+
+    private static String miniGameWinCounter(Game game) {
+        return COUNTER_MINI_GAME_WIN_PREFIX
+                + (game == null ? "unknown" : game.name().toLowerCase(Locale.ROOT));
     }
 
     private static int findLifetimeCounterValue(PetDailyCounterMapper mapper, long accountId, String counter) {

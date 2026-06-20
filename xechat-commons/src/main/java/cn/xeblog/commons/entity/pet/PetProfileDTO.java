@@ -46,7 +46,7 @@ public class PetProfileDTO implements Serializable {
         profile.setItems(new ArrayList<>());
         profile.setCollections(new ArrayList<>());
         profile.setExploreStatus(new PetExploreStatusDTO(3, 0, 5, 0, 0,
-                false, false, false, 0, 0));
+                false, false, false, 0, 0, 0, 0));
         profile.setInteractionStatus(new PetInteractionStatusDTO(150, 0, 150, 2,
                 new java.util.HashMap<>(), new java.util.HashMap<>()));
         profile.setTrainingStatus(new PetTrainingStatusDTO("pending",

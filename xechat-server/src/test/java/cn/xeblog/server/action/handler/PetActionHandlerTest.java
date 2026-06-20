@@ -57,6 +57,8 @@ public class PetActionHandlerTest {
 
     private static final String BACK_HILL_CHEST_ITEM_ID = "chest_back_hill";
     private static final String CREEK_CHEST_ITEM_ID = "chest_creek";
+    private static final String CONSTRUCTION_SITE_CHEST_ITEM_ID = "chest_construction_site";
+    private static final String OLD_LIBRARY_CHEST_ITEM_ID = "chest_old_library";
 
     @Before
     public void setUp() throws Exception {
@@ -1622,6 +1624,19 @@ public class PetActionHandlerTest {
         Assert.assertEquals(360, rewarded.getAssets().getBones());
         Assert.assertEquals(6, countDailyCounter(user.getAccountId(), "mini_game_complete"));
         Assert.assertEquals(4, countDailyCounter(user.getAccountId(), "mini_game_win"));
+    }
+
+    @Test
+    public void miniGameWinShouldAccumulateLifetimeGameWinCounter() {
+        User user = user();
+        setAssets(user.getAccountId(), 300, 1);
+
+        PetProfileService.applyMiniGameResult(user.getAccountId(), Game.MINESWEEPER, true, 60);
+        PetProfileService.applyMiniGameResult(user.getAccountId(), Game.MINESWEEPER, false, 60);
+        PetProfileService.applyMiniGameResult(user.getAccountId(), Game.GOBANG, true, 60);
+
+        Assert.assertEquals(1, countCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper"));
+        Assert.assertEquals(1, countCounter(user.getAccountId(), "lifetime", "mini_game_win_gobang"));
     }
 
     @Test
@@ -3225,15 +3240,78 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void exploreStartRejectsConstructionSiteBeforeMinesweeperWins() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper", 9);
+
+        new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "construction_site", 1, 97048L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertFalse(body.isSuccess());
+        Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(97048L), body.getRequestId());
+        Assert.assertEquals("扫雷累计胜利 10 局后才能进入废弃工地", body.getError());
+        Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "explore_start"));
+    }
+
+    @Test
+    public void exploreStartAllowsConstructionSiteAfterMinesweeperWins() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper", 10);
+
+        new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "construction_site", 1, 97049L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertTrue(body.isSuccess());
+        Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(97049L), body.getRequestId());
+        PetDogDTO exploringDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
+        Assert.assertEquals("exploring", exploringDog.getStatus());
+        Assert.assertEquals("construction_site", exploringDog.getExploreLocation());
+        Assert.assertEquals(3, exploringDog.getEnergy());
+        Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "explore_start"));
+    }
+
+    @Test
+    public void exploreStartAllowsOldLibraryAfterGobangAndTurtleSoupWins() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_gobang", 4);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_turtle_soup", 6);
+
+        new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "old_library", 1, 97050L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertTrue(body.isSuccess());
+        Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(97050L), body.getRequestId());
+        PetDogDTO exploringDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
+        Assert.assertEquals("exploring", exploringDog.getStatus());
+        Assert.assertEquals("old_library", exploringDog.getExploreLocation());
+        Assert.assertEquals(3, exploringDog.getEnergy());
+        Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "explore_start"));
+    }
+
+    @Test
     public void petProfileReportsExploreCompletionCountersForLocationUnlockProgress() {
         User user = user();
         insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_back_hill", 2);
         insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_creek", 1);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper", 10);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_gobang", 4);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_turtle_soup", 6);
 
         PetProfileDTO profile = requestProfile(user);
 
         Assert.assertEquals(2, profile.getExploreStatus().getBackHillCompletions());
         Assert.assertEquals(1, profile.getExploreStatus().getCreekCompletions());
+        Assert.assertEquals(10, profile.getExploreStatus().getMinesweeperWins());
+        Assert.assertEquals(10, profile.getExploreStatus().getOldLibraryWins());
     }
 
     @Test
@@ -3783,6 +3861,60 @@ public class PetActionHandlerTest {
             PetCollectionItemDTO collection = profile.getCollections().get(0);
             Assert.assertTrue(creekCollectionItemIds().contains(collection.getItemId()));
             Assert.assertTrue(hasReward(rewards, "collection", collection.getItemId()));
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
+    }
+
+    @Test
+    public void useItemConstructionSiteChestConsumesInventoryAndReturnsMineItemReward() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        insertPetItem(user.getAccountId(), CONSTRUCTION_SITE_CHEST_ITEM_ID, 1);
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 50);
+
+        try {
+            new PetActionHandler().process(user, useItemRequest(CONSTRUCTION_SITE_CHEST_ITEM_ID, null, 97051L));
+
+            PetResponseDTO body = readPetBody(user);
+            Assert.assertTrue(body.isSuccess());
+            Assert.assertEquals(PetAction.USE_ITEM, body.getPetAction());
+            Assert.assertEquals(Long.valueOf(97051L), body.getRequestId());
+            JSONObject result = JSONUtil.parseObj(body.getContent());
+            PetProfileDTO profile = result.getBean("profile", PetProfileDTO.class);
+            JSONArray rewards = result.getJSONArray("rewards");
+            Assert.assertEquals(0, countItem(user.getAccountId(), CONSTRUCTION_SITE_CHEST_ITEM_ID));
+            Assert.assertEquals(0, findInventoryCount(profile, CONSTRUCTION_SITE_CHEST_ITEM_ID));
+            Assert.assertEquals("idle", findDog(profile, dog.getId()).getStatus());
+            Assert.assertTrue(hasReward(rewards, "item", "item_mine_guard")
+                    || hasReward(rewards, "item", "item_metal_detector"));
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
+    }
+
+    @Test
+    public void useItemOldLibraryChestConsumesInventoryAndReturnsLibraryItemReward() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        insertPetItem(user.getAccountId(), OLD_LIBRARY_CHEST_ITEM_ID, 1);
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 50);
+
+        try {
+            new PetActionHandler().process(user, useItemRequest(OLD_LIBRARY_CHEST_ITEM_ID, null, 97052L));
+
+            PetResponseDTO body = readPetBody(user);
+            Assert.assertTrue(body.isSuccess());
+            Assert.assertEquals(PetAction.USE_ITEM, body.getPetAction());
+            Assert.assertEquals(Long.valueOf(97052L), body.getRequestId());
+            JSONObject result = JSONUtil.parseObj(body.getContent());
+            PetProfileDTO profile = result.getBean("profile", PetProfileDTO.class);
+            JSONArray rewards = result.getJSONArray("rewards");
+            Assert.assertEquals(0, countItem(user.getAccountId(), OLD_LIBRARY_CHEST_ITEM_ID));
+            Assert.assertEquals(0, findInventoryCount(profile, OLD_LIBRARY_CHEST_ITEM_ID));
+            Assert.assertEquals("idle", findDog(profile, dog.getId()).getStatus());
+            Assert.assertTrue(hasReward(rewards, "item", "item_gomoku_guard")
+                    || hasReward(rewards, "item", "item_turtle_probe"));
         } finally {
             setExploreRollSupplier(originalRollSupplier);
         }

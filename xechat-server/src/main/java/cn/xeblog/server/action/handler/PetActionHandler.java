@@ -240,7 +240,10 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
 
     private boolean isExploreChest(PetUseItemDTO request) {
         String itemId = request == null || request.getItemId() == null ? null : request.getItemId().trim();
-        return "chest_back_hill".equals(itemId) || "chest_creek".equals(itemId);
+        return "chest_back_hill".equals(itemId)
+                || "chest_creek".equals(itemId)
+                || "chest_construction_site".equals(itemId)
+                || "chest_old_library".equals(itemId);
     }
 
     private void send(User user, PetResponseDTO body) {

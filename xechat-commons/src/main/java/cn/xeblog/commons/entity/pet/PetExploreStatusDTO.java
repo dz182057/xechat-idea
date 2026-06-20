@@ -36,4 +36,8 @@ public class PetExploreStatusDTO implements Serializable {
 
     private int creekCompletions;
 
+    private int minesweeperWins;
+
+    private int oldLibraryWins;
+
 }
