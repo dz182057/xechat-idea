@@ -8,6 +8,7 @@ import cn.xeblog.commons.entity.game.tacitquiz.TacitQuizRecordDTO;
 import cn.xeblog.commons.entity.game.tacitquiz.TacitQuizSubmitAnswerDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.MiniGameRewards;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -62,6 +63,18 @@ public class TacitQuizServiceTest {
         room.getUsers().put(players.get(1).getIdentityKey(), new GameRoom.Player(players.get(1)));
         UserCache.add(players.get(0).getId(), players.get(0));
         UserCache.add(players.get(1).getId(), players.get(1));
+        miniGameEvents.clear();
+        TacitQuizService.setMiniGameRewardsForTest(new MiniGameRewards() {
+            @Override
+            public void apply(long accountId, Game game, boolean win, long durationSeconds) {
+                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds);
+            }
+
+            @Override
+            public void applyRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
+                miniGameEvents.add("room:" + game + ":" + accountIds + ":" + durationSeconds);
+            }
+        });
 
         try {
             TacitQuizQuestionDTO first = TacitQuizService.nextQuestion(
@@ -80,7 +93,8 @@ public class TacitQuizServiceTest {
 
             assertEquals(Arrays.asList(
                     "1:" + Game.TACIT_QUIZ + ":true:61",
-                    "2:" + Game.TACIT_QUIZ + ":true:61"), miniGameEvents);
+                    "2:" + Game.TACIT_QUIZ + ":true:61",
+                    "room:" + Game.TACIT_QUIZ + ":[1, 2]:61"), miniGameEvents);
         } finally {
             TacitQuizService.clearRoom(roomId);
         }

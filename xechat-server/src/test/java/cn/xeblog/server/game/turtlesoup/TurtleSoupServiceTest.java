@@ -4,6 +4,7 @@ import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.turtlesoup.TurtleSoupDTO;
 import cn.xeblog.commons.enums.Game;
+import cn.xeblog.server.pet.MiniGameRewards;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -21,8 +22,17 @@ public class TurtleSoupServiceTest {
 
     @Before
     public void setUp() {
-        TurtleSoupService.setMiniGameRewardsForTest((accountId, game, win, durationSeconds) ->
-                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds));
+        TurtleSoupService.setMiniGameRewardsForTest(new MiniGameRewards() {
+            @Override
+            public void apply(long accountId, Game game, boolean win, long durationSeconds) {
+                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds);
+            }
+
+            @Override
+            public void applyRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
+                miniGameEvents.add("room:" + game + ":" + accountIds + ":" + durationSeconds);
+            }
+        });
     }
 
     @After
@@ -47,7 +57,8 @@ public class TurtleSoupServiceTest {
 
         assertEquals(Arrays.asList(
                 "1:" + Game.TURTLE_SOUP + ":false:61",
-                "2:" + Game.TURTLE_SOUP + ":true:61"), miniGameEvents);
+                "2:" + Game.TURTLE_SOUP + ":true:61",
+                "room:" + Game.TURTLE_SOUP + ":[1, 2]:61"), miniGameEvents);
     }
 
     @Test

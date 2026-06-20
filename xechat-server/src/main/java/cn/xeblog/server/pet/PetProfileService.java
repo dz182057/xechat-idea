@@ -41,6 +41,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -172,11 +173,21 @@ public final class PetProfileService {
     private static final String MYSTERY_CAVE_COMPLETED_COLLECTION_ID = "mystery_cave_completed";
     private static final String EASTER_NEIGHBOR_SLIPPER_COLLECTION_ID = "easter_neighbor_slipper";
     private static final String EASTER_SNAIL_COLLECTION_ID = "easter_snail";
+    private static final String EASTER_VISIT_DOG_TAG_COLLECTION_ID = "easter_visit_dog_tag";
     private static final String EASTER_OLD_TENNIS_COLLECTION_ID = "easter_old_tennis";
     private static final String EASTER_OLD_TENNIS_PENDING_PREFIX = "old_tennis_pending:";
     private static final String DAILY_COUNTER_OLD_TENNIS_BOND_PREFIX = "bond_old_tennis:";
     private static final int EASTER_OLD_TENNIS_RETURN_BOND = 2;
     private static final int EASTER_NEIGHBOR_SLIPPER_CHECKIN_BONES = 50;
+    private static final int EASTER_VISIT_DOG_TAG_BONES = 10;
+    private static final Set<Game> MINI_GAME_ROOM_BONUS_GAMES = EnumSet.of(
+            Game.GOBANG,
+            Game.MINESWEEPER,
+            Game.DRAW_GUESS,
+            Game.TACIT_QUIZ,
+            Game.QUICK_QUIZ,
+            Game.TURTLE_SOUP
+    );
     private static final String ITEM_FEAST = "item_feast";
     private static final String ITEM_EXPRESS = "item_express";
     private static final String ITEM_LUCKY_DAY = "item_lucky_day";
@@ -904,6 +915,18 @@ public final class PetProfileService {
         }
     }
 
+    public static void applyMiniGameRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
+        List<Long> normalizedAccountIds = normalizeRoomBonusAccountIds(accountIds);
+        if (!MINI_GAME_ROOM_BONUS_GAMES.contains(game)
+                || durationSeconds < MINI_GAME_MIN_REWARD_SECONDS
+                || normalizedAccountIds.size() != 2) {
+            return;
+        }
+        List<Long> lockIds = new ArrayList<>(normalizedAccountIds);
+        Collections.sort(lockIds);
+        runWithAccountLocks(lockIds, 0, () -> applyMiniGameRoomBonusLocked(normalizedAccountIds));
+    }
+
     public static PetProfileDTO applyInteractionItemReward(long accountId, String itemId, int requestedBones) {
         synchronized (accountLock(accountId)) {
             return applyInteractionItemRewardLocked(accountId, itemId, requestedBones);
@@ -1381,6 +1404,54 @@ public final class PetProfileService {
             session.commit();
         }
         return profile(accountId);
+    }
+
+    private static void applyMiniGameRoomBonusLocked(List<Long> accountIds) {
+        long now = System.currentTimeMillis();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
+            Long tagOwnerAccountId = null;
+            for (Long accountId : accountIds) {
+                ensureAssets(session, accountId);
+                if (tagOwnerAccountId == null
+                        && findCollectionCount(collectionMapper, accountId, EASTER_VISIT_DOG_TAG_COLLECTION_ID) > 0) {
+                    tagOwnerAccountId = accountId;
+                }
+            }
+            if (tagOwnerAccountId != null && collectionMapper.decrementCollectionIfEnough(
+                    tagOwnerAccountId, EASTER_VISIT_DOG_TAG_COLLECTION_ID, 1, now) > 0) {
+                PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+                for (Long accountId : accountIds) {
+                    assetsMapper.addBones(accountId, EASTER_VISIT_DOG_TAG_BONES, now);
+                }
+            }
+            session.commit();
+        }
+    }
+
+    private static List<Long> normalizeRoomBonusAccountIds(List<Long> accountIds) {
+        List<Long> normalizedAccountIds = new ArrayList<>();
+        if (accountIds == null) {
+            return normalizedAccountIds;
+        }
+        Set<Long> seen = new HashSet<>();
+        for (Long accountId : accountIds) {
+            if (accountId == null || accountId <= 0L || !seen.add(accountId)) {
+                continue;
+            }
+            normalizedAccountIds.add(accountId);
+        }
+        return normalizedAccountIds;
+    }
+
+    private static void runWithAccountLocks(List<Long> accountIds, int index, Runnable action) {
+        if (index >= accountIds.size()) {
+            action.run();
+            return;
+        }
+        synchronized (accountLock(accountIds.get(index))) {
+            runWithAccountLocks(accountIds, index + 1, action);
+        }
     }
 
     private static int miniGameRewardMultiplier(PetDailyCounterMapper counterMapper, long accountId, String today) {
@@ -2263,6 +2334,9 @@ public final class PetProfileService {
         }
         if (!isCollectionDiscovered(collectionMapper, accountId, EASTER_SNAIL_COLLECTION_ID)) {
             eventIds.add(EASTER_SNAIL_COLLECTION_ID);
+        }
+        if (!isCollectionDiscovered(collectionMapper, accountId, EASTER_VISIT_DOG_TAG_COLLECTION_ID)) {
+            eventIds.add(EASTER_VISIT_DOG_TAG_COLLECTION_ID);
         }
         if (dog != null
                 && !isCollectionDiscovered(collectionMapper, accountId, EASTER_OLD_TENNIS_COLLECTION_ID)

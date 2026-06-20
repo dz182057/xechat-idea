@@ -11,6 +11,7 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.MiniGameRewards;
 import cn.xeblog.server.pet.PetGameItemDeclarationService;
 import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
@@ -39,7 +40,7 @@ public final class QuickQuizService {
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
 
     private static Economy economy = PetService::changeBones;
-    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
+    private static MiniGameRewards miniGameRewards = MiniGameRewards.petService();
     private static LongSupplier nowSupplier = System::currentTimeMillis;
 
     private QuickQuizService() {
@@ -196,11 +197,11 @@ public final class QuickQuizService {
     }
 
     static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
-        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+        miniGameRewards = testMiniGameRewards == null ? MiniGameRewards.petService() : testMiniGameRewards;
     }
 
     static void resetMiniGameRewards() {
-        miniGameRewards = PetService::applyMiniGameResult;
+        miniGameRewards = MiniGameRewards.petService();
     }
 
     static void setNowSupplierForTest(LongSupplier testNowSupplier) {
@@ -430,17 +431,24 @@ public final class QuickQuizService {
             }
         }
         long durationSeconds = Math.max(0L, (now - state.matchStartedAt + 999L) / 1000L);
+        List<Long> accountIds = new ArrayList<>();
         for (User player : state.players) {
             long accountId = player.getAccountId();
             if (accountId <= 0L) {
                 continue;
             }
+            accountIds.add(accountId);
             try {
                 miniGameRewards.apply(accountId, Game.QUICK_QUIZ,
                         winnerKeys.contains(playerKey(player)), durationSeconds);
             } catch (RuntimeException e) {
                 log.error("快问快答小游戏产出结算失败 -> accountId: {}", accountId, e);
             }
+        }
+        try {
+            miniGameRewards.applyRoomBonus(Game.QUICK_QUIZ, accountIds, durationSeconds);
+        } catch (RuntimeException e) {
+            log.error("快问快答房间级彩蛋奖励结算失败 -> accountIds: {}", accountIds, e);
         }
     }
 
@@ -780,10 +788,6 @@ public final class QuickQuizService {
 
     interface Economy {
         void change(long accountId, int delta);
-    }
-
-    interface MiniGameRewards {
-        void apply(long accountId, Game game, boolean win, long durationSeconds);
     }
 
     private static long now() {

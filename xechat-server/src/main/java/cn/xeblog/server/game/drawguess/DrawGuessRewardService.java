@@ -3,9 +3,11 @@ package cn.xeblog.server.game.drawguess;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.drawguess.DrawGuessDTO;
 import cn.xeblog.commons.enums.Game;
-import cn.xeblog.server.pet.PetService;
+import cn.xeblog.server.pet.MiniGameRewards;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
@@ -17,7 +19,7 @@ import java.util.function.LongSupplier;
 public final class DrawGuessRewardService {
 
     private static final Map<String, RoomState> STATES = new ConcurrentHashMap<>();
-    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
+    private static MiniGameRewards miniGameRewards = MiniGameRewards.petService();
     private static LongSupplier nowSupplier = System::currentTimeMillis;
 
     private DrawGuessRewardService() {
@@ -47,16 +49,23 @@ public final class DrawGuessRewardService {
         state.applied = true;
         String winnerKey = resolveGuesserKey(room, dto);
         long durationSeconds = Math.max(0L, (nowSupplier.getAsLong() - state.startedAt + 999L) / 1000L);
+        List<Long> accountIds = new ArrayList<>();
         for (GameRoom.Player player : room.getUsers().values()) {
             if (player.getAccountId() <= 0) {
                 continue;
             }
+            accountIds.add(player.getAccountId());
             boolean win = player.getId().equals(winnerKey);
             try {
                 miniGameRewards.apply(player.getAccountId(), Game.DRAW_GUESS, win, durationSeconds);
             } catch (RuntimeException e) {
                 log.warn("你画我猜小游戏产出结算失败 -> accountId: {}", player.getAccountId(), e);
             }
+        }
+        try {
+            miniGameRewards.applyRoomBonus(Game.DRAW_GUESS, accountIds, durationSeconds);
+        } catch (RuntimeException e) {
+            log.warn("你画我猜房间级彩蛋奖励结算失败 -> accountIds: {}", accountIds, e);
         }
     }
 
@@ -65,11 +74,11 @@ public final class DrawGuessRewardService {
     }
 
     public static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
-        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+        miniGameRewards = testMiniGameRewards == null ? MiniGameRewards.petService() : testMiniGameRewards;
     }
 
     public static void resetMiniGameRewards() {
-        miniGameRewards = PetService::applyMiniGameResult;
+        miniGameRewards = MiniGameRewards.petService();
     }
 
     public static void setNowSupplierForTest(LongSupplier testNowSupplier) {
@@ -114,7 +123,4 @@ public final class DrawGuessRewardService {
         private boolean applied;
     }
 
-    public interface MiniGameRewards {
-        void apply(long accountId, Game game, boolean win, long durationSeconds);
-    }
 }

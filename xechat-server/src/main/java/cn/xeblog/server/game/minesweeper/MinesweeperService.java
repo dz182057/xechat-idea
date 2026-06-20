@@ -11,8 +11,8 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.game.minesweeper.NoGuessMinesweeper;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.MiniGameRewards;
 import cn.xeblog.server.pet.PetGameItemDeclarationService;
-import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayDeque;
@@ -40,7 +40,7 @@ public final class MinesweeperService {
     private static final Map<String, RoomState> STATES = new ConcurrentHashMap<>();
     private static GameItemSettler gameItemSettler = MinesweeperService::settleGameItem;
     private static BoardGenerator boardGenerator = MinesweeperService::generateBoard;
-    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
+    private static MiniGameRewards miniGameRewards = MiniGameRewards.petService();
     private static LongSupplier nowSupplier = System::currentTimeMillis;
 
     private MinesweeperService() {
@@ -114,11 +114,11 @@ public final class MinesweeperService {
     }
 
     static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
-        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+        miniGameRewards = testMiniGameRewards == null ? MiniGameRewards.petService() : testMiniGameRewards;
     }
 
     static void resetMiniGameRewards() {
-        miniGameRewards = PetService::applyMiniGameResult;
+        miniGameRewards = MiniGameRewards.petService();
     }
 
     static void setNowSupplierForTest(LongSupplier testNowSupplier) {
@@ -523,15 +523,22 @@ public final class MinesweeperService {
         state.miniGameRewardsApplied = true;
         boolean won = state.phase == MinesweeperDTO.Phase.won;
         long durationSeconds = Math.max(0L, (nowSupplier.getAsLong() - state.startedAt + 999L) / 1000L);
+        List<Long> accountIds = new ArrayList<>();
         for (GameRoom.Player player : room.getUsers().values()) {
             if (player.getAccountId() <= 0) {
                 continue;
             }
+            accountIds.add(player.getAccountId());
             try {
                 miniGameRewards.apply(player.getAccountId(), Game.MINESWEEPER, won, durationSeconds);
             } catch (RuntimeException e) {
                 log.warn("扫雷小游戏产出结算失败 -> accountId: {}", player.getAccountId(), e);
             }
+        }
+        try {
+            miniGameRewards.applyRoomBonus(Game.MINESWEEPER, accountIds, durationSeconds);
+        } catch (RuntimeException e) {
+            log.warn("扫雷房间级彩蛋奖励结算失败 -> accountIds: {}", accountIds, e);
         }
     }
 
@@ -604,7 +611,4 @@ public final class MinesweeperService {
         NoGuessMinesweeper.Board generate(int rows, int cols, int mines, NoGuessMinesweeper.Point firstClick);
     }
 
-    interface MiniGameRewards {
-        void apply(long accountId, Game game, boolean win, long durationSeconds);
-    }
 }

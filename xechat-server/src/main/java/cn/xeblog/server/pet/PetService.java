@@ -8,6 +8,8 @@ import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
 import cn.xeblog.commons.enums.Game;
 
+import java.util.List;
+
 /**
  * 兼容旧调用点的宠物服务门面。
  */
@@ -54,6 +56,10 @@ public final class PetService {
     public static PetProfileDTO applyMiniGameResult(long accountId, Game game, boolean win, long durationSeconds) {
         ensureAccountId(accountId);
         return PetProfileService.applyMiniGameResult(accountId, game, win, durationSeconds);
+    }
+
+    public static void applyMiniGameRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
+        PetProfileService.applyMiniGameRoomBonus(game, accountIds, durationSeconds);
     }
 
     public static PetProfileDTO applyInteractionItemReward(long accountId, String itemId, int requestedBones) {

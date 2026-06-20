@@ -7,6 +7,7 @@ import cn.xeblog.commons.entity.game.quickquiz.QuickQuizQuestionDTO;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizSubmitAnswerDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.MiniGameRewards;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -112,6 +113,39 @@ public class QuickQuizServiceTest {
                 "2:" + Game.QUICK_QUIZ + ":true:61",
                 "3:" + Game.QUICK_QUIZ + ":false:61"), miniGameEvents);
         assertEquals(0, QuickQuizService.poolOf(room.getId()));
+    }
+
+    @Test
+    public void twoPlayerFinalResultShouldApplyRoomBonusContext() {
+        GameRoom room = room(2, 0, 120);
+        room.setQuickQuizQuestionCount(1);
+        List<User> players = players(2);
+        join(room, players);
+        miniGameEvents.clear();
+        QuickQuizService.setMiniGameRewardsForTest(new MiniGameRewards() {
+            @Override
+            public void apply(long accountId, Game game, boolean win, long durationSeconds) {
+                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds);
+            }
+
+            @Override
+            public void applyRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
+                miniGameEvents.add("room:" + game + ":" + accountIds + ":" + durationSeconds);
+            }
+        });
+        QuickQuizQuestionDTO question = QuickQuizService.nextQuestion(
+                players.get(0), room, (usedQuestionIds) -> question(302L, "1 + 1 = ?", 0, 10));
+        nowSeconds.addAndGet(61);
+
+        QuickQuizService.submitAnswer(players.get(0), room,
+                new QuickQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "2"));
+        QuickQuizService.submitAnswer(players.get(1), room,
+                new QuickQuizSubmitAnswerDTO(room.getId(), question.getId(), 1, "北京"));
+
+        assertEquals(Arrays.asList(
+                "1:" + Game.QUICK_QUIZ + ":true:61",
+                "2:" + Game.QUICK_QUIZ + ":false:61",
+                "room:" + Game.QUICK_QUIZ + ":[1, 2]:61"), miniGameEvents);
     }
 
     @Test(expected = IllegalArgumentException.class)

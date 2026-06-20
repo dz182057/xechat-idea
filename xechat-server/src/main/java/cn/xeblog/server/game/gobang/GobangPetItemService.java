@@ -4,10 +4,12 @@ import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.enums.Game;
+import cn.xeblog.server.pet.MiniGameRewards;
 import cn.xeblog.server.pet.PetGameItemDeclarationService;
-import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
@@ -24,7 +26,7 @@ public final class GobangPetItemService {
     private static final int PREDICTION_REWARD_BONES = 50;
     private static final int PROPHECY_REWARD_BONES = 20;
     private static final Map<String, RoomState> STATES = new ConcurrentHashMap<>();
-    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
+    private static MiniGameRewards miniGameRewards = MiniGameRewards.petService();
     private static LongSupplier nowSupplier = System::currentTimeMillis;
 
     private GobangPetItemService() {
@@ -73,11 +75,11 @@ public final class GobangPetItemService {
     }
 
     public static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
-        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+        miniGameRewards = testMiniGameRewards == null ? MiniGameRewards.petService() : testMiniGameRewards;
     }
 
     public static void resetMiniGameRewards() {
-        miniGameRewards = PetService::applyMiniGameResult;
+        miniGameRewards = MiniGameRewards.petService();
     }
 
     public static void setNowSupplierForTest(LongSupplier testNowSupplier) {
@@ -178,16 +180,23 @@ public final class GobangPetItemService {
         }
         state.miniGameRewardsApplied = true;
         long durationSeconds = Math.max(0L, (nowSupplier.getAsLong() - state.startedAt + 999L) / 1000L);
+        List<Long> accountIds = new ArrayList<>();
         for (GameRoom.Player player : room.getUsers().values()) {
             if (player.getAccountId() <= 0) {
                 continue;
             }
+            accountIds.add(player.getAccountId());
             try {
                 miniGameRewards.apply(player.getAccountId(), Game.GOBANG,
                         player.getId().equals(winnerPlayerKey), durationSeconds);
             } catch (RuntimeException e) {
                 log.warn("五子棋小游戏产出结算失败 -> accountId: {}", player.getAccountId(), e);
             }
+        }
+        try {
+            miniGameRewards.applyRoomBonus(Game.GOBANG, accountIds, durationSeconds);
+        } catch (RuntimeException e) {
+            log.warn("五子棋房间级彩蛋奖励结算失败 -> accountIds: {}", accountIds, e);
         }
     }
 
@@ -372,10 +381,6 @@ public final class GobangPetItemService {
             }
             return count;
         }
-    }
-
-    public interface MiniGameRewards {
-        void apply(long accountId, Game game, boolean win, long durationSeconds);
     }
 
     private static final class PendingPrediction {

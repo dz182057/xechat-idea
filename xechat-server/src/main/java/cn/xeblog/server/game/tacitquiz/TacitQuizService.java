@@ -11,8 +11,8 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.MiniGameRewards;
 import cn.xeblog.server.pet.PetGameItemDeclarationService;
-import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
 
@@ -32,7 +32,7 @@ public final class TacitQuizService {
     private static final String ITEM_SYNC_PERSPECTIVE = "item_sync_perspective";
     private static final int SYNC_PROPHECY_REWARD_BONES = 20;
     private static final int SYNC_PERSPECTIVE_REWARD_BONES = 30;
-    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
+    private static MiniGameRewards miniGameRewards = MiniGameRewards.petService();
     private static LongSupplier nowSupplier = System::currentTimeMillis;
 
     private TacitQuizService() {
@@ -199,11 +199,11 @@ public final class TacitQuizService {
     }
 
     static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
-        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+        miniGameRewards = testMiniGameRewards == null ? MiniGameRewards.petService() : testMiniGameRewards;
     }
 
     static void resetMiniGameRewards() {
-        miniGameRewards = PetService::applyMiniGameResult;
+        miniGameRewards = MiniGameRewards.petService();
     }
 
     static void setNowSupplierForTest(LongSupplier testNowSupplier) {
@@ -368,16 +368,23 @@ public final class TacitQuizService {
     private static void applyMiniGameRewards(RoomState state, List<TacitQuizAnswerViewDTO> answers, long now) {
         boolean matched = isMatchedRound(answers);
         long durationSeconds = Math.max(0L, (now - state.matchStartedAt + 999L) / 1000L);
+        List<Long> accountIds = new ArrayList<>();
         for (User player : state.players) {
             long accountId = player.getAccountId();
             if (accountId <= 0L) {
                 continue;
             }
+            accountIds.add(accountId);
             try {
                 miniGameRewards.apply(accountId, Game.TACIT_QUIZ, matched, durationSeconds);
             } catch (RuntimeException e) {
                 log.error("默契问答小游戏产出结算失败 -> accountId: {}", accountId, e);
             }
+        }
+        try {
+            miniGameRewards.applyRoomBonus(Game.TACIT_QUIZ, accountIds, durationSeconds);
+        } catch (RuntimeException e) {
+            log.error("默契问答房间级彩蛋奖励结算失败 -> accountIds: {}", accountIds, e);
         }
     }
 
@@ -583,10 +590,6 @@ public final class TacitQuizService {
 
     interface AnswerRecorder {
         void save(GameRoom room, TacitQuizQuestionDTO question, List<TacitQuizAnswerViewDTO> answers);
-    }
-
-    interface MiniGameRewards {
-        void apply(long accountId, Game game, boolean win, long durationSeconds);
     }
 
     private static long now() {

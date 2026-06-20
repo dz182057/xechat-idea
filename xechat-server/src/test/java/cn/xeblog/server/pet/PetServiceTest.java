@@ -427,6 +427,7 @@ public class PetServiceTest {
         insertCollection(user.getAccountId(), "easter_neighbor_slipper", 0);
         insertCollection(user.getAccountId(), "treasure_map_fragment", 3);
         insertCollection(user.getAccountId(), "easter_snail", 1);
+        insertCollection(user.getAccountId(), "easter_visit_dog_tag", 0);
         insertCollection(user.getAccountId(), "easter_old_tennis", 1);
         IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 79);
         try {
@@ -440,6 +441,32 @@ public class PetServiceTest {
                             && reward.getItemId() == null
                             && reward.getAmount() == 50));
             Assert.assertEquals(360, result.getProfile().getAssets().getBones());
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
+    }
+
+    @Test
+    public void exploreOpenShouldGrantVisitDogTagEasterEvent() throws Exception {
+        User user = accountUser(990026L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "狗牌狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+        insertCollection(user.getAccountId(), "easter_neighbor_slipper", 0);
+        insertCollection(user.getAccountId(), "treasure_map_fragment", 3);
+        insertCollection(user.getAccountId(), "easter_snail", 1);
+        insertCollection(user.getAccountId(), "easter_old_tennis", 1);
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 79);
+        try {
+            PetProfileService.exploreStart(user.getAccountId(), exploreStart(dogId, "back_hill", 1));
+            setExploreEnded(user.getAccountId(), dogId);
+
+            PetExploreOpenResultDTO result = PetProfileService.exploreOpen(user.getAccountId(), exploreOpen(dogId));
+
+            Assert.assertTrue(result.getRewards().stream()
+                    .anyMatch(reward -> "collection".equals(reward.getType())
+                            && "easter_visit_dog_tag".equals(reward.getItemId())
+                            && reward.getAmount() == 1));
+            Assert.assertEquals(1, findCollectionCount(user.getAccountId(), "easter_visit_dog_tag"));
         } finally {
             setExploreRollSupplier(originalRollSupplier);
         }
@@ -522,6 +549,61 @@ public class PetServiceTest {
         Assert.assertEquals(1, profile.getAssets().getMakeupCards());
         Assert.assertEquals(before.getDogs().get(0).getEnergy(), profile.getDogs().get(0).getEnergy());
         Assert.assertEquals(before.getDogs().get(0).getBond() + 1, profile.getDogs().get(0).getBond());
+    }
+
+    @Test
+    public void miniGameRoomBonusShouldConsumeVisitDogTagAndRewardBothPlayers() throws Exception {
+        User tagOwner = accountUser(990030L);
+        User partner = accountUser(990031L);
+        PetService.profile(tagOwner);
+        PetService.profile(partner);
+        insertCollection(tagOwner.getAccountId(), "easter_visit_dog_tag", 1);
+
+        PetService.applyMiniGameRoomBonus(Game.GOBANG,
+                Arrays.asList(tagOwner.getAccountId(), partner.getAccountId()), 60);
+
+        Assert.assertEquals(310, PetService.profile(tagOwner).getAssets().getBones());
+        Assert.assertEquals(310, PetService.profile(partner).getAssets().getBones());
+        Assert.assertEquals(0, findCollectionCount(tagOwner.getAccountId(), "easter_visit_dog_tag"));
+    }
+
+    @Test
+    public void miniGameRoomBonusShouldIgnoreDogBattleAndRace() throws Exception {
+        User tagOwner = accountUser(990032L);
+        User partner = accountUser(990033L);
+        PetService.profile(tagOwner);
+        PetService.profile(partner);
+        insertCollection(tagOwner.getAccountId(), "easter_visit_dog_tag", 1);
+
+        PetService.applyMiniGameRoomBonus(Game.DOG_BATTLE,
+                Arrays.asList(tagOwner.getAccountId(), partner.getAccountId()), 60);
+        PetService.applyMiniGameRoomBonus(Game.DOG_RACE,
+                Arrays.asList(tagOwner.getAccountId(), partner.getAccountId()), 60);
+
+        Assert.assertEquals(300, PetService.profile(tagOwner).getAssets().getBones());
+        Assert.assertEquals(300, PetService.profile(partner).getAssets().getBones());
+        Assert.assertEquals(1, findCollectionCount(tagOwner.getAccountId(), "easter_visit_dog_tag"));
+    }
+
+    @Test
+    public void miniGameRoomBonusShouldRequireTwoPlayersAndEnoughDuration() throws Exception {
+        User tagOwner = accountUser(990034L);
+        User partner = accountUser(990035L);
+        User third = accountUser(990036L);
+        PetService.profile(tagOwner);
+        PetService.profile(partner);
+        PetService.profile(third);
+        insertCollection(tagOwner.getAccountId(), "easter_visit_dog_tag", 1);
+
+        PetService.applyMiniGameRoomBonus(Game.GOBANG,
+                Arrays.asList(tagOwner.getAccountId(), partner.getAccountId(), third.getAccountId()), 60);
+        PetService.applyMiniGameRoomBonus(Game.GOBANG,
+                Arrays.asList(tagOwner.getAccountId(), partner.getAccountId()), 59);
+
+        Assert.assertEquals(300, PetService.profile(tagOwner).getAssets().getBones());
+        Assert.assertEquals(300, PetService.profile(partner).getAssets().getBones());
+        Assert.assertEquals(300, PetService.profile(third).getAssets().getBones());
+        Assert.assertEquals(1, findCollectionCount(tagOwner.getAccountId(), "easter_visit_dog_tag"));
     }
 
     @Test

@@ -15,8 +15,8 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.MiniGameRewards;
 import cn.xeblog.server.pet.PetGameItemDeclarationService;
-import cn.xeblog.server.pet.PetService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
 
@@ -36,7 +36,7 @@ public final class TurtleSoupService {
     private static final String ITEM_TURTLE_PROBE = "item_turtle_probe";
     private static final String SLOT_GAMEPLAY = "gameplay";
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
-    private static MiniGameRewards miniGameRewards = PetService::applyMiniGameResult;
+    private static MiniGameRewards miniGameRewards = MiniGameRewards.petService();
 
     private TurtleSoupService() {
     }
@@ -196,11 +196,11 @@ public final class TurtleSoupService {
     }
 
     static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
-        miniGameRewards = testMiniGameRewards == null ? PetService::applyMiniGameResult : testMiniGameRewards;
+        miniGameRewards = testMiniGameRewards == null ? MiniGameRewards.petService() : testMiniGameRewards;
     }
 
     static void resetMiniGameRewards() {
-        miniGameRewards = PetService::applyMiniGameResult;
+        miniGameRewards = MiniGameRewards.petService();
     }
 
     public static String playerKey(User user) {
@@ -423,6 +423,14 @@ public final class TurtleSoupService {
         long durationSeconds = Math.max(0L, (endedAt - startedAt + 999L) / 1000L);
         applyMiniGameReward(room, hostId, false, durationSeconds);
         applyMiniGameReward(room, guesserId, finalResult == TurtleSoupDTO.GuessResult.CORRECT, durationSeconds);
+        List<Long> accountIds = new ArrayList<>();
+        addMiniGameRoomBonusAccount(accountIds, room, hostId);
+        addMiniGameRoomBonusAccount(accountIds, room, guesserId);
+        try {
+            miniGameRewards.applyRoomBonus(Game.TURTLE_SOUP, accountIds, durationSeconds);
+        } catch (RuntimeException e) {
+            log.error("海龟汤房间级彩蛋奖励结算失败 -> accountIds: {}", accountIds, e);
+        }
     }
 
     private static void applyMiniGameReward(GameRoom room, String playerId, boolean win, long durationSeconds) {
@@ -434,6 +442,13 @@ public final class TurtleSoupService {
             miniGameRewards.apply(player.getAccountId(), Game.TURTLE_SOUP, win, durationSeconds);
         } catch (RuntimeException e) {
             log.error("海龟汤小游戏产出结算失败 -> accountId: {}", player.getAccountId(), e);
+        }
+    }
+
+    private static void addMiniGameRoomBonusAccount(List<Long> accountIds, GameRoom room, String playerId) {
+        GameRoom.Player player = room == null ? null : room.getUsers().get(playerId);
+        if (player != null && player.getAccountId() > 0L && !accountIds.contains(player.getAccountId())) {
+            accountIds.add(player.getAccountId());
         }
     }
 
@@ -688,10 +703,6 @@ public final class TurtleSoupService {
         private boolean finished;
         private final List<Long> previewedStoryIds = new ArrayList<>();
         private final List<TurtleSoupLogItemDTO> logs = new ArrayList<>();
-    }
-
-    interface MiniGameRewards {
-        void apply(long accountId, Game game, boolean win, long durationSeconds);
     }
 
 }

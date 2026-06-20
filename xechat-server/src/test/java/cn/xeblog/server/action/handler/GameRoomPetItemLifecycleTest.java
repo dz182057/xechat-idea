@@ -24,6 +24,7 @@ import cn.xeblog.server.game.quickquiz.QuickQuizService;
 import cn.xeblog.server.game.drawguess.DrawGuessRewardService;
 import cn.xeblog.server.game.gobang.GobangPetItemService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
+import cn.xeblog.server.pet.MiniGameRewards;
 import cn.xeblog.server.pet.PetGameItemDeclarationService;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.apache.ibatis.session.SqlSession;
@@ -171,8 +172,17 @@ public class GameRoomPetItemLifecycleTest {
         long[] now = {2_000_000L, 2_061_000L};
         int[] nowIndex = {0};
         DrawGuessRewardService.setNowSupplierForTest(() -> now[Math.min(nowIndex[0]++, now.length - 1)]);
-        DrawGuessRewardService.setMiniGameRewardsForTest((accountId, game, win, durationSeconds) ->
-                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds));
+        DrawGuessRewardService.setMiniGameRewardsForTest(new MiniGameRewards() {
+            @Override
+            public void apply(long accountId, Game game, boolean win, long durationSeconds) {
+                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds);
+            }
+
+            @Override
+            public void applyRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
+                miniGameEvents.add("room:" + game + ":" + accountIds + ":" + durationSeconds);
+            }
+        });
 
         DrawGuessDTO start = new DrawGuessDTO();
         start.setRoomId(room.getId());
@@ -190,9 +200,10 @@ public class GameRoomPetItemLifecycleTest {
         correct.setGuesserName(guesser.getUsername());
         new GameActionHandler().process(guesser, room, correct);
 
-        Assert.assertEquals(2, miniGameEvents.size());
+        Assert.assertEquals(3, miniGameEvents.size());
         Assert.assertTrue(miniGameEvents.contains("2032:DRAW_GUESS:false:61"));
         Assert.assertTrue(miniGameEvents.contains("2033:DRAW_GUESS:true:61"));
+        Assert.assertTrue(miniGameEvents.contains("room:DRAW_GUESS:[2032, 2033]:61"));
     }
 
     @Test
@@ -475,8 +486,17 @@ public class GameRoomPetItemLifecycleTest {
         long[] now = {3_000_000L, 3_061_000L};
         int[] nowIndex = {0};
         GobangPetItemService.setNowSupplierForTest(() -> now[Math.min(nowIndex[0]++, now.length - 1)]);
-        GobangPetItemService.setMiniGameRewardsForTest((accountId, game, win, durationSeconds) ->
-                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds));
+        GobangPetItemService.setMiniGameRewardsForTest(new MiniGameRewards() {
+            @Override
+            public void apply(long accountId, Game game, boolean win, long durationSeconds) {
+                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds);
+            }
+
+            @Override
+            public void applyRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
+                miniGameEvents.add("room:" + game + ":" + accountIds + ":" + durationSeconds);
+            }
+        });
 
         new GameActionHandler().process(alice, room, gobangMove(0, 1, 1));
         new GameActionHandler().process(bob, room, gobangMove(0, 0, 2));
@@ -488,9 +508,10 @@ public class GameRoomPetItemLifecycleTest {
         new GameActionHandler().process(bob, room, gobangMove(3, 0, 2));
         new GameActionHandler().process(alice, room, gobangMove(4, 1, 1));
 
-        Assert.assertEquals(2, miniGameEvents.size());
+        Assert.assertEquals(3, miniGameEvents.size());
         Assert.assertTrue(miniGameEvents.contains("2132:GOBANG:true:61"));
         Assert.assertTrue(miniGameEvents.contains("2133:GOBANG:false:61"));
+        Assert.assertTrue(miniGameEvents.contains("room:GOBANG:[2132, 2133]:61"));
     }
 
     @Test

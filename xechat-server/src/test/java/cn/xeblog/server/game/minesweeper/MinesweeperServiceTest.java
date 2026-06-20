@@ -8,6 +8,7 @@ import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.game.minesweeper.NoGuessMinesweeper;
 import cn.xeblog.server.cache.UserCache;
+import cn.xeblog.server.pet.MiniGameRewards;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.After;
 import org.junit.Assert;
@@ -542,8 +543,17 @@ public class MinesweeperServiceTest {
         long[] now = {1_000_000L, 1_061_000L};
         int[] nowIndex = {0};
         MinesweeperService.setNowSupplierForTest(() -> now[Math.min(nowIndex[0]++, now.length - 1)]);
-        MinesweeperService.setMiniGameRewardsForTest((accountId, game, win, durationSeconds) ->
-                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds));
+        MinesweeperService.setMiniGameRewardsForTest(new MiniGameRewards() {
+            @Override
+            public void apply(long accountId, Game game, boolean win, long durationSeconds) {
+                miniGameEvents.add(accountId + ":" + game + ":" + win + ":" + durationSeconds);
+            }
+
+            @Override
+            public void applyRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
+                miniGameEvents.add("room:" + game + ":" + accountIds + ":" + durationSeconds);
+            }
+        });
         MinesweeperService.setBoardGeneratorForTest((rows, cols, mines, firstClick) ->
                 NoGuessMinesweeper.Board.fromMines(rows, cols,
                         Collections.singletonList(new NoGuessMinesweeper.Point(4, 4))));
@@ -554,9 +564,10 @@ public class MinesweeperServiceTest {
             MinesweeperDTO response = gameBody(readResponse(homeowner));
 
             Assert.assertEquals(MinesweeperDTO.Phase.won, response.getPhase());
-            Assert.assertEquals(2, miniGameEvents.size());
+            Assert.assertEquals(3, miniGameEvents.size());
             Assert.assertTrue(miniGameEvents.contains("9911:MINESWEEPER:true:61"));
             Assert.assertTrue(miniGameEvents.contains("9912:MINESWEEPER:true:61"));
+            Assert.assertTrue(miniGameEvents.contains("room:MINESWEEPER:[9911, 9912]:61"));
         } finally {
             MinesweeperService.clearRoom(room.getId());
             UserCache.remove(homeowner.getId());
