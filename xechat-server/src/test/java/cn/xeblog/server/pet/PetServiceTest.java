@@ -421,6 +421,31 @@ public class PetServiceTest {
     }
 
     @Test
+    public void exploreOpenShouldConvertEasterEventToBonesWhenKnownEventsExhausted() throws Exception {
+        User user = accountUser(990025L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "彩蛋满狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+        insertCollection(user.getAccountId(), "easter_neighbor_slipper", 0);
+        insertCollection(user.getAccountId(), "treasure_map_fragment", 3);
+        insertCollection(user.getAccountId(), "easter_snail", 1);
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 79);
+        try {
+            PetProfileService.exploreStart(user.getAccountId(), exploreStart(dogId, "back_hill", 1));
+            setExploreEnded(user.getAccountId(), dogId);
+
+            PetExploreOpenResultDTO result = PetProfileService.exploreOpen(user.getAccountId(), exploreOpen(dogId));
+
+            Assert.assertTrue(result.getRewards().stream()
+                    .anyMatch(reward -> "bones".equals(reward.getType())
+                            && reward.getItemId() == null
+                            && reward.getAmount() == 50));
+            Assert.assertEquals(360, result.getProfile().getAssets().getBones());
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
+    }
+
+    @Test
     public void walkDogShouldConsumeEnergyAndGrantOutingBondOncePerDay() {
         User user = accountUser(990016L);
         PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "散步狗"));
