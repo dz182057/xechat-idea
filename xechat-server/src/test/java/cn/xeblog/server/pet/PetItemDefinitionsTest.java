@@ -5,6 +5,9 @@ import cn.xeblog.server.pet.PetItemDefinition.ReleaseStage;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Arrays;
+import java.util.List;
+
 public class PetItemDefinitionsTest {
 
     @Test
@@ -26,6 +29,32 @@ public class PetItemDefinitionsTest {
         Assert.assertEquals(Integer.valueOf(40),
                 PetItemDefinitions.interactionRewardBones().get("item_battle_direct_hit"));
         Assert.assertFalse(PetItemDefinitions.interactionRewardBones().containsKey("item_hint"));
+    }
+
+    @Test
+    public void expansionItemsShouldStayOutOfCorePurchaseAndDropPools() {
+        List<String> expansionItemIds = Arrays.asList(
+                "item_gomoku_review",
+                "item_draw_replay",
+                "item_sync_secret_question",
+                "item_race_knee",
+                "item_gift_pack"
+        );
+
+        for (String itemId : expansionItemIds) {
+            Assert.assertEquals(itemId + " 应标记为扩展道具",
+                    ReleaseStage.EXPANSION, PetItemDefinitions.byId(itemId).getReleaseStage());
+            Assert.assertFalse(itemId + " 不应进入普通商店",
+                    PetItemDefinitions.shopNormalItemIds().contains(itemId));
+            Assert.assertFalse(itemId + " 不应进入福袋普通池",
+                    PetItemDefinitions.luckyBagNormalItemIds().contains(itemId));
+            Assert.assertFalse(itemId + " 不应进入福袋稀有池",
+                    PetItemDefinitions.luckyBagRareItemIds().contains(itemId));
+            Assert.assertFalse(itemId + " 不应进入福袋史诗池",
+                    PetItemDefinitions.luckyBagEpicItemIds().contains(itemId));
+            Assert.assertFalse(itemId + " 不应进入福袋总池",
+                    PetItemDefinitions.luckyBagAllItemIds().contains(itemId));
+        }
     }
 
     @Test

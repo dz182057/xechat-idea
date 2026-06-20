@@ -4225,7 +4225,6 @@ public class PetActionHandlerTest {
                 "item_quiz_score_pad",
                 "item_quiz_duel",
                 "item_gomoku_prediction",
-                "item_gomoku_review",
                 "item_battle_echo",
                 "item_battle_direct_hit",
                 "item_prophecy"
@@ -4239,9 +4238,7 @@ public class PetActionHandlerTest {
                 "item_draw_inspiration",
                 "item_draw_peek",
                 "item_draw_time",
-                "item_draw_replay",
                 "item_sync_perspective",
-                "item_sync_secret_question",
                 "item_quiz_wrong_option",
                 "item_gomoku_guard",
                 "item_turtle_probe",
@@ -4257,9 +4254,7 @@ public class PetActionHandlerTest {
                 "item_draw_inspiration",
                 "item_draw_peek",
                 "item_draw_time",
-                "item_draw_replay",
                 "item_sync_perspective",
-                "item_sync_secret_question",
                 "item_quiz_wrong_option",
                 "item_gomoku_guard",
                 "item_turtle_probe",
@@ -4274,7 +4269,6 @@ public class PetActionHandlerTest {
         return new HashSet<>(Arrays.asList(
                 "item_wild_common",
                 "item_party_equalizer",
-                "item_gift_pack",
                 "item_express",
                 "item_lucky_day"
         ));

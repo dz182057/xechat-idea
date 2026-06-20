@@ -117,7 +117,7 @@ public final class PetItemDefinitions {
         play(items, "item_quiz_score_pad", Rarity.COMMON, true, Game.QUICK_QUIZ);
         interaction(items, "item_quiz_duel", Rarity.COMMON, 30, Game.QUICK_QUIZ);
         interaction(items, "item_gomoku_prediction", Rarity.COMMON, 50, Game.GOBANG);
-        interaction(items, "item_gomoku_review", Rarity.COMMON, null, Game.GOBANG);
+        interaction(items, "item_gomoku_review", Rarity.COMMON, ReleaseStage.EXPANSION, null, Game.GOBANG);
         play(items, "item_battle_echo", Rarity.COMMON, true, Game.DOG_BATTLE);
         interaction(items, "item_battle_direct_hit", Rarity.COMMON, 40, Game.DOG_BATTLE);
         interaction(items, "item_prophecy", Rarity.COMMON, 50, Game.QUICK_QUIZ, Game.GOBANG, Game.DOG_BATTLE);
@@ -127,9 +127,9 @@ public final class PetItemDefinitions {
         play(items, "item_draw_inspiration", Rarity.RARE, false, Game.DRAW_GUESS);
         play(items, "item_draw_peek", Rarity.RARE, false, Game.DRAW_GUESS);
         play(items, "item_draw_time", Rarity.RARE, false, Game.DRAW_GUESS);
-        play(items, "item_draw_replay", Rarity.RARE, false, Game.DRAW_GUESS);
+        play(items, "item_draw_replay", Rarity.RARE, ReleaseStage.EXPANSION, false, Game.DRAW_GUESS);
         interaction(items, "item_sync_perspective", Rarity.RARE, 30, Game.TACIT_QUIZ);
-        interaction(items, "item_sync_secret_question", Rarity.RARE, null, Game.TACIT_QUIZ);
+        interaction(items, "item_sync_secret_question", Rarity.RARE, ReleaseStage.EXPANSION, null, Game.TACIT_QUIZ);
         play(items, "item_quiz_wrong_option", Rarity.RARE, false, Game.QUICK_QUIZ);
         play(items, "item_gomoku_guard", Rarity.RARE, false, Game.GOBANG);
         play(items, "item_turtle_probe", Rarity.RARE, false, Game.TURTLE_SOUP);
@@ -139,7 +139,7 @@ public final class PetItemDefinitions {
 
         utility(items, ITEM_WILD_COMMON, Rarity.EPIC);
         utility(items, ITEM_PARTY_EQUALIZER, Rarity.EPIC);
-        utility(items, "item_gift_pack", Rarity.EPIC);
+        utility(items, "item_gift_pack", Rarity.EPIC, ReleaseStage.EXPANSION);
         utility(items, "item_express", Rarity.EPIC);
         utility(items, "item_lucky_day", Rarity.EPIC);
         return Collections.unmodifiableList(items);
@@ -147,13 +147,23 @@ public final class PetItemDefinitions {
 
     private static void play(List<PetItemDefinition> items, String itemId, Rarity rarity,
                              boolean commonPlayTarget, Game... games) {
-        items.add(new PetItemDefinition(itemId, rarity, ReleaseStage.CORE, Slot.PLAY, sellPrice(rarity),
+        play(items, itemId, rarity, ReleaseStage.CORE, commonPlayTarget, games);
+    }
+
+    private static void play(List<PetItemDefinition> items, String itemId, Rarity rarity,
+                             ReleaseStage releaseStage, boolean commonPlayTarget, Game... games) {
+        items.add(new PetItemDefinition(itemId, rarity, releaseStage, Slot.PLAY, sellPrice(rarity),
                 null, false, commonPlayTarget, games));
     }
 
     private static void interaction(List<PetItemDefinition> items, String itemId, Rarity rarity,
                                     Integer rewardBones, Game... games) {
-        items.add(new PetItemDefinition(itemId, rarity, ReleaseStage.CORE, Slot.INTERACTION, sellPrice(rarity),
+        interaction(items, itemId, rarity, ReleaseStage.CORE, rewardBones, games);
+    }
+
+    private static void interaction(List<PetItemDefinition> items, String itemId, Rarity rarity,
+                                    ReleaseStage releaseStage, Integer rewardBones, Game... games) {
+        items.add(new PetItemDefinition(itemId, rarity, releaseStage, Slot.INTERACTION, sellPrice(rarity),
                 rewardBones, true, false, games));
     }
 

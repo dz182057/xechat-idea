@@ -231,7 +231,7 @@ public final class PetProfileService {
             Collections.unmodifiableSet(createConstructionSiteLuckyBagItemIds());
     private static final List<String> OLD_LIBRARY_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "item_gomoku_prediction",
-            "item_gomoku_review",
+            "item_sync_prophecy",
             "item_hint"
     ));
     private static final List<String> OLD_LIBRARY_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
