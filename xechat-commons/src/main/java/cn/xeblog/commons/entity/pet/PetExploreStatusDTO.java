@@ -32,4 +32,8 @@ public class PetExploreStatusDTO implements Serializable {
 
     private boolean huskyUnlocked;
 
+    private int backHillCompletions;
+
+    private int creekCompletions;
+
 }

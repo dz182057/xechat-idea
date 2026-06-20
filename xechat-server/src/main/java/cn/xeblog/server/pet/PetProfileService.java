@@ -367,6 +367,10 @@ public final class PetProfileService {
                     findCollectionCount(collectionMapper, accountId, TREASURE_MAP_FRAGMENT_COLLECTION_ID));
             boolean mysteryCaveCompleted = findCollectionCount(collectionMapper, accountId,
                     MYSTERY_CAVE_COMPLETED_COLLECTION_ID) > 0;
+            int backHillCompletions = findLifetimeCounterValue(dailyCounterMapper, accountId,
+                    exploreCompleteCounter(EXPLORE_LOCATION_BACK_HILL));
+            int creekCompletions = findLifetimeCounterValue(dailyCounterMapper, accountId,
+                    exploreCompleteCounter(EXPLORE_LOCATION_CREEK));
             profile.setExploreStatus(new PetExploreStatusDTO(
                     DAILY_EXPLORE_START_LIMIT,
                     findDailyCounterValue(dailyCounterMapper, accountId, todayText, DAILY_COUNTER_EXPLORE_START),
@@ -375,7 +379,9 @@ public final class PetProfileService {
                     treasureMapFragments,
                     treasureMapFragments >= HUSKY_TREASURE_MAP_FRAGMENT_LIMIT,
                     mysteryCaveCompleted,
-                    mysteryCaveCompleted));
+                    mysteryCaveCompleted,
+                    backHillCompletions,
+                    creekCompletions));
             profile.setInteractionStatus(buildInteractionStatus(dailyCounterMapper, accountId, todayText));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             if (dogEnergyRefreshed || exploreSettled || dogStageChanged) {

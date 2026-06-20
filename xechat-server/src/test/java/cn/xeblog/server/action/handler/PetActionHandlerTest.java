@@ -3225,6 +3225,18 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void petProfileReportsExploreCompletionCountersForLocationUnlockProgress() {
+        User user = user();
+        insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_back_hill", 2);
+        insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_creek", 1);
+
+        PetProfileDTO profile = requestProfile(user);
+
+        Assert.assertEquals(2, profile.getExploreStatus().getBackHillCompletions());
+        Assert.assertEquals(1, profile.getExploreStatus().getCreekCompletions());
+    }
+
+    @Test
     public void exploreStartAllowsAdultEightHoursAndOpenUsesEightHourRewards() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
