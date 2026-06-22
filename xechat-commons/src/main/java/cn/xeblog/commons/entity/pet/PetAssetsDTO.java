@@ -24,6 +24,10 @@ public class PetAssetsDTO implements Serializable {
 
     private int dogSlots;
 
+    private int energy;
+
+    private String energyDate;
+
     private int energyLimit;
 
 }

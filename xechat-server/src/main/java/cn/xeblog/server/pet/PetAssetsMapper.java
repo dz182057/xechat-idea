@@ -13,6 +13,20 @@ public interface PetAssetsMapper {
 
     int update(PetAssetsRecord assets);
 
+    int refreshExpiredEnergy(@Param("accountId") long accountId,
+                             @Param("energyLimit") int energyLimit,
+                             @Param("today") String today,
+                             @Param("updatedAt") long updatedAt);
+
+    int decrementEnergyIfEnough(@Param("accountId") long accountId,
+                                @Param("amount") int amount,
+                                @Param("updatedAt") long updatedAt);
+
+    int addEnergyIfUnderLimit(@Param("accountId") long accountId,
+                              @Param("amount") int amount,
+                              @Param("energyLimit") int energyLimit,
+                              @Param("updatedAt") long updatedAt);
+
     int decrementFoodIfEnough(@Param("accountId") long accountId, @Param("updatedAt") long updatedAt);
 
     int decrementMakeupCardsIfEnough(@Param("accountId") long accountId, @Param("updatedAt") long updatedAt);

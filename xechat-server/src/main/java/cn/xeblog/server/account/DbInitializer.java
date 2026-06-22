@@ -445,13 +445,7 @@ public final class DbInitializer {
                         "name TEXT NOT NULL," +
                         "breed TEXT NOT NULL," +
                         "stage TEXT NOT NULL DEFAULT 'puppy'," +
-                        "speed INTEGER NOT NULL," +
-                        "stamina INTEGER NOT NULL," +
-                        "burst INTEGER NOT NULL," +
-                        "wisdom INTEGER NOT NULL," +
                         "bond INTEGER NOT NULL," +
-                        "energy INTEGER NOT NULL DEFAULT 10," +
-                        "energy_date TEXT NOT NULL DEFAULT '1970-01-01'," +
                         "status TEXT NOT NULL DEFAULT 'idle'," +
                         "explore_location TEXT," +
                         "explore_ends_at INTEGER," +
@@ -467,7 +461,6 @@ public final class DbInitializer {
                         "updated_at INTEGER NOT NULL" +
                         ")");
                 st.execute("CREATE INDEX IF NOT EXISTS idx_dogs_owner ON dogs(owner_id, created_at)");
-                addColumnIfMissing(conn, st, "dogs", "energy_date", "TEXT NOT NULL DEFAULT '1970-01-01'");
                 addColumnIfMissing(conn, st, "dogs", "explore_location", "TEXT");
                 addColumnIfMissing(conn, st, "dogs", "explore_ends_at", "INTEGER");
                 addColumnIfMissing(conn, st, "dogs", "explore_duration_hours", "INTEGER");
@@ -478,6 +471,7 @@ public final class DbInitializer {
                 addColumnIfMissing(conn, st, "dogs", "race_count", "INTEGER NOT NULL DEFAULT 0");
                 addColumnIfMissing(conn, st, "dogs", "race_first_count", "INTEGER NOT NULL DEFAULT 0");
                 addColumnIfMissing(conn, st, "dogs", "weekly_points", "INTEGER NOT NULL DEFAULT 0");
+                migrateDogsToV5Shape(conn, st);
                 migrateLegacyPetDogs(conn, st);
                 st.execute("CREATE TABLE IF NOT EXISTS pet_assets (" +
                         "account_id INTEGER PRIMARY KEY," +
@@ -485,11 +479,15 @@ public final class DbInitializer {
                         "food INTEGER NOT NULL DEFAULT 6," +
                         "makeup_cards INTEGER NOT NULL DEFAULT 0," +
                         "dog_slots INTEGER NOT NULL DEFAULT 1," +
+                        "energy INTEGER NOT NULL DEFAULT 10," +
+                        "energy_date TEXT NOT NULL DEFAULT '1970-01-01'," +
                         "energy_limit INTEGER NOT NULL DEFAULT 10," +
                         "companion_dog_id TEXT," +
                         "created_at INTEGER NOT NULL," +
                         "updated_at INTEGER NOT NULL" +
                         ")");
+                addColumnIfMissing(conn, st, "pet_assets", "energy", "INTEGER NOT NULL DEFAULT 10");
+                addColumnIfMissing(conn, st, "pet_assets", "energy_date", "TEXT NOT NULL DEFAULT '1970-01-01'");
                 addColumnIfMissing(conn, st, "pet_assets", "companion_dog_id", "TEXT");
                 st.execute("CREATE TABLE IF NOT EXISTS pet_items (" +
                         "account_id INTEGER NOT NULL," +
@@ -590,17 +588,57 @@ public final class DbInitializer {
         }
     }
 
+    private static void migrateDogsToV5Shape(Connection conn, Statement st) throws Exception {
+        if (!tableExists(conn, "dogs")
+                || (!columnExists(conn, "dogs", "speed") && !columnExists(conn, "dogs", "energy"))) {
+            return;
+        }
+        st.execute("CREATE TABLE IF NOT EXISTS dogs_v5 (" +
+                "id TEXT PRIMARY KEY," +
+                "owner_id INTEGER NOT NULL," +
+                "name TEXT NOT NULL," +
+                "breed TEXT NOT NULL," +
+                "stage TEXT NOT NULL DEFAULT 'puppy'," +
+                "bond INTEGER NOT NULL," +
+                "status TEXT NOT NULL DEFAULT 'idle'," +
+                "explore_location TEXT," +
+                "explore_ends_at INTEGER," +
+                "explore_duration_hours INTEGER," +
+                "explore_skill_id TEXT," +
+                "explore_skill_snapshot_id TEXT," +
+                "explore_skill_snapshot_level INTEGER," +
+                "explore_skill_snapshot_version TEXT," +
+                "race_count INTEGER NOT NULL DEFAULT 0," +
+                "race_first_count INTEGER NOT NULL DEFAULT 0," +
+                "weekly_points INTEGER NOT NULL DEFAULT 0," +
+                "created_at INTEGER NOT NULL," +
+                "updated_at INTEGER NOT NULL" +
+                ")");
+        st.execute("INSERT OR IGNORE INTO dogs_v5 (" +
+                "id, owner_id, name, breed, stage, bond, status, explore_location, explore_ends_at, " +
+                "explore_duration_hours, explore_skill_id, explore_skill_snapshot_id, explore_skill_snapshot_level, " +
+                "explore_skill_snapshot_version, race_count, race_first_count, weekly_points, created_at, updated_at) " +
+                "SELECT id, owner_id, name, breed, stage, bond, status, explore_location, explore_ends_at, " +
+                "explore_duration_hours, explore_skill_id, explore_skill_snapshot_id, explore_skill_snapshot_level, " +
+                "explore_skill_snapshot_version, race_count, race_first_count, weekly_points, created_at, updated_at " +
+                "FROM dogs");
+        st.execute("DROP TABLE dogs");
+        st.execute("ALTER TABLE dogs_v5 RENAME TO dogs");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_dogs_owner ON dogs(owner_id, created_at)");
+        log.info("数据库迁移: dogs 重建为 v5 犬舍表结构");
+    }
+
     private static void migrateLegacyPetDogs(Connection conn, Statement st) throws Exception {
         if (!tableExists(conn, "pet_dogs")) {
             return;
         }
         String weeklyPointsExpr = columnExists(conn, "pet_dogs", "weekly_points") ? "weekly_points" : "0";
         st.execute("INSERT OR IGNORE INTO dogs (" +
-                "id, owner_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, energy_date, status, " +
+                "id, owner_id, name, breed, stage, bond, status, " +
                 "explore_location, explore_ends_at, explore_duration_hours, race_count, race_first_count, weekly_points, " +
                 "created_at, updated_at) " +
-                "SELECT id, account_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, " +
-                "'1970-01-01', status, NULL, NULL, NULL, race_count, race_first_count, " + weeklyPointsExpr + ", " +
+                "SELECT id, account_id, name, breed, stage, bond, status, " +
+                "NULL, NULL, NULL, race_count, race_first_count, " + weeklyPointsExpr + ", " +
                 "created_at, updated_at FROM pet_dogs");
     }
 

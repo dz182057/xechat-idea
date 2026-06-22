@@ -43,13 +43,14 @@ public class PetProfileDTO implements Serializable {
     public static PetProfileDTO empty(long accountId) {
         PetProfileDTO profile = new PetProfileDTO();
         profile.setAccountId(accountId);
-        profile.setAssets(new PetAssetsDTO(300, 6, 0, 1, 10));
+        profile.setAssets(new PetAssetsDTO(300, 6, 0, 1, 10,
+                java.time.LocalDate.now().toString(), 10));
         profile.setDogs(new ArrayList<>());
         profile.setItems(new ArrayList<>());
         profile.setExploreChests(new ArrayList<>());
         profile.setCollections(new ArrayList<>());
         profile.setExploreStatus(new PetExploreStatusDTO(3, 0, 5, 0, 0,
-                false, false, false, 0, 0, 0, 0, null));
+                false, false, false, 0, 0, 0, 0, 0, null));
         profile.setInteractionStatus(new PetInteractionStatusDTO(150, 0, 150, 2,
                 new java.util.HashMap<>(), new java.util.HashMap<>()));
         profile.setTrainingStatus(new PetTrainingStatusDTO("pending",

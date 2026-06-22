@@ -175,7 +175,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals(5, profile.getTrainingStatus().getDefinitions().size());
         PetTrainingSkillDefinitionDTO route = findTrainingDefinition(profile, "explore_route");
         Assert.assertEquals("熟路口令", route.getName());
-        Assert.assertEquals("??", route.getEmoji());
+        Assert.assertEquals("\uD83E\uDDED", route.getEmoji());
         Assert.assertEquals("探险耗时缩短", route.getDescription());
         Assert.assertEquals(5, route.getLevelEffects().size());
         Assert.assertEquals("耗时 -4%", route.getLevelEffects().get(0));
@@ -335,11 +335,10 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void petProfilePromotesPuppyToAdultWhenStatsAndRaceCountReachThreshold() {
+    public void petProfilePromotesPuppyToAdultWhenBondAndRaceCountReachThreshold() {
         User user = user(9013L, "adult_stage_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy",
-                30, 30, 30, 30, 30, 3, 0);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy", 40, 3, 0);
 
         PetProfileDTO profile = requestProfile(user);
 
@@ -350,11 +349,10 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void petProfilePromotesDogToChampionWhenStatsAndRaceFirstReachThreshold() {
+    public void petProfilePromotesDogToChampionWhenBondAndRaceFirstReachThreshold() {
         User user = user(9014L, "champion_stage_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult",
-                60, 60, 60, 60, 60, 3, 1);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult", 80, 3, 1);
 
         PetProfileDTO profile = requestProfile(user);
 
@@ -368,8 +366,7 @@ public class PetActionHandlerTest {
     public void petProfileDoesNotDowngradeChampionWhenThresholdsAreNoLongerMet() {
         User user = user(9015L, "champion_no_downgrade_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "champion",
-                8, 12, 10, 10, 10, 0, 0);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "champion", 10, 0, 0);
 
         PetProfileDTO profile = requestProfile(user);
 
@@ -380,8 +377,7 @@ public class PetActionHandlerTest {
     public void petProfileDoesNotDowngradeAdultWhenThresholdsAreNoLongerMet() {
         User user = user(9016L, "adult_no_downgrade_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult",
-                8, 12, 10, 10, 10, 0, 0);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult", 10, 0, 0);
 
         PetProfileDTO profile = requestProfile(user);
 
@@ -392,8 +388,7 @@ public class PetActionHandlerTest {
     public void raceResultRecordsParticipationAndPromotesQualifiedDogToAdult() {
         User user = user(9017L, "race_result_adult_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy",
-                30, 30, 30, 30, 30, 2, 0);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy", 40, 2, 0);
 
         new PetActionHandler().process(user, raceResultRequest(dog.getId(), 2, 98001L));
 
@@ -412,8 +407,7 @@ public class PetActionHandlerTest {
     public void raceResultRecordsFirstPlaceAndPromotesQualifiedDogToChampion() {
         User user = user(9018L, "race_result_champion_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult",
-                60, 60, 60, 60, 60, 3, 0);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult", 80, 3, 0);
 
         new PetActionHandler().process(user, raceResultRequest(dog.getId(), 1, 98002L));
 
@@ -1698,7 +1692,7 @@ public class PetActionHandlerTest {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setEnergyLimit(user.getAccountId(), 12);
-        setDogEnergy(user.getAccountId(), dog.getId(), 3, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 3, LocalDate.now().toString());
         insertPetItem(user.getAccountId(), "item_feast", 1);
 
         new PetActionHandler().process(user, useItemRequest("item_feast", dog.getId(), 94001L));
@@ -1708,13 +1702,13 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.USE_ITEM, body.getPetAction());
         Assert.assertEquals(Long.valueOf(94001L), body.getRequestId());
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
-        Assert.assertEquals(12, findDog(profile, dog.getId()).getEnergy());
+        Assert.assertEquals(12, profile.getAssets().getEnergy());
         Assert.assertTrue(profile.getItems().isEmpty());
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "use_item_feast"));
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "feed_food"));
 
         PetProfileDTO persistedProfile = requestProfile(user);
-        Assert.assertEquals(12, findDog(persistedProfile, dog.getId()).getEnergy());
+        Assert.assertEquals(12, persistedProfile.getAssets().getEnergy());
         Assert.assertTrue(persistedProfile.getItems().isEmpty());
     }
 
@@ -1722,7 +1716,7 @@ public class PetActionHandlerTest {
     public void useItemFeastAcceptsExplicitQuantityOneAndDoesNotUseFeedLimit() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 2, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 2, LocalDate.now().toString());
         insertPetItem(user.getAccountId(), "item_feast", 1);
         setDailyCounter(user.getAccountId(), "feed_food", 5);
 
@@ -1733,7 +1727,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.USE_ITEM, body.getPetAction());
         Assert.assertEquals(Long.valueOf(94011L), body.getRequestId());
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
-        Assert.assertEquals(10, findDog(profile, dog.getId()).getEnergy());
+        Assert.assertEquals(10, profile.getAssets().getEnergy());
         Assert.assertTrue(profile.getItems().isEmpty());
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "use_item_feast"));
         Assert.assertEquals(5, countDailyCounter(user.getAccountId(), "feed_food"));
@@ -1754,14 +1748,14 @@ public class PetActionHandlerTest {
         Assert.assertEquals("狗狗活力已满", body.getError());
         Assert.assertEquals(1, countItem(user.getAccountId(), "item_feast"));
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "use_item_feast"));
-        Assert.assertEquals(10, findDog(requestProfile(user), dog.getId()).getEnergy());
+        Assert.assertEquals(10, requestProfile(user).getAssets().getEnergy());
     }
 
     @Test
     public void useItemFeastRefreshesExpiredEnergyBeforeRejectingFullEnergyDog() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 2, LocalDate.now().minusDays(1).toString());
+        setAccountEnergy(user.getAccountId(), 2, LocalDate.now().minusDays(1).toString());
         insertPetItem(user.getAccountId(), "item_feast", 1);
 
         new PetActionHandler().process(user, useItemRequest("item_feast", dog.getId(), 94012L));
@@ -1773,14 +1767,14 @@ public class PetActionHandlerTest {
         Assert.assertEquals("狗狗活力已满", body.getError());
         Assert.assertEquals(1, countItem(user.getAccountId(), "item_feast"));
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "use_item_feast"));
-        Assert.assertEquals(10, findDog(requestProfile(user), dog.getId()).getEnergy());
+        Assert.assertEquals(10, requestProfile(user).getAssets().getEnergy());
     }
 
     @Test
     public void useItemFeastRejectsInsufficientInventoryWithoutSideEffects() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 3, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 3, LocalDate.now().toString());
 
         new PetActionHandler().process(user, useItemRequest("item_feast", dog.getId(), 94003L));
 
@@ -1789,7 +1783,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.USE_ITEM, body.getPetAction());
         Assert.assertEquals(Long.valueOf(94003L), body.getRequestId());
         Assert.assertEquals("道具数量不足", body.getError());
-        Assert.assertEquals(3, findDog(requestProfile(user), dog.getId()).getEnergy());
+        Assert.assertEquals(3, requestProfile(user).getAssets().getEnergy());
         Assert.assertEquals(0, countItem(user.getAccountId(), "item_feast"));
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "use_item_feast"));
     }
@@ -1798,7 +1792,7 @@ public class PetActionHandlerTest {
     public void useItemFeastRejectsDailyLimitWithoutConsumingItem() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 3, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 3, LocalDate.now().toString());
         insertPetItem(user.getAccountId(), "item_feast", 1);
         setDailyCounter(user.getAccountId(), "use_item_feast", 1);
 
@@ -1811,7 +1805,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals("今日美食大餐已使用", body.getError());
         Assert.assertEquals(1, countItem(user.getAccountId(), "item_feast"));
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "use_item_feast"));
-        Assert.assertEquals(3, findDog(requestProfile(user), dog.getId()).getEnergy());
+        Assert.assertEquals(3, requestProfile(user).getAssets().getEnergy());
     }
 
     @Test
@@ -1846,7 +1840,7 @@ public class PetActionHandlerTest {
     public void useItemRejectsUnsupportedItemWithoutSideEffects() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 3, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 3, LocalDate.now().toString());
         insertPetItem(user.getAccountId(), "item_draw_advance_hint", 1);
 
         new PetActionHandler().process(user, useItemRequest("item_draw_advance_hint", dog.getId(), 94007L));
@@ -1857,7 +1851,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals(Long.valueOf(94007L), body.getRequestId());
         Assert.assertEquals("暂不支持该道具", body.getError());
         Assert.assertEquals(1, countItem(user.getAccountId(), "item_draw_advance_hint"));
-        Assert.assertEquals(3, findDog(requestProfile(user), dog.getId()).getEnergy());
+        Assert.assertEquals(3, requestProfile(user).getAssets().getEnergy());
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "use_item_feast"));
     }
 
@@ -1865,7 +1859,7 @@ public class PetActionHandlerTest {
     public void useItemRejectsInvalidOrBlankParametersWithoutSideEffects() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 3, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 3, LocalDate.now().toString());
         insertPetItem(user.getAccountId(), "item_feast", 1);
 
         new PetActionHandler().process(user, useItemRequest("item_feast", dog.getId(), 0, 94008L));
@@ -1890,7 +1884,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals("狗狗不能为空", blankDogBody.getError());
 
         Assert.assertEquals(1, countItem(user.getAccountId(), "item_feast"));
-        Assert.assertEquals(3, findDog(requestProfile(user), dog.getId()).getEnergy());
+        Assert.assertEquals(3, requestProfile(user).getAssets().getEnergy());
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "use_item_feast"));
     }
 
@@ -1898,7 +1892,7 @@ public class PetActionHandlerTest {
     public void useItemRejectsMissingOrNullQuantityWithoutSideEffects() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 3, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 3, LocalDate.now().toString());
         insertPetItem(user.getAccountId(), "item_feast", 1);
 
         new PetActionHandler().process(user, useItemRequestWithoutQuantity("item_feast", dog.getId(), 94028L));
@@ -1916,7 +1910,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals("道具使用数量必须为 1", nullQuantityBody.getError());
 
         Assert.assertEquals(1, countItem(user.getAccountId(), "item_feast"));
-        Assert.assertEquals(3, findDog(requestProfile(user), dog.getId()).getEnergy());
+        Assert.assertEquals(3, requestProfile(user).getAssets().getEnergy());
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "use_item_feast"));
     }
 
@@ -2003,10 +1997,11 @@ public class PetActionHandlerTest {
         setLegacyExploreWindow(user.getAccountId(), dog.getId(),
                 System.currentTimeMillis() - 2L * 60L * 60L * 1000L,
                 System.currentTimeMillis() + 2L * 60L * 60L * 1000L);
-        setDogEnergy(user.getAccountId(), dog.getId(), 2, LocalDate.now().minusDays(1).toString());
-        PetDogDTO refreshedDog = findDog(requestProfile(user), dog.getId());
+        setAccountEnergy(user.getAccountId(), 2, LocalDate.now().minusDays(1).toString());
+        PetProfileDTO refreshedProfile = requestProfile(user);
+        PetDogDTO refreshedDog = findDog(refreshedProfile, dog.getId());
         Assert.assertEquals("exploring", refreshedDog.getStatus());
-        Assert.assertEquals(10, refreshedDog.getEnergy());
+        Assert.assertEquals(10, refreshedProfile.getAssets().getEnergy());
         insertPetItem(user.getAccountId(), "item_express", 1);
 
         new PetActionHandler().process(user, useItemRequest("item_express", dog.getId(), 94037L));
@@ -2057,7 +2052,7 @@ public class PetActionHandlerTest {
         setLegacyExploreWindow(user.getAccountId(), dog.getId(),
                 System.currentTimeMillis() - 2L * 60L * 60L * 1000L,
                 System.currentTimeMillis() + 2L * 60L * 60L * 1000L);
-        setDogEnergy(user.getAccountId(), dog.getId(), 2, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 2, LocalDate.now().toString());
 
         new PetActionHandler().process(user, feedRequest(dog.getId()));
         Assert.assertTrue(readPetBody(user).isSuccess());
@@ -2250,13 +2245,9 @@ public class PetActionHandlerTest {
         PetDogDTO adoptedDog = adoptedProfile.getDogs().get(0);
         Assert.assertEquals("小短腿", adoptedDog.getName());
         Assert.assertEquals("corgi", adoptedDog.getBreed());
-        Assert.assertEquals(8, adoptedDog.getSpeed());
-        Assert.assertEquals(12, adoptedDog.getStamina());
-        Assert.assertEquals(10, adoptedDog.getBurst());
-        Assert.assertEquals(10, adoptedDog.getWisdom());
         Assert.assertEquals(10, adoptedDog.getBond());
-        Assert.assertEquals(10, adoptedDog.getEnergy());
-        Assert.assertEquals(today.toString(), findDogEnergyDate(adoptedDog.getId()));
+        Assert.assertEquals(10, adoptedProfile.getAssets().getEnergy());
+        Assert.assertEquals(today.toString(), findAccountEnergyDate(user.getAccountId()));
 
         PetRequestDTO profile = new PetRequestDTO();
         profile.setPetAction(PetAction.PET_PROFILE);
@@ -2269,45 +2260,45 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void petProfileResetsExpiredDogEnergyBeforeReturning() {
+    public void petProfileResetsExpiredAccountEnergyBeforeReturning() {
         User user = user();
         LocalDate today = LocalDate.now();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         String yesterday = today.minusDays(1).toString();
-        setDogEnergy(user.getAccountId(), dog.getId(), 2, yesterday);
+        setAccountEnergy(user.getAccountId(), 2, yesterday);
 
         PetProfileDTO profile = requestProfile(user);
 
-        Assert.assertEquals(10, findDog(profile, dog.getId()).getEnergy());
-        Assert.assertEquals(today.toString(), findDogEnergyDate(dog.getId()));
+        Assert.assertEquals(10, profile.getAssets().getEnergy());
+        Assert.assertEquals(today.toString(), findAccountEnergyDate(user.getAccountId()));
     }
 
     @Test
-    public void petProfileDoesNotResetDogEnergyForToday() {
+    public void petProfileDoesNotResetAccountEnergyForToday() {
         User user = user();
         LocalDate today = LocalDate.now();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         String todayText = today.toString();
-        setDogEnergy(user.getAccountId(), dog.getId(), 3, todayText);
+        setAccountEnergy(user.getAccountId(), 3, todayText);
 
         PetProfileDTO profile = requestProfile(user);
 
-        Assert.assertEquals(3, findDog(profile, dog.getId()).getEnergy());
-        Assert.assertEquals(todayText, findDogEnergyDate(dog.getId()));
+        Assert.assertEquals(3, profile.getAssets().getEnergy());
+        Assert.assertEquals(todayText, findAccountEnergyDate(user.getAccountId()));
     }
 
     @Test
-    public void petProfileUsesCurrentEnergyLimitWhenResettingExpiredDogEnergy() {
+    public void petProfileUsesCurrentEnergyLimitWhenResettingExpiredAccountEnergy() {
         User user = user();
         LocalDate today = LocalDate.now();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setEnergyLimit(user.getAccountId(), 11);
-        setDogEnergy(user.getAccountId(), dog.getId(), 2, today.minusDays(1).toString());
+        setAccountEnergy(user.getAccountId(), 2, today.minusDays(1).toString());
 
         PetProfileDTO profile = requestProfile(user);
 
-        Assert.assertEquals(11, findDog(profile, dog.getId()).getEnergy());
-        Assert.assertEquals(today.toString(), findDogEnergyDate(dog.getId()));
+        Assert.assertEquals(11, profile.getAssets().getEnergy());
+        Assert.assertEquals(today.toString(), findAccountEnergyDate(user.getAccountId()));
     }
 
     @Test
@@ -2497,7 +2488,7 @@ public class PetActionHandlerTest {
         PetProfileDTO fedProfile = (PetProfileDTO) feedBody.getContent();
         Assert.assertEquals(5, fedProfile.getAssets().getFood());
         Assert.assertEquals(11, fedProfile.getDogs().get(0).getBond());
-        Assert.assertEquals(10, fedProfile.getDogs().get(0).getEnergy());
+        Assert.assertEquals(10, fedProfile.getAssets().getEnergy());
 
         PetProfileDTO persistedProfile = requestProfile(user);
         Assert.assertEquals(5, persistedProfile.getAssets().getFood());
@@ -2513,7 +2504,7 @@ public class PetActionHandlerTest {
         PetProfileDTO before = requestProfile(user);
         Assert.assertEquals(0, before.getAssets().getFood());
         Assert.assertEquals(10, before.getDogs().get(0).getBond());
-        Assert.assertEquals(10, before.getDogs().get(0).getEnergy());
+        Assert.assertEquals(10, before.getAssets().getEnergy());
 
         new PetActionHandler().process(user, feedRequest(dog.getId()));
 
@@ -2525,7 +2516,7 @@ public class PetActionHandlerTest {
         PetProfileDTO after = requestProfile(user);
         Assert.assertEquals(0, after.getAssets().getFood());
         Assert.assertEquals(10, after.getDogs().get(0).getBond());
-        Assert.assertEquals(10, after.getDogs().get(0).getEnergy());
+        Assert.assertEquals(10, after.getAssets().getEnergy());
     }
 
     @Test
@@ -2533,7 +2524,7 @@ public class PetActionHandlerTest {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setFood(user.getAccountId(), 6);
-        setDogEnergy(user.getAccountId(), dog.getId(), 4, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 4, LocalDate.now().toString());
 
         for (int i = 0; i < 5; i++) {
             new PetActionHandler().process(user, feedRequest(dog.getId()));
@@ -2543,7 +2534,7 @@ public class PetActionHandlerTest {
         PetProfileDTO beforeSixth = requestProfile(user);
         Assert.assertEquals(1, beforeSixth.getAssets().getFood());
         Assert.assertEquals(11, findDog(beforeSixth, dog.getId()).getBond());
-        Assert.assertEquals(9, findDog(beforeSixth, dog.getId()).getEnergy());
+        Assert.assertEquals(9, beforeSixth.getAssets().getEnergy());
 
         new PetActionHandler().process(user, feedRequest(dog.getId()));
 
@@ -2554,7 +2545,7 @@ public class PetActionHandlerTest {
         PetProfileDTO afterSixth = requestProfile(user);
         Assert.assertEquals(0, afterSixth.getAssets().getFood());
         Assert.assertEquals(11, findDog(afterSixth, dog.getId()).getBond());
-        Assert.assertEquals(9, findDog(afterSixth, dog.getId()).getEnergy());
+        Assert.assertEquals(9, afterSixth.getAssets().getEnergy());
     }
 
     @Test
@@ -2564,8 +2555,8 @@ public class PetActionHandlerTest {
         setFood(user.getAccountId(), 6);
         PetDogDTO firstDog = adoptDog(user, "corgi", "小短腿");
         PetDogDTO secondDog = adoptDog(user, "golden", "金毛");
-        setDogEnergy(user.getAccountId(), firstDog.getId(), 5, LocalDate.now().toString());
-        setDogEnergy(user.getAccountId(), secondDog.getId(), 5, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
 
         for (int i = 0; i < 3; i++) {
             new PetActionHandler().process(user, feedRequest(firstDog.getId()));
@@ -2579,9 +2570,8 @@ public class PetActionHandlerTest {
         PetProfileDTO beforeSixth = requestProfile(user);
         Assert.assertEquals(1, beforeSixth.getAssets().getFood());
         Assert.assertEquals(11, findDog(beforeSixth, firstDog.getId()).getBond());
-        Assert.assertEquals(8, findDog(beforeSixth, firstDog.getId()).getEnergy());
-        Assert.assertEquals(15, findDog(beforeSixth, secondDog.getId()).getBond());
-        Assert.assertEquals(7, findDog(beforeSixth, secondDog.getId()).getEnergy());
+        Assert.assertEquals(11, findDog(beforeSixth, secondDog.getId()).getBond());
+        Assert.assertEquals(10, beforeSixth.getAssets().getEnergy());
 
         new PetActionHandler().process(user, feedRequest(secondDog.getId()));
 
@@ -2591,9 +2581,8 @@ public class PetActionHandlerTest {
         PetProfileDTO afterSixth = requestProfile(user);
         Assert.assertEquals(0, afterSixth.getAssets().getFood());
         Assert.assertEquals(11, findDog(afterSixth, firstDog.getId()).getBond());
-        Assert.assertEquals(8, findDog(afterSixth, firstDog.getId()).getEnergy());
-        Assert.assertEquals(15, findDog(afterSixth, secondDog.getId()).getBond());
-        Assert.assertEquals(7, findDog(afterSixth, secondDog.getId()).getEnergy());
+        Assert.assertEquals(11, findDog(afterSixth, secondDog.getId()).getBond());
+        Assert.assertEquals(10, afterSixth.getAssets().getEnergy());
     }
 
     @Test
@@ -2616,7 +2605,7 @@ public class PetActionHandlerTest {
         User user = user();
         LocalDate today = LocalDate.now();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 2, today.minusDays(1).toString());
+        setAccountEnergy(user.getAccountId(), 2, today.minusDays(1).toString());
 
         new PetActionHandler().process(user, feedRequest(dog.getId()));
 
@@ -2625,8 +2614,8 @@ public class PetActionHandlerTest {
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
         Assert.assertEquals(5, profile.getAssets().getFood());
         Assert.assertEquals(11, findDog(profile, dog.getId()).getBond());
-        Assert.assertEquals(10, findDog(profile, dog.getId()).getEnergy());
-        Assert.assertEquals(today.toString(), findDogEnergyDate(dog.getId()));
+        Assert.assertEquals(10, profile.getAssets().getEnergy());
+        Assert.assertEquals(today.toString(), findAccountEnergyDate(user.getAccountId()));
     }
 
     @Test
@@ -3218,7 +3207,7 @@ public class PetActionHandlerTest {
     public void exploreStartSucceedsWithBackHillOneHourAndConsumesEnergy() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
         long before = System.currentTimeMillis();
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 1, 97001L));
@@ -3233,7 +3222,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals("back_hill", exploringDog.getExploreLocation());
         Assert.assertTrue(exploringDog.getExploreEndsAt() >= before + TimeUnit.HOURS.toMillis(1));
         Assert.assertTrue(exploringDog.getExploreEndsAt() <= System.currentTimeMillis() + TimeUnit.HOURS.toMillis(1));
-        Assert.assertEquals(3, exploringDog.getEnergy());
+        Assert.assertEquals(3, profile.getAssets().getEnergy());
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
@@ -3241,7 +3230,7 @@ public class PetActionHandlerTest {
     public void exploreStartRejectsCreekBeforeBackHillCompletionCount() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "creek", 1, 97043L));
 
@@ -3250,10 +3239,11 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97043L), body.getRequestId());
         Assert.assertEquals("完成后山探险 3 次后才能进入小溪", body.getError());
-        PetDogDTO persistedDog = findDog(requestProfile(user), dog.getId());
+        PetProfileDTO persistedProfile = requestProfile(user);
+        PetDogDTO persistedDog = findDog(persistedProfile, dog.getId());
         Assert.assertEquals("idle", persistedDog.getStatus());
         Assert.assertNull(persistedDog.getExploreLocation());
-        Assert.assertEquals(5, persistedDog.getEnergy());
+        Assert.assertEquals(5, persistedProfile.getAssets().getEnergy());
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
@@ -3261,7 +3251,7 @@ public class PetActionHandlerTest {
     public void exploreStartAllowsCreekAfterBackHillCompletionCount() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
         insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_back_hill", 3);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "creek", 1, 97044L));
@@ -3270,10 +3260,11 @@ public class PetActionHandlerTest {
         Assert.assertTrue(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97044L), body.getRequestId());
-        PetDogDTO exploringDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
+        PetProfileDTO profile = (PetProfileDTO) body.getContent();
+        PetDogDTO exploringDog = findDog(profile, dog.getId());
         Assert.assertEquals("exploring", exploringDog.getStatus());
         Assert.assertEquals("creek", exploringDog.getExploreLocation());
-        Assert.assertEquals(3, exploringDog.getEnergy());
+        Assert.assertEquals(3, profile.getAssets().getEnergy());
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
@@ -3281,7 +3272,7 @@ public class PetActionHandlerTest {
     public void exploreStartRejectsConstructionSiteBeforeMinesweeperWins() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
         insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper", 9);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "construction_site", 1, 97048L));
@@ -3298,7 +3289,7 @@ public class PetActionHandlerTest {
     public void exploreStartAllowsConstructionSiteAfterMinesweeperWins() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
         insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper", 10);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "construction_site", 1, 97049L));
@@ -3307,10 +3298,11 @@ public class PetActionHandlerTest {
         Assert.assertTrue(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97049L), body.getRequestId());
-        PetDogDTO exploringDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
+        PetProfileDTO profile = (PetProfileDTO) body.getContent();
+        PetDogDTO exploringDog = findDog(profile, dog.getId());
         Assert.assertEquals("exploring", exploringDog.getStatus());
         Assert.assertEquals("construction_site", exploringDog.getExploreLocation());
-        Assert.assertEquals(3, exploringDog.getEnergy());
+        Assert.assertEquals(3, profile.getAssets().getEnergy());
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
@@ -3318,7 +3310,7 @@ public class PetActionHandlerTest {
     public void exploreStartAllowsOldLibraryAfterGobangAndTurtleSoupWins() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
         insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_gobang", 4);
         insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_turtle_soup", 6);
 
@@ -3328,10 +3320,11 @@ public class PetActionHandlerTest {
         Assert.assertTrue(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97050L), body.getRequestId());
-        PetDogDTO exploringDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
+        PetProfileDTO profile = (PetProfileDTO) body.getContent();
+        PetDogDTO exploringDog = findDog(profile, dog.getId());
         Assert.assertEquals("exploring", exploringDog.getStatus());
         Assert.assertEquals("old_library", exploringDog.getExploreLocation());
-        Assert.assertEquals(3, exploringDog.getEnergy());
+        Assert.assertEquals(3, profile.getAssets().getEnergy());
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
@@ -3357,18 +3350,19 @@ public class PetActionHandlerTest {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setDogStage(user.getAccountId(), dog.getId(), "adult");
-        setDogEnergy(user.getAccountId(), dog.getId(), 10, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
         long before = System.currentTimeMillis();
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 8, 97019L));
 
         PetResponseDTO startBody = readPetBody(user);
         Assert.assertTrue(startBody.isSuccess());
-        PetDogDTO exploringDog = findDog((PetProfileDTO) startBody.getContent(), dog.getId());
+        PetProfileDTO startProfile = (PetProfileDTO) startBody.getContent();
+        PetDogDTO exploringDog = findDog(startProfile, dog.getId());
         Assert.assertEquals("exploring", exploringDog.getStatus());
         Assert.assertTrue(exploringDog.getExploreEndsAt() >= before + TimeUnit.HOURS.toMillis(8));
         Assert.assertTrue(exploringDog.getExploreEndsAt() <= System.currentTimeMillis() + TimeUnit.HOURS.toMillis(8));
-        Assert.assertEquals(6, exploringDog.getEnergy());
+        Assert.assertEquals(6, startProfile.getAssets().getEnergy());
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "explore_start"));
 
         setExploreEnded(user.getAccountId(), dog.getId());
@@ -3393,18 +3387,19 @@ public class PetActionHandlerTest {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setDogStage(user.getAccountId(), dog.getId(), "champion");
-        setDogEnergy(user.getAccountId(), dog.getId(), 10, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
         long before = System.currentTimeMillis();
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 12, 97021L));
 
         PetResponseDTO startBody = readPetBody(user);
         Assert.assertTrue(startBody.isSuccess());
-        PetDogDTO exploringDog = findDog((PetProfileDTO) startBody.getContent(), dog.getId());
+        PetProfileDTO startProfile = (PetProfileDTO) startBody.getContent();
+        PetDogDTO exploringDog = findDog(startProfile, dog.getId());
         Assert.assertEquals("exploring", exploringDog.getStatus());
         Assert.assertTrue(exploringDog.getExploreEndsAt() >= before + TimeUnit.HOURS.toMillis(12));
         Assert.assertTrue(exploringDog.getExploreEndsAt() <= System.currentTimeMillis() + TimeUnit.HOURS.toMillis(12));
-        Assert.assertEquals(5, exploringDog.getEnergy());
+        Assert.assertEquals(5, startProfile.getAssets().getEnergy());
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "explore_start"));
 
         setExploreEnded(user.getAccountId(), dog.getId());
@@ -3428,9 +3423,8 @@ public class PetActionHandlerTest {
     public void exploreStartPromotesQualifiedPuppyBeforeCheckingEightHourUnlock() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy",
-                30, 30, 30, 30, 30, 3, 0);
-        setDogEnergy(user.getAccountId(), dog.getId(), 10, LocalDate.now().toString());
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy", 40, 3, 0);
+        setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 8, 97025L));
 
@@ -3438,19 +3432,19 @@ public class PetActionHandlerTest {
         Assert.assertTrue(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97025L), body.getRequestId());
-        PetDogDTO exploringDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
+        PetProfileDTO profile = (PetProfileDTO) body.getContent();
+        PetDogDTO exploringDog = findDog(profile, dog.getId());
         Assert.assertEquals("adult", exploringDog.getStage());
         Assert.assertEquals("exploring", exploringDog.getStatus());
-        Assert.assertEquals(6, exploringDog.getEnergy());
+        Assert.assertEquals(6, profile.getAssets().getEnergy());
     }
 
     @Test
     public void exploreStartPromotesQualifiedAdultBeforeCheckingTwelveHourUnlock() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult",
-                60, 60, 60, 60, 60, 3, 1);
-        setDogEnergy(user.getAccountId(), dog.getId(), 10, LocalDate.now().toString());
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult", 80, 3, 1);
+        setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 12, 97026L));
 
@@ -3458,17 +3452,18 @@ public class PetActionHandlerTest {
         Assert.assertTrue(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97026L), body.getRequestId());
-        PetDogDTO exploringDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
+        PetProfileDTO profile = (PetProfileDTO) body.getContent();
+        PetDogDTO exploringDog = findDog(profile, dog.getId());
         Assert.assertEquals("champion", exploringDog.getStage());
         Assert.assertEquals("exploring", exploringDog.getStatus());
-        Assert.assertEquals(5, exploringDog.getEnergy());
+        Assert.assertEquals(5, profile.getAssets().getEnergy());
     }
 
     @Test
     public void exploreStartRejectsLockedLongDurationsWithoutSideEffects() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 10, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 8, 97023L));
         PetResponseDTO puppyBody = readPetBody(user);
@@ -3481,11 +3476,12 @@ public class PetActionHandlerTest {
         Assert.assertFalse(adultBody.isSuccess());
         Assert.assertEquals("冠军犬才能派遣 12 小时探险", adultBody.getError());
 
-        PetDogDTO persistedDog = findDog(requestProfile(user), dog.getId());
+        PetProfileDTO persistedProfile = requestProfile(user);
+        PetDogDTO persistedDog = findDog(persistedProfile, dog.getId());
         Assert.assertEquals("idle", persistedDog.getStatus());
         Assert.assertNull(persistedDog.getExploreLocation());
         Assert.assertNull(persistedDog.getExploreEndsAt());
-        Assert.assertEquals(10, persistedDog.getEnergy());
+        Assert.assertEquals(10, persistedProfile.getAssets().getEnergy());
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
@@ -3493,7 +3489,7 @@ public class PetActionHandlerTest {
     public void exploreStartRejectsWhenEnergyNotEnoughWithoutSideEffects() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 1, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 1, LocalDate.now().toString());
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 1, 97002L));
 
@@ -3501,11 +3497,12 @@ public class PetActionHandlerTest {
         Assert.assertFalse(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals("狗狗活力不足", body.getError());
-        PetDogDTO persistedDog = findDog(requestProfile(user), dog.getId());
+        PetProfileDTO persistedProfile = requestProfile(user);
+        PetDogDTO persistedDog = findDog(persistedProfile, dog.getId());
         Assert.assertEquals("idle", persistedDog.getStatus());
         Assert.assertNull(persistedDog.getExploreLocation());
         Assert.assertNull(persistedDog.getExploreEndsAt());
-        Assert.assertEquals(1, persistedDog.getEnergy());
+        Assert.assertEquals(1, persistedProfile.getAssets().getEnergy());
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
@@ -3521,11 +3518,12 @@ public class PetActionHandlerTest {
         Assert.assertFalse(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals("只有空闲狗狗可以去探险", body.getError());
-        PetDogDTO persistedDog = findDog(requestProfile(user), dog.getId());
+        PetProfileDTO persistedProfile = requestProfile(user);
+        PetDogDTO persistedDog = findDog(persistedProfile, dog.getId());
         Assert.assertEquals("racing", persistedDog.getStatus());
         Assert.assertNull(persistedDog.getExploreLocation());
         Assert.assertNull(persistedDog.getExploreEndsAt());
-        Assert.assertEquals(10, persistedDog.getEnergy());
+        Assert.assertEquals(10, persistedProfile.getAssets().getEnergy());
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
@@ -3557,11 +3555,12 @@ public class PetActionHandlerTest {
         Assert.assertFalse(foreignBody.isSuccess());
         Assert.assertEquals("只能派遣自己的狗狗探险", foreignBody.getError());
 
-        PetDogDTO persistedDog = findDog(requestProfile(user), dog.getId());
+        PetProfileDTO persistedProfile = requestProfile(user);
+        PetDogDTO persistedDog = findDog(persistedProfile, dog.getId());
         Assert.assertEquals("idle", persistedDog.getStatus());
         Assert.assertNull(persistedDog.getExploreLocation());
         Assert.assertNull(persistedDog.getExploreEndsAt());
-        Assert.assertEquals(10, persistedDog.getEnergy());
+        Assert.assertEquals(10, persistedProfile.getAssets().getEnergy());
         Assert.assertEquals(3, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
@@ -3569,7 +3568,7 @@ public class PetActionHandlerTest {
     public void exploreStartRejectsWhenBackHillChestInventoryIsFullWithoutSideEffects() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 5, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
         insertPetItem(user.getAccountId(), BACK_HILL_CHEST_ITEM_ID, 99);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 1, 97041L));
@@ -3579,11 +3578,12 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97041L), body.getRequestId());
         Assert.assertEquals("后山箱子已达上限，打开后再探险", body.getError());
-        PetDogDTO persistedDog = findDog(requestProfile(user), dog.getId());
+        PetProfileDTO persistedProfile = requestProfile(user);
+        PetDogDTO persistedDog = findDog(persistedProfile, dog.getId());
         Assert.assertEquals("idle", persistedDog.getStatus());
         Assert.assertNull(persistedDog.getExploreLocation());
         Assert.assertNull(persistedDog.getExploreEndsAt());
-        Assert.assertEquals(5, persistedDog.getEnergy());
+        Assert.assertEquals(5, persistedProfile.getAssets().getEnergy());
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "explore_start"));
         Assert.assertEquals(99, countExploreChest(user.getAccountId(), BACK_HILL_CHEST_ITEM_ID));
     }
@@ -3796,7 +3796,7 @@ public class PetActionHandlerTest {
     public void mysteryCaveRequiresFragmentsAndCompletesHuskyUnlockOnce() {
         User user = user(97034L, "mystery_cave_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogEnergy(user.getAccountId(), dog.getId(), 10, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
         insertPetCollection(user.getAccountId(), "treasure_map_fragment", 2, true);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "mystery_cave", 8, 97043L));
@@ -3809,10 +3809,11 @@ public class PetActionHandlerTest {
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "mystery_cave", 8, 97044L));
         PetResponseDTO startBody = readPetBody(user);
         Assert.assertTrue(startBody.isSuccess());
-        PetDogDTO exploringDog = findDog((PetProfileDTO) startBody.getContent(), dog.getId());
+        PetProfileDTO startProfile = (PetProfileDTO) startBody.getContent();
+        PetDogDTO exploringDog = findDog(startProfile, dog.getId());
         Assert.assertEquals("exploring", exploringDog.getStatus());
         Assert.assertEquals("mystery_cave", exploringDog.getExploreLocation());
-        Assert.assertEquals(6, exploringDog.getEnergy());
+        Assert.assertEquals(6, startProfile.getAssets().getEnergy());
 
         setExploreEnded(user.getAccountId(), dog.getId());
         IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 99);
@@ -4021,7 +4022,11 @@ public class PetActionHandlerTest {
             Assert.assertEquals(0, countItem(user.getAccountId(), OLD_LIBRARY_CHEST_ITEM_ID));
             Assert.assertEquals(0, findInventoryCount(profile, OLD_LIBRARY_CHEST_ITEM_ID));
             Assert.assertEquals("idle", findDog(profile, dog.getId()).getStatus());
-            Assert.assertTrue(hasReward(rewards, "item", "item_gomoku_guard")
+            Assert.assertTrue(hasReward(rewards, "item", "item_quiz_score_pad")
+                    || hasReward(rewards, "item", "item_quiz_duel")
+                    || hasReward(rewards, "item", "item_gomoku_prediction")
+                    || hasReward(rewards, "item", "item_quiz_wrong_option")
+                    || hasReward(rewards, "item", "item_gomoku_guard")
                     || hasReward(rewards, "item", "item_turtle_probe"));
         } finally {
             setExploreRollSupplier(originalRollSupplier);
@@ -4514,14 +4519,14 @@ public class PetActionHandlerTest {
         }
     }
 
-    private static void setDogEnergy(long accountId, String dogId, int energy, String energyDate) {
+    private static void setAccountEnergy(long accountId, int energy, String energyDate) {
+        ensureAssetsRow(accountId);
         try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
              java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
-                     "UPDATE dogs SET energy = ?, energy_date = ? WHERE owner_id = ? AND id = ?")) {
+                     "UPDATE pet_assets SET energy = ?, energy_date = ? WHERE account_id = ?")) {
             statement.setInt(1, energy);
             statement.setString(2, energyDate);
             statement.setLong(3, accountId);
-            statement.setString(4, dogId);
             Assert.assertEquals(1, statement.executeUpdate());
         } catch (Exception e) {
             throw new IllegalStateException(e);
@@ -4557,24 +4562,19 @@ public class PetActionHandlerTest {
     }
 
     private static void setDogGrowthProgress(long accountId, String dogId, String stage,
-                                             int speed, int stamina, int burst, int wisdom, int bond,
-                                             int raceCount, int raceFirstCount) {
+                                             int bond, int raceCount, int raceFirstCount) {
         try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
              java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
-                     "UPDATE dogs SET stage = ?, speed = ?, stamina = ?, burst = ?, wisdom = ?, bond = ?, " +
+                     "UPDATE dogs SET stage = ?, bond = ?, " +
                              "race_count = ?, race_first_count = ?, updated_at = ? " +
                              "WHERE owner_id = ? AND id = ?")) {
             statement.setString(1, stage);
-            statement.setInt(2, speed);
-            statement.setInt(3, stamina);
-            statement.setInt(4, burst);
-            statement.setInt(5, wisdom);
-            statement.setInt(6, bond);
-            statement.setInt(7, raceCount);
-            statement.setInt(8, raceFirstCount);
-            statement.setLong(9, System.currentTimeMillis());
-            statement.setLong(10, accountId);
-            statement.setString(11, dogId);
+            statement.setInt(2, bond);
+            statement.setInt(3, raceCount);
+            statement.setInt(4, raceFirstCount);
+            statement.setLong(5, System.currentTimeMillis());
+            statement.setLong(6, accountId);
+            statement.setString(7, dogId);
             Assert.assertEquals(1, statement.executeUpdate());
         } catch (Exception e) {
             throw new IllegalStateException(e);
@@ -4675,11 +4675,12 @@ public class PetActionHandlerTest {
         }
     }
 
-    private static String findDogEnergyDate(String dogId) {
+    private static String findAccountEnergyDate(long accountId) {
+        ensureAssetsRow(accountId);
         try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
              java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
-                     "SELECT energy_date FROM dogs WHERE id = ?")) {
-            statement.setString(1, dogId);
+                     "SELECT energy_date FROM pet_assets WHERE account_id = ?")) {
+            statement.setLong(1, accountId);
             try (java.sql.ResultSet rs = statement.executeQuery()) {
                 Assert.assertTrue(rs.next());
                 return rs.getString(1);

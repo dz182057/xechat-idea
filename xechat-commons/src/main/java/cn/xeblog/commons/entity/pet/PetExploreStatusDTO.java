@@ -40,6 +40,8 @@ public class PetExploreStatusDTO implements Serializable {
 
     private int oldLibraryWins;
 
+    private int oldLibraryCompletions;
+
     private PetPendingOldTennisBallDTO pendingOldTennisBall;
 
 }

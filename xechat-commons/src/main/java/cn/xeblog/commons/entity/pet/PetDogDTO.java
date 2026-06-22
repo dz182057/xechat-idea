@@ -24,17 +24,7 @@ public class PetDogDTO implements Serializable {
 
     private String stage;
 
-    private int speed;
-
-    private int stamina;
-
-    private int burst;
-
-    private int wisdom;
-
     private int bond;
-
-    private int energy;
 
     private String status;
 

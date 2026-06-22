@@ -25,7 +25,6 @@ public interface PetDogMapper {
     int updateCareStats(@Param("id") String id,
                         @Param("ownerId") long ownerId,
                         @Param("bond") int bond,
-                        @Param("energy") int energy,
                         @Param("updatedAt") long updatedAt);
 
     int updateStage(@Param("id") String id,
@@ -41,7 +40,6 @@ public interface PetDogMapper {
 
     int startExplore(@Param("id") String id,
                      @Param("ownerId") long ownerId,
-                     @Param("energyCost") int energyCost,
                      @Param("location") String location,
                      @Param("exploreEndsAt") long exploreEndsAt,
                      @Param("durationHours") int durationHours,
@@ -54,12 +52,6 @@ public interface PetDogMapper {
                            @Param("ownerId") long ownerId,
                            @Param("skillId") String skillId,
                            @Param("updatedAt") long updatedAt);
-
-    int addEnergyIfUnderLimit(@Param("id") String id,
-                              @Param("ownerId") long ownerId,
-                              @Param("amount") int amount,
-                              @Param("energyLimit") int energyLimit,
-                              @Param("updatedAt") long updatedAt);
 
     int openExplore(@Param("id") String id,
                     @Param("ownerId") long ownerId,
@@ -74,10 +66,5 @@ public interface PetDogMapper {
                          @Param("exploreEndsAt") long exploreEndsAt,
                          @Param("durationHours") int durationHours,
                          @Param("updatedAt") long updatedAt);
-
-    int refreshExpiredEnergy(@Param("ownerId") long ownerId,
-                             @Param("energyLimit") int energyLimit,
-                             @Param("today") String today,
-                             @Param("updatedAt") long updatedAt);
 
 }

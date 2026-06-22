@@ -83,8 +83,24 @@ public class PetServiceTest {
         Assert.assertEquals(990001L, profile.getAccountId());
         Assert.assertEquals(300, profile.getAssets().getBones());
         Assert.assertEquals(1, profile.getAssets().getDogSlots());
+        Assert.assertEquals(10, profile.getAssets().getEnergy());
+        Assert.assertEquals(LocalDate.now().toString(), profile.getAssets().getEnergyDate());
         Assert.assertTrue(profile.getDogs().isEmpty());
         Assert.assertNotNull(profile.getCheckinStatus().getServerDate());
+    }
+
+    @Test
+    public void petDogDtoShouldNotExposeDeprecatedStatsOrEnergy() throws Exception {
+        List<String> fieldNames = new ArrayList<>();
+        for (java.lang.reflect.Field field : PetDogDTO.class.getDeclaredFields()) {
+            fieldNames.add(field.getName());
+        }
+
+        Assert.assertFalse(fieldNames.contains("speed"));
+        Assert.assertFalse(fieldNames.contains("stamina"));
+        Assert.assertFalse(fieldNames.contains("burst"));
+        Assert.assertFalse(fieldNames.contains("wisdom"));
+        Assert.assertFalse(fieldNames.contains("energy"));
     }
 
     @Test
@@ -115,7 +131,6 @@ public class PetServiceTest {
         Assert.assertEquals("小白", dog.getName());
         Assert.assertEquals("corgi", dog.getBreed());
         Assert.assertEquals("puppy", dog.getStage());
-        Assert.assertEquals(10, dog.getEnergy());
         Assert.assertEquals(0, dog.getWeeklyPoints());
 
         PetProfileDTO afterSecond = PetService.adopt(user, adopt("golden", "小黄"));
@@ -124,6 +139,18 @@ public class PetServiceTest {
         Assert.assertEquals(2, afterSecond.getDogs().size());
         Assert.assertEquals("小黄", afterSecond.getDogs().get(1).getName());
         Assert.assertEquals("golden", afterSecond.getDogs().get(1).getBreed());
+    }
+
+    @Test
+    public void adoptNativeShouldBeRejected() {
+        User user = accountUser(990016L);
+
+        try {
+            PetService.adopt(user, adopt("native", "田园"));
+            Assert.fail("中华田园犬已从 v5 品种池移除，不应允许新领养");
+        } catch (IllegalArgumentException e) {
+            Assert.assertEquals("该品种暂不可领养", e.getMessage());
+        }
     }
 
     @Test
@@ -172,13 +199,11 @@ public class PetServiceTest {
     }
 
     @Test
-    public void adoptShibaAfterThreeFirstPlaceResults() {
+    public void adoptShibaAfterThirtyCheckins() throws Exception {
         User user = accountUser(990013L);
-        PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "小白"));
-        String dogId = profile.getDogs().get(0).getId();
-        PetService.applyRaceResult(user, raceResult(dogId, 1));
-        PetService.applyRaceResult(user, raceResult(dogId, 1));
-        PetService.applyRaceResult(user, raceResult(dogId, 1));
+        PetService.adopt(user, adopt("corgi", "小白"));
+        insertCheckins(user.getAccountId(), 29);
+        PetProfileService.checkin(user.getAccountId());
 
         PetProfileDTO afterAdopt = PetService.adopt(user, adopt("shiba", "小柴"));
 
@@ -191,7 +216,7 @@ public class PetServiceTest {
     @Test
     public void raceResultShouldAdvanceRaceCountersAndAdultStage() {
         User user = accountUser(990003L);
-        PetProfileDTO profile = PetService.adopt(user, adopt("native", "赛跑狗"));
+        PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "赛跑狗"));
         String dogId = profile.getDogs().get(0).getId();
 
         PetService.applyRaceResult(user, raceResult(dogId, 2));
@@ -212,7 +237,7 @@ public class PetServiceTest {
         PetProfileDTO afterSignup = PetService.spendRaceSignup(user.getAccountId(), dogId, 3, 20);
 
         Assert.assertEquals(280, afterSignup.getAssets().getBones());
-        Assert.assertEquals(7, afterSignup.getDogs().get(0).getEnergy());
+        Assert.assertEquals(7, afterSignup.getAssets().getEnergy());
     }
 
     @Test
@@ -233,13 +258,13 @@ public class PetServiceTest {
 
         PetProfileDTO afterFailure = PetService.profile(user);
         Assert.assertEquals(240, afterFailure.getAssets().getBones());
-        Assert.assertEquals(1, afterFailure.getDogs().get(0).getEnergy());
+        Assert.assertEquals(1, afterFailure.getAssets().getEnergy());
     }
 
     @Test
     public void raceWeeklyPointsShouldAccumulateOnDog() {
         User user = accountUser(990006L);
-        PetProfileDTO profile = PetService.adopt(user, adopt("native", "周榜狗"));
+        PetProfileDTO profile = PetService.adopt(user, adopt("golden", "周榜狗"));
         String dogId = profile.getDogs().get(0).getId();
 
         PetService.applyRaceResult(user, raceResult(dogId, 2, 6));
@@ -249,18 +274,14 @@ public class PetServiceTest {
     }
 
     @Test
-    public void profileShouldClampDogStatsToDesignRange() throws Exception {
+    public void profileShouldClampDogBondToDesignRange() throws Exception {
         User user = accountUser(990007L);
-        PetProfileDTO profile = PetService.adopt(user, adopt("native", "上限狗"));
+        PetProfileDTO profile = PetService.adopt(user, adopt("poodle", "上限狗"));
         String dogId = profile.getDogs().get(0).getId();
-        updateDogStats(user.getAccountId(), dogId, 120, 101, 100, -5, 130);
+        updateDogBond(user.getAccountId(), dogId, 130);
 
         PetDogDTO dog = PetService.profile(user).getDogs().get(0);
 
-        Assert.assertEquals(100, dog.getSpeed());
-        Assert.assertEquals(100, dog.getStamina());
-        Assert.assertEquals(100, dog.getBurst());
-        Assert.assertEquals(0, dog.getWisdom());
         Assert.assertEquals(100, dog.getBond());
     }
 
@@ -325,12 +346,12 @@ public class PetServiceTest {
         PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "雪山狗"));
         String dogId = adopted.getDogs().get(0).getId();
         insertSnowMountainCollections(user.getAccountId());
-        setDogEnergy(user.getAccountId(), dogId, 1, "2000-01-01");
+        setAccountEnergy(user.getAccountId(), 1, "2000-01-01");
 
         PetProfileDTO profile = PetService.profile(user);
 
         Assert.assertEquals(20, profile.getAssets().getEnergyLimit());
-        Assert.assertEquals(20, profile.getDogs().get(0).getEnergy());
+        Assert.assertEquals(20, profile.getAssets().getEnergy());
     }
 
     @Test
@@ -339,28 +360,12 @@ public class PetServiceTest {
         PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "雪山饭狗"));
         String dogId = adopted.getDogs().get(0).getId();
         insertSnowMountainCollections(user.getAccountId());
-        setDogEnergy(user.getAccountId(), dogId, 10, LocalDate.now().toString());
+        setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
 
         PetProfileDTO profile = PetProfileService.feed(user.getAccountId(), feed(dogId));
 
         Assert.assertEquals(20, profile.getAssets().getEnergyLimit());
-        Assert.assertEquals(11, profile.getDogs().get(0).getEnergy());
-    }
-
-    @Test
-    public void feastShouldRestoreEnergyToSnowMountainCollectionLimit() throws Exception {
-        User user = accountUser(990022L);
-        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "雪山餐狗"));
-        String dogId = adopted.getDogs().get(0).getId();
-        insertSnowMountainCollections(user.getAccountId());
-        insertItem(user.getAccountId(), "item_feast", 1);
-        setDogEnergy(user.getAccountId(), dogId, 10, LocalDate.now().toString());
-
-        PetProfileDTO profile = PetProfileService.useItem(user.getAccountId(), useItem("item_feast", dogId));
-
-        Assert.assertEquals(20, profile.getAssets().getEnergyLimit());
-        Assert.assertEquals(20, profile.getDogs().get(0).getEnergy());
-        Assert.assertEquals(0, findItemCount(user.getAccountId(), "item_feast"));
+        Assert.assertEquals(11, profile.getAssets().getEnergy());
     }
 
     @Test
@@ -551,12 +556,12 @@ public class PetServiceTest {
 
         PetDogDTO walkedDog = afterWalk.getDogs().get(0);
         Assert.assertEquals(11, walkedDog.getBond());
-        Assert.assertEquals(9, walkedDog.getEnergy());
+        Assert.assertEquals(9, afterWalk.getAssets().getEnergy());
 
         PetProfileDTO afterRepeatWalk = PetProfileService.walkDog(user.getAccountId(), walkDog(dogId));
         PetDogDTO repeatedDog = afterRepeatWalk.getDogs().get(0);
         Assert.assertEquals(11, repeatedDog.getBond());
-        Assert.assertEquals(9, repeatedDog.getEnergy());
+        Assert.assertEquals(9, afterRepeatWalk.getAssets().getEnergy());
     }
 
     @Test
@@ -570,8 +575,7 @@ public class PetServiceTest {
         PetProfileDTO afterThirdWin = PetService.applyGameTraining(user.getAccountId(), Game.GOBANG, true);
 
         PetDogDTO dog = afterThirdWin.getDogs().get(0);
-        Assert.assertEquals(before.getWisdom(), dog.getWisdom());
-        Assert.assertEquals(before.getEnergy(), dog.getEnergy());
+        Assert.assertEquals(profile.getAssets().getEnergy(), afterThirdWin.getAssets().getEnergy());
         Assert.assertEquals(before.getBond() + 1, dog.getBond());
     }
 
@@ -598,8 +602,7 @@ public class PetServiceTest {
 
         Assert.assertEquals(330, profile.getAssets().getBones());
         Assert.assertEquals(1, profile.getAssets().getMakeupCards());
-        Assert.assertEquals(before.getDogs().get(0).getEnergy(), profile.getDogs().get(0).getEnergy());
-        Assert.assertEquals(before.getDogs().get(0).getWisdom(), profile.getDogs().get(0).getWisdom());
+        Assert.assertEquals(before.getAssets().getEnergy(), profile.getAssets().getEnergy());
         Assert.assertEquals(before.getDogs().get(0).getBond() + 1, profile.getDogs().get(0).getBond());
     }
 
@@ -616,7 +619,7 @@ public class PetServiceTest {
         Assert.assertNotNull(profile);
         Assert.assertEquals(410, profile.getAssets().getBones());
         Assert.assertEquals(1, profile.getAssets().getMakeupCards());
-        Assert.assertEquals(before.getDogs().get(0).getEnergy(), profile.getDogs().get(0).getEnergy());
+        Assert.assertEquals(before.getAssets().getEnergy(), profile.getAssets().getEnergy());
         Assert.assertEquals(before.getDogs().get(0).getBond() + 1, profile.getDogs().get(0).getBond());
     }
 
@@ -679,7 +682,7 @@ public class PetServiceTest {
     public void profileShouldSerializeExpiredEnergyRefreshForSameAccount() throws Exception {
         User user = accountUser(990009L);
         PetService.adopt(user, adopt("corgi", "并发狗"));
-        expireDogEnergy(user.getAccountId());
+        expireAccountEnergy(user.getAccountId());
 
         int threadCount = 12;
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -708,7 +711,7 @@ public class PetServiceTest {
         Assert.assertTrue("同账号并发 profile 不应抛出 SQLITE_BUSY: " + failures, failures.isEmpty());
         Assert.assertEquals(threadCount, profiles.size());
         for (PetProfileDTO profile : profiles) {
-            Assert.assertEquals(10, profile.getDogs().get(0).getEnergy());
+            Assert.assertEquals(10, profile.getAssets().getEnergy());
         }
     }
 
@@ -797,25 +800,20 @@ public class PetServiceTest {
         return dto;
     }
 
-    private static void expireDogEnergy(long accountId) throws Exception {
+    private static void expireAccountEnergy(long accountId) throws Exception {
         try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
              Statement statement = session.getConnection().createStatement()) {
-            statement.executeUpdate("UPDATE dogs SET energy = 1, energy_date = '2000-01-01' WHERE owner_id = " + accountId);
+            statement.executeUpdate("UPDATE pet_assets SET energy = 1, energy_date = '2000-01-01' WHERE account_id = " + accountId);
         }
     }
 
-    private static void updateDogStats(long accountId, String dogId, int speed, int stamina, int burst,
-                                       int wisdom, int bond) throws Exception {
+    private static void updateDogBond(long accountId, String dogId, int bond) throws Exception {
         try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
              PreparedStatement statement = session.getConnection().prepareStatement(
-                     "UPDATE dogs SET speed = ?, stamina = ?, burst = ?, wisdom = ?, bond = ? WHERE owner_id = ? AND id = ?")) {
-            statement.setInt(1, speed);
-            statement.setInt(2, stamina);
-            statement.setInt(3, burst);
-            statement.setInt(4, wisdom);
-            statement.setInt(5, bond);
-            statement.setLong(6, accountId);
-            statement.setString(7, dogId);
+                     "UPDATE dogs SET bond = ? WHERE owner_id = ? AND id = ?")) {
+            statement.setInt(1, bond);
+            statement.setLong(2, accountId);
+            statement.setString(3, dogId);
             statement.executeUpdate();
         }
     }
@@ -965,14 +963,13 @@ public class PetServiceTest {
         }
     }
 
-    private static void setDogEnergy(long accountId, String dogId, int energy, String energyDate) throws Exception {
+    private static void setAccountEnergy(long accountId, int energy, String energyDate) throws Exception {
         try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
              PreparedStatement statement = session.getConnection().prepareStatement(
-                     "UPDATE dogs SET energy = ?, energy_date = ? WHERE owner_id = ? AND id = ?")) {
+                     "UPDATE pet_assets SET energy = ?, energy_date = ? WHERE account_id = ?")) {
             statement.setInt(1, energy);
             statement.setString(2, energyDate);
             statement.setLong(3, accountId);
-            statement.setString(4, dogId);
             statement.executeUpdate();
         }
     }

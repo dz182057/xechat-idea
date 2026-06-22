@@ -19,6 +19,8 @@ public class PetAssetsRecord {
     private int food;
     private int makeupCards;
     private int dogSlots;
+    private int energy;
+    private String energyDate;
     private int energyLimit;
     private String companionDogId;
     private long createdAt;

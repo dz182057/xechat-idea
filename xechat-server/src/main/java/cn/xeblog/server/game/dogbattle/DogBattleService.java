@@ -27,7 +27,6 @@ public final class DogBattleService {
     private static final int DOG_HEIGHT = 80;
     private static final int MAX_HP = 100;
     private static final int DIRECT_DAMAGE = 24;
-    private static final int CORGI_SKILL_DAMAGE = 21;
     private static final int OBSTACLE_DAMAGE = 24;
     private static final int SPLASH_RADIUS = 85;
     private static final int MIN_SPLASH_DAMAGE = 4;
@@ -122,7 +121,6 @@ public final class DogBattleService {
                 return state.toTurnResult(room, actorKey, simulation, itemEffects, false, null,
                         false, false, null, actorKey, wind(state.turnNo, state.windPower), "playing");
             }
-            state.applyDefensiveSkill(target, simulation.hit);
             state.applyPlayItemEffects(target, simulation.hit, itemEffects);
             if ("DOG".equals(simulation.hit.getTargetType())) {
                 target.setHp(Math.max(0, target.getHp() - simulation.hit.getDamage()));
@@ -386,7 +384,6 @@ public final class DogBattleService {
         private boolean interactionRewardApplied;
         private String currentPlayerKey;
         private String winnerPlayerKey;
-        private String poodleGuardPlayerKey;
 
         private BattleState(
                 List<DogBattleDTO.DogBattlePlayerDTO> players,
@@ -684,16 +681,6 @@ public final class DogBattleService {
             }
         }
 
-        private void applyDefensiveSkill(DogBattleDTO.DogBattlePlayerDTO target, DogBattleDTO.DogBattleHitDTO hit) {
-            if (target == null || hit == null || !target.getPlayerKey().equals(poodleGuardPlayerKey)) {
-                return;
-            }
-            poodleGuardPlayerKey = null;
-            if ("DOG".equals(hit.getTargetType()) && !hit.isDirectHit() && hit.getDamage() > 0) {
-                hit.setDamage(Math.max(0, (int) Math.floor(hit.getDamage() * 0.9)));
-            }
-        }
-
         private void applyPlayItemEffects(DogBattleDTO.DogBattlePlayerDTO target, DogBattleDTO.DogBattleHitDTO hit,
                                           List<DogBattleDTO.DogBattleItemEffectDTO> itemEffects) {
             if (target == null
@@ -716,18 +703,6 @@ public final class DogBattleService {
                 SkillTurn skillTurn,
                 DogBattleDTO.DogBattleHitDTO hit
         ) {
-            if (!skillTurn.used) {
-                return;
-            }
-            if ("poodle".equals(skillTurn.breed)) {
-                poodleGuardPlayerKey = actor.getPlayerKey();
-            } else if ("shiba".equals(skillTurn.breed)
-                    && "DOG".equals(hit.getTargetType())
-                    && hit.getDamage() >= MIN_SPLASH_DAMAGE) {
-                target.setSkillCooldown(Math.max(target.getSkillCooldown(), 1));
-            } else if ("husky".equals(skillTurn.breed) && actor.getDog() != null) {
-                actor.getDog().setProjectileSkinId(huskySkillProjectileSkin(turnNo));
-            }
         }
 
         private void updateSkillCooldown(
@@ -811,7 +786,7 @@ public final class DogBattleService {
 
     private static DogBattleDTO.DogBattleDogDTO toBattleDog(GameRoom.Player player, PetDogDTO petDog) {
         DogBattleDTO.DogBattleDogDTO dog = new DogBattleDTO.DogBattleDogDTO();
-        String breed = petDog == null ? "native" : normalizeBreed(petDog.getBreed());
+        String breed = petDog == null ? "corgi" : normalizeBreed(petDog.getBreed());
         dog.setDogId(petDog == null ? player.getId() + ":default" : petDog.getId());
         dog.setName(petDog == null ? "默认狗狗" : petDog.getName());
         dog.setBreed(breed);
@@ -989,11 +964,10 @@ public final class DogBattleService {
                 || "border_collie".equals(breed)
                 || "greyhound".equals(breed)
                 || "poodle".equals(breed)
-                || "native".equals(breed)
                 || "husky".equals(breed)) {
             return breed;
         }
-        return "native";
+        return "corgi";
     }
 
     private static String defaultProjectileSkinId(String breed) {
@@ -1012,115 +986,47 @@ public final class DogBattleService {
                 return "meme_bone";
             case "husky":
                 return "slipper";
-            case "native":
             default:
-                return "bowl_lid";
-        }
-    }
-
-    private static String huskySkillProjectileSkin(int turnNo) {
-        switch (Math.floorMod(turnNo, 3)) {
-            case 0:
-                return "husky_toy_fragments";
-            case 1:
-                return "husky_sofa_cushion";
-            case 2:
-            default:
-                return "husky_slipper_spin";
+                return "corgi_bone";
         }
     }
 
     private static final class SkillTurn {
         private final boolean used;
         private final String skillName;
-        private final String breed;
         private final int cooldown;
 
-        private SkillTurn(boolean used, String skillName, String breed, int cooldown) {
+        private SkillTurn(boolean used, String skillName, int cooldown) {
             this.used = used;
             this.skillName = skillName;
-            this.breed = breed;
             this.cooldown = cooldown;
         }
 
         private static SkillTurn from(DogBattleDTO.DogBattlePlayerDTO actor, boolean useSkill) {
-            String breed = actor.getDog() == null ? "native" : actor.getDog().getBreed();
             if (!useSkill) {
-                return new SkillTurn(false, null, breed, 0);
+                return new SkillTurn(false, null, 0);
             }
-            return new SkillTurn(true, skillName(breed), breed, skillCooldown(breed));
+            return new SkillTurn(true, "集中投掷", 3);
         }
 
         private boolean canUse(DogBattleDTO.DogBattlePlayerDTO actor, DogBattleDTO.DogBattlePlayerDTO target) {
-            if (!used || !"shiba".equals(breed)) {
-                return true;
-            }
-            return actor.getHp() < target.getHp() || actor.getScore() < target.getScore();
+            return true;
         }
 
         private int effectiveWindPower(int windPower) {
-            if (used && "native".equals(breed)) {
-                return (int) (windPower * 0.75);
-            }
-            if (used && "border_collie".equals(breed)) {
-                return (int) (windPower * 0.9);
-            }
             return windPower;
         }
 
         private double speedMultiplier() {
-            if (used && "greyhound".equals(breed)) {
-                return 1.12;
-            }
             return 1.0;
         }
 
         private int directDamage() {
-            if (used && "corgi".equals(breed)) {
-                return CORGI_SKILL_DAMAGE;
-            }
             return DIRECT_DAMAGE;
         }
 
         private int cooldownAfter(DogBattleDTO.DogBattleHitDTO hit) {
-            if (used
-                    && "golden".equals(breed)
-                    && (hit == null || !"DOG".equals(hit.getTargetType()) || hit.getDamage() < MIN_SPLASH_DAMAGE)) {
-                return Math.max(0, cooldown - 1);
-            }
             return cooldown;
-        }
-
-        private static int skillCooldown(String breed) {
-            if ("golden".equals(breed) || "greyhound".equals(breed) || "poodle".equals(breed)) {
-                return 4;
-            }
-            if ("shiba".equals(breed) || "husky".equals(breed)) {
-                return 5;
-            }
-            return 3;
-        }
-
-        private static String skillName(String breed) {
-            switch (breed) {
-                case "corgi":
-                    return "短腿稳投";
-                case "golden":
-                    return "金球回收";
-                case "border_collie":
-                    return "牧羊测风";
-                case "greyhound":
-                    return "疾影抛射";
-                case "poodle":
-                    return "蓬松缓冲";
-                case "shiba":
-                    return "表情包反击";
-                case "husky":
-                    return "二哈乱抛";
-                case "native":
-                default:
-                    return "土狗识路";
-            }
         }
     }
 

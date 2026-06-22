@@ -5,15 +5,17 @@
 <mapper namespace="cn.xeblog.server.pet.PetAssetsMapper">
 
     <sql id="cols">
-        account_id, bones, food, makeup_cards, dog_slots, energy_limit, companion_dog_id, created_at, updated_at
+        account_id, bones, food, makeup_cards, dog_slots, energy, energy_date, energy_limit, companion_dog_id,
+        created_at, updated_at
     </sql>
 
     <insert id="insert" parameterType="cn.xeblog.server.pet.PetAssetsRecord">
         INSERT OR IGNORE INTO pet_assets (
-            account_id, bones, food, makeup_cards, dog_slots, energy_limit, companion_dog_id, created_at, updated_at
+            account_id, bones, food, makeup_cards, dog_slots, energy, energy_date, energy_limit, companion_dog_id,
+            created_at, updated_at
         ) VALUES (
-            #{accountId}, #{bones}, #{food}, #{makeupCards}, #{dogSlots}, #{energyLimit}, #{companionDogId},
-            #{createdAt}, #{updatedAt}
+            #{accountId}, #{bones}, #{food}, #{makeupCards}, #{dogSlots}, #{energy}, #{energyDate},
+            #{energyLimit}, #{companionDogId}, #{createdAt}, #{updatedAt}
         )
     </insert>
 
@@ -23,10 +25,40 @@
             food = #{food},
             makeup_cards = #{makeupCards},
             dog_slots = #{dogSlots},
+            energy = #{energy},
+            energy_date = #{energyDate},
             energy_limit = #{energyLimit},
             companion_dog_id = #{companionDogId},
             updated_at = #{updatedAt}
         WHERE account_id = #{accountId}
+    </update>
+
+    <update id="refreshExpiredEnergy">
+        UPDATE pet_assets
+        SET energy = #{energyLimit},
+            energy_date = #{today},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND (energy_date IS NULL OR energy_date &lt; #{today})
+    </update>
+
+    <update id="decrementEnergyIfEnough">
+        UPDATE pet_assets
+        SET energy = energy - #{amount},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND energy &gt;= #{amount}
+    </update>
+
+    <update id="addEnergyIfUnderLimit">
+        UPDATE pet_assets
+        SET energy = CASE
+                WHEN energy + #{amount} &gt; #{energyLimit} THEN #{energyLimit}
+                ELSE energy + #{amount}
+            END,
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND energy &lt; #{energyLimit}
     </update>
 
     <update id="decrementFoodIfEnough">

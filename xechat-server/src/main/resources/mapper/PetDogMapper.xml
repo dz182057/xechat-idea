@@ -5,7 +5,7 @@
 <mapper namespace="cn.xeblog.server.pet.PetDogMapper">
 
     <sql id="cols">
-        id, owner_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, energy_date, status,
+        id, owner_id, name, breed, stage, bond, status,
         explore_location, explore_ends_at, explore_duration_hours, explore_skill_id,
         explore_skill_snapshot_id, explore_skill_snapshot_level, explore_skill_snapshot_version,
         race_count, race_first_count, weekly_points, created_at, updated_at
@@ -13,13 +13,13 @@
 
     <insert id="insert" parameterType="cn.xeblog.server.pet.PetDogRecord">
         INSERT INTO dogs (
-            id, owner_id, name, breed, stage, speed, stamina, burst, wisdom, bond, energy, energy_date, status,
+            id, owner_id, name, breed, stage, bond, status,
             explore_location, explore_ends_at, explore_duration_hours, explore_skill_id,
             explore_skill_snapshot_id, explore_skill_snapshot_level, explore_skill_snapshot_version,
             race_count, race_first_count, weekly_points, created_at, updated_at
         ) VALUES (
-            #{id}, #{ownerId}, #{name}, #{breed}, #{stage}, #{speed}, #{stamina}, #{burst}, #{wisdom}, #{bond},
-            #{energy}, #{energyDate}, #{status}, #{exploreLocation}, #{exploreEndsAt}, #{exploreDurationHours},
+            #{id}, #{ownerId}, #{name}, #{breed}, #{stage}, #{bond}, #{status},
+            #{exploreLocation}, #{exploreEndsAt}, #{exploreDurationHours},
             #{exploreSkillId}, #{exploreSkillSnapshotId}, #{exploreSkillSnapshotLevel}, #{exploreSkillSnapshotVersion},
             #{raceCount}, #{raceFirstCount}, #{weeklyPoints}, #{createdAt}, #{updatedAt}
         )
@@ -59,7 +59,6 @@
     <update id="updateCareStats">
         UPDATE dogs
         SET bond = #{bond},
-            energy = #{energy},
             updated_at = CASE
                 WHEN status = 'exploring' AND explore_duration_hours IS NULL THEN updated_at
                 ELSE #{updatedAt}
@@ -89,8 +88,7 @@
 
     <update id="startExplore">
         UPDATE dogs
-        SET energy = energy - #{energyCost},
-            status = 'exploring',
+        SET status = 'exploring',
             explore_location = #{location},
             explore_ends_at = #{exploreEndsAt},
             explore_duration_hours = #{durationHours},
@@ -101,7 +99,6 @@
         WHERE id = #{id}
           AND owner_id = #{ownerId}
           AND status = 'idle'
-          AND energy &gt;= #{energyCost}
     </update>
 
     <update id="updateExploreSkill">
@@ -110,18 +107,6 @@
             updated_at = #{updatedAt}
         WHERE id = #{id}
           AND owner_id = #{ownerId}
-    </update>
-
-    <update id="addEnergyIfUnderLimit">
-        UPDATE dogs
-        SET energy = CASE
-                WHEN energy + #{amount} &gt; #{energyLimit} THEN #{energyLimit}
-                ELSE energy + #{amount}
-            END,
-            updated_at = #{updatedAt}
-        WHERE id = #{id}
-          AND owner_id = #{ownerId}
-          AND energy &lt; #{energyLimit}
     </update>
 
     <update id="openExplore">
@@ -167,18 +152,6 @@
           AND status = 'exploring'
           AND explore_ends_at IS NOT NULL
           AND explore_ends_at &gt; #{exploreEndsAt}
-    </update>
-
-    <update id="refreshExpiredEnergy">
-        UPDATE dogs
-        SET energy = #{energyLimit},
-            energy_date = #{today},
-            updated_at = CASE
-                WHEN status = 'exploring' AND explore_duration_hours IS NULL THEN updated_at
-                ELSE #{updatedAt}
-            END
-        WHERE owner_id = #{ownerId}
-          AND (energy_date IS NULL OR energy_date &lt; #{today})
     </update>
 
 </mapper>

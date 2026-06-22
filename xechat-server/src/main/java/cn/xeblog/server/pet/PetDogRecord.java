@@ -19,13 +19,7 @@ public class PetDogRecord {
     private String name;
     private String breed;
     private String stage;
-    private int speed;
-    private int stamina;
-    private int burst;
-    private int wisdom;
     private int bond;
-    private int energy;
-    private String energyDate;
     private String status;
     private String exploreLocation;
     private Long exploreEndsAt;
