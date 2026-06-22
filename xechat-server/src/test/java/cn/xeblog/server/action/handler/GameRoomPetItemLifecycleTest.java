@@ -117,11 +117,11 @@ public class GameRoomPetItemLifecycleTest {
         User drawer = user(2020L);
         User guesser = user(2021L);
         GameRoom room = room(Game.DRAW_GUESS, drawer, guesser);
-        insertPetItem(guesser.getAccountId(), "item_hint", 1);
+        insertPetItem(guesser.getAccountId(), "item_draw_advance_hint", 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 guesser,
                 room,
-                new GamePlayerPetItemsDTO("item_hint", null));
+                new GamePlayerPetItemsDTO("item_draw_advance_hint", null));
 
         DrawGuessDTO body = new DrawGuessDTO();
         body.setRoomId(room.getId());
@@ -131,10 +131,10 @@ public class GameRoomPetItemLifecycleTest {
         body.setDrawerName(drawer.getUsername());
         new GameActionHandler().process(drawer, room, body);
 
-        Assert.assertEquals(0, countItem(guesser.getAccountId(), "item_hint"));
+        Assert.assertEquals(0, countItem(guesser.getAccountId(), "item_draw_advance_hint"));
         Assert.assertNull(room.getUsers().get(guesser.getIdentityKey()).getPetPlayItemId());
         Assert.assertEquals(1, countUsages(room.getId(), guesser.getAccountId(),
-                "item_hint", "gameplay", "consumed"));
+                "item_draw_advance_hint", "gameplay", "consumed"));
     }
 
     @Test
@@ -142,11 +142,11 @@ public class GameRoomPetItemLifecycleTest {
         User drawer = user(2030L);
         User guesser = user(2031L);
         GameRoom room = room(Game.DRAW_GUESS, drawer, guesser);
-        insertPetItem(drawer.getAccountId(), "item_hint", 1);
+        insertPetItem(drawer.getAccountId(), "item_draw_advance_hint", 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 drawer,
                 room,
-                new GamePlayerPetItemsDTO("item_hint", null));
+                new GamePlayerPetItemsDTO("item_draw_advance_hint", null));
 
         DrawGuessDTO body = new DrawGuessDTO();
         body.setRoomId(room.getId());
@@ -157,10 +157,10 @@ public class GameRoomPetItemLifecycleTest {
         body.setWord("小猫");
         new GameActionHandler().process(drawer, room, body);
 
-        Assert.assertEquals(1, countItem(drawer.getAccountId(), "item_hint"));
+        Assert.assertEquals(1, countItem(drawer.getAccountId(), "item_draw_advance_hint"));
         Assert.assertNull(room.getUsers().get(drawer.getIdentityKey()).getPetPlayItemId());
         Assert.assertEquals(1, countUsages(room.getId(), drawer.getAccountId(),
-                "item_hint", "gameplay", "refunded"));
+                "item_draw_advance_hint", "gameplay", "refunded"));
     }
 
     @Test

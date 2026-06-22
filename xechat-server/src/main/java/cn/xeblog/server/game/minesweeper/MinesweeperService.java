@@ -34,9 +34,9 @@ public final class MinesweeperService {
 
     private static final String ITEM_MINE_SHIELD = "item_mine_shield";
     private static final String ITEM_MINE_MARK = "item_mine_mark";
-    private static final String ITEM_MINE_AREA = "item_mine_area";
-    private static final String ITEM_MINE_SCOUT = "item_mine_scout";
-    private static final String ITEM_METAL_DETECTOR = "item_metal_detector";
+    private static final String ITEM_MINE_SAFE_PING = "item_mine_safe_ping";
+    private static final String ITEM_MINE_COUNTER = "item_mine_counter";
+    private static final String ITEM_MINE_DETECTOR = "item_mine_detector";
     private static final Map<String, RoomState> STATES = new ConcurrentHashMap<>();
     private static GameItemSettler gameItemSettler = MinesweeperService::settleGameItem;
     private static BoardGenerator boardGenerator = MinesweeperService::generateBoard;
@@ -149,22 +149,11 @@ public final class MinesweeperService {
             state.settledMineMarkPlayerKeys.add(actorKey);
             gameItemSettler.settle(room, actorKey, ITEM_MINE_MARK, "gameplay", "consumed");
         }
-        if (applyMineAreaIfAvailable(room, state, actorKey, result, dto.getX(), dto.getY())) {
-            state.usedMineAreaPlayerKeys.add(actorKey);
-            state.settledMineAreaPlayerKeys.add(actorKey);
-            gameItemSettler.settle(room, actorKey, ITEM_MINE_AREA, "gameplay", "consumed");
-        }
-        if (applyMineAutoMarkIfAvailable(room, state, actorKey, result, ITEM_MINE_SCOUT,
-                state.usedMineScoutPlayerKeys, 1)) {
-            state.usedMineScoutPlayerKeys.add(actorKey);
-            state.settledMineScoutPlayerKeys.add(actorKey);
-            gameItemSettler.settle(room, actorKey, ITEM_MINE_SCOUT, "gameplay", "consumed");
-        }
-        if (applyMineAutoMarkIfAvailable(room, state, actorKey, result, ITEM_METAL_DETECTOR,
-                state.usedMetalDetectorPlayerKeys, 2)) {
-            state.usedMetalDetectorPlayerKeys.add(actorKey);
-            state.settledMetalDetectorPlayerKeys.add(actorKey);
-            gameItemSettler.settle(room, actorKey, ITEM_METAL_DETECTOR, "gameplay", "consumed");
+        if (applyMineAutoMarkIfAvailable(room, state, actorKey, result, ITEM_MINE_DETECTOR,
+                state.usedMineDetectorPlayerKeys, 2)) {
+            state.usedMineDetectorPlayerKeys.add(actorKey);
+            state.settledMineDetectorPlayerKeys.add(actorKey);
+            gameItemSettler.settle(room, actorKey, ITEM_MINE_DETECTOR, "gameplay", "consumed");
         }
         settleGameplayItemsIfGameOver(room, state);
         applyMiniGameRewardsIfGameOver(room, state);
@@ -427,16 +416,6 @@ public final class MinesweeperService {
         return player != null && ITEM_MINE_SHIELD.equals(player.getPetPlayItemId());
     }
 
-    private static boolean applyMineAreaIfAvailable(GameRoom room, RoomState state, String actorKey,
-                                                    OpenResult result, Integer centerX, Integer centerY) {
-        if (!hasUnusedGameplayItem(room, actorKey, ITEM_MINE_AREA, state.usedMineAreaPlayerKeys)
-                || result.openedCount <= 0 || state.phase != MinesweeperDTO.Phase.playing
-                || centerX == null || centerY == null || !inBounds(state, centerX, centerY)) {
-            return false;
-        }
-        return markUnmarkedMinesInArea(state, centerX, centerY, 1, 1) > 0;
-    }
-
     private static boolean applyMineAutoMarkIfAvailable(GameRoom room, RoomState state, String actorKey,
                                                         OpenResult result, String itemId,
                                                         Set<String> usedPlayerKeys, int maxMarks) {
@@ -472,34 +451,14 @@ public final class MinesweeperService {
         return marked;
     }
 
-    private static int markUnmarkedMinesInArea(RoomState state, int centerX, int centerY, int radius, int maxMarks) {
-        int marked = 0;
-        int minY = Math.max(0, centerY - radius);
-        int maxY = Math.min(state.rows - 1, centerY + radius);
-        int minX = Math.max(0, centerX - radius);
-        int maxX = Math.min(state.cols - 1, centerX + radius);
-        for (int y = minY; y <= maxY; y++) {
-            for (int x = minX; x <= maxX; x++) {
-                if (state.board.cell(x, y).isMine() && !state.opened[y][x] && !state.sharedMarked[y][x]) {
-                    state.sharedMarked[y][x] = true;
-                    marked++;
-                    if (marked >= maxMarks) {
-                        return marked;
-                    }
-                }
-            }
-        }
-        return marked;
-    }
-
     private static void settleGameplayItemsIfGameOver(GameRoom room, RoomState state) {
         if (room == null || state == null || state.phase == MinesweeperDTO.Phase.playing) {
             return;
         }
         settleGameplayItemsIfGameOver(room, state, ITEM_MINE_MARK, state.settledMineMarkPlayerKeys);
-        settleGameplayItemsIfGameOver(room, state, ITEM_MINE_AREA, state.settledMineAreaPlayerKeys);
-        settleGameplayItemsIfGameOver(room, state, ITEM_MINE_SCOUT, state.settledMineScoutPlayerKeys);
-        settleGameplayItemsIfGameOver(room, state, ITEM_METAL_DETECTOR, state.settledMetalDetectorPlayerKeys);
+        settleGameplayItemsIfGameOver(room, state, ITEM_MINE_SAFE_PING, state.settledMineSafePingPlayerKeys);
+        settleGameplayItemsIfGameOver(room, state, ITEM_MINE_COUNTER, state.settledMineCounterPlayerKeys);
+        settleGameplayItemsIfGameOver(room, state, ITEM_MINE_DETECTOR, state.settledMineDetectorPlayerKeys);
         settleGameplayItemsIfGameOver(room, state, ITEM_MINE_SHIELD, state.settledMineShieldPlayerKeys);
     }
 
@@ -583,12 +542,10 @@ public final class MinesweeperService {
         private final Set<String> settledMineShieldPlayerKeys = new HashSet<>();
         private final Set<String> usedMineMarkPlayerKeys = new HashSet<>();
         private final Set<String> settledMineMarkPlayerKeys = new HashSet<>();
-        private final Set<String> usedMineAreaPlayerKeys = new HashSet<>();
-        private final Set<String> settledMineAreaPlayerKeys = new HashSet<>();
-        private final Set<String> usedMineScoutPlayerKeys = new HashSet<>();
-        private final Set<String> settledMineScoutPlayerKeys = new HashSet<>();
-        private final Set<String> usedMetalDetectorPlayerKeys = new HashSet<>();
-        private final Set<String> settledMetalDetectorPlayerKeys = new HashSet<>();
+        private final Set<String> settledMineSafePingPlayerKeys = new HashSet<>();
+        private final Set<String> settledMineCounterPlayerKeys = new HashSet<>();
+        private final Set<String> usedMineDetectorPlayerKeys = new HashSet<>();
+        private final Set<String> settledMineDetectorPlayerKeys = new HashSet<>();
         private String nextTurnPlayerKey;
         private MinesweeperDTO.Phase phase;
         private long startedAt;

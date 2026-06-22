@@ -232,40 +232,42 @@ public final class PetProfileService {
     private static final List<String> LUCKY_BAG_RARE_ITEM_IDS = PetItemDefinitions.luckyBagRareItemIds();
     private static final List<String> LUCKY_BAG_EPIC_ITEM_IDS = PetItemDefinitions.luckyBagEpicItemIds();
     private static final List<String> BACK_HILL_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_hint",
-            "item_time",
-            "item_sync_prophecy"
+            "item_battle_echo",
+            "item_battle_direct_hit",
+            "item_prophecy"
     ));
-    private static final List<String> BACK_HILL_RARE_ITEM_IDS = Collections.unmodifiableList(Collections.singletonList(
-            "item_turtle_probe"
+    private static final List<String> BACK_HILL_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "item_battle_pebble",
+            "item_battle_airbag"
     ));
     private static final List<String> CREEK_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_hint",
-            "item_peek",
-            "item_time",
+            "item_draw_advance_hint",
+            "item_draw_pattern",
+            "item_draw_overlap",
             "item_sync_prophecy"
     ));
-    private static final List<String> CREEK_RARE_ITEM_IDS = Collections.unmodifiableList(Collections.singletonList(
+    private static final List<String> CREEK_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "item_draw_reveal_char",
             "item_sync_perspective"
     ));
     private static final List<String> CONSTRUCTION_SITE_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "item_mine_mark",
-            "item_mine_area",
-            "item_mine_scout",
-            "item_mine_shield"
+            "item_mine_safe_ping"
     ));
     private static final List<String> CONSTRUCTION_SITE_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_mine_guard",
-            "item_metal_detector"
+            "item_mine_shield",
+            "item_mine_detector",
+            "item_mine_counter"
     ));
     private static final Set<String> CONSTRUCTION_SITE_LUCKY_BAG_ITEM_IDS =
             Collections.unmodifiableSet(createConstructionSiteLuckyBagItemIds());
     private static final List<String> OLD_LIBRARY_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_gomoku_prediction",
-            "item_sync_prophecy",
-            "item_hint"
+            "item_quiz_score_pad",
+            "item_quiz_duel",
+            "item_gomoku_prediction"
     ));
     private static final List<String> OLD_LIBRARY_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
+            "item_quiz_wrong_option",
             "item_gomoku_guard",
             "item_turtle_probe"
     ));

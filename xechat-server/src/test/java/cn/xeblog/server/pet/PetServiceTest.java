@@ -47,14 +47,11 @@ import java.util.function.IntSupplier;
 public class PetServiceTest {
 
     private static final Set<String> FIRST_LAUNCH_RARE_ITEM_IDS = new HashSet<>(Arrays.asList(
-            "item_mine_guard",
-            "item_metal_detector",
-            "item_draw_inspiration",
-            "item_draw_peek",
-            "item_draw_time",
-            "item_draw_replay",
+            "item_mine_shield",
+            "item_mine_detector",
+            "item_mine_counter",
+            "item_draw_reveal_char",
             "item_sync_perspective",
-            "item_sync_secret_question",
             "item_quiz_wrong_option",
             "item_gomoku_guard",
             "item_turtle_probe",
@@ -427,10 +424,10 @@ public class PetServiceTest {
     public void buyingNormalItemShouldRecordItemLedger() throws Exception {
         User user = accountUser(990029L);
 
-        PetProfileService.shopBuy(user.getAccountId(), shopBuy("item_hint", 2));
+        PetProfileService.shopBuy(user.getAccountId(), shopBuy("item_draw_advance_hint", 2));
 
-        Assert.assertEquals(2, findItemCount(user.getAccountId(), "item_hint"));
-        Assert.assertEquals(1, countItemLedger(user.getAccountId(), "item_hint",
+        Assert.assertEquals(2, findItemCount(user.getAccountId(), "item_draw_advance_hint"));
+        Assert.assertEquals(1, countItemLedger(user.getAccountId(), "item_draw_advance_hint",
                 "gain", "shop_buy_normal"));
     }
 
