@@ -65,6 +65,7 @@ public final class PetProfileService {
     private static final int DEFAULT_DOG_SLOTS = 1;
     private static final int MAX_DOG_SLOTS = 2;
     private static final int SECOND_DOG_SLOT_PRICE = 2000;
+    private static final int PUBLIC_DOG_ADOPTION_PRICE = 750;
     private static final int DEFAULT_ENERGY_LIMIT = 10;
     private static final int DAILY_FEED_LIMIT = 5;
     private static final int DAILY_DOG_BOND_LIMIT = 4;
@@ -593,9 +594,17 @@ public final class PetProfileService {
         long now = System.currentTimeMillis();
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             PetDogMapper mapper = session.getMapper(PetDogMapper.class);
-            ensureAssets(session, accountId);
+            PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            PetAssetsRecord assets = ensureAssets(session, accountId);
             if (breedConfig.hidden && !isHiddenBreedUnlocked(session, mapper, accountId, breed)) {
                 throw new IllegalArgumentException("该隐藏品种尚未解锁");
+            }
+            boolean paidPublicAdoption = !breedConfig.hidden && mapper.countByOwner(accountId) > 0;
+            if (paidPublicAdoption) {
+                if (assets.getBones() < PUBLIC_DOG_ADOPTION_PRICE
+                        || assetsMapper.decrementBonesIfEnough(accountId, PUBLIC_DOG_ADOPTION_PRICE, now) <= 0) {
+                    throw new IllegalArgumentException("骨头币不足");
+                }
             }
 
             mapper.insert(PetDogRecord.builder()
@@ -908,6 +917,12 @@ public final class PetProfileService {
         }
     }
 
+    public static PetProfileDTO exploreCancel(long accountId, PetExploreOpenDTO request) {
+        synchronized (accountLock(accountId)) {
+            return exploreCancelLocked(accountId, request);
+        }
+    }
+
     public static PetProfileDTO trainingLearn(long accountId, PetTrainingSkillActionDTO request) {
         synchronized (accountLock(accountId)) {
             return trainingLearnLocked(accountId, request);
@@ -1125,6 +1140,32 @@ public final class PetProfileService {
         }
 
         return new PetExploreOpenResultDTO(profile(accountId), rewards);
+    }
+
+    private static PetProfileDTO exploreCancelLocked(long accountId, PetExploreOpenDTO request) {
+        String dogId = request == null ? null : StrUtil.trim(request.getDogId());
+        if (StrUtil.isBlank(dogId)) {
+            throw new IllegalArgumentException("狗狗请求内容无效");
+        }
+
+        long now = System.currentTimeMillis();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            ensureAssets(session, accountId);
+            PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
+            PetDogRecord dog = dogMapper.findByIdAndOwner(dogId, accountId);
+            if (dog == null) {
+                throw new IllegalArgumentException("只能取消自己的狗狗探险");
+            }
+            if (!"exploring".equals(dog.getStatus())) {
+                throw new IllegalArgumentException("狗狗当前没有正在进行的探险");
+            }
+            if (dogMapper.resetExplore(dogId, accountId, now) <= 0) {
+                throw new IllegalArgumentException("取消探险失败，请刷新后重试");
+            }
+            session.commit();
+        }
+
+        return profile(accountId);
     }
 
     private static PetProfileDTO trainingLearnLocked(long accountId, PetTrainingSkillActionDTO request) {

@@ -46,6 +46,8 @@ import java.util.function.IntSupplier;
 
 public class PetServiceTest {
 
+    private static final int PUBLIC_DOG_ADOPTION_PRICE = 750;
+
     private static final Set<String> FIRST_LAUNCH_RARE_ITEM_IDS = new HashSet<>(Arrays.asList(
             "item_mine_shield",
             "item_mine_detector",
@@ -121,24 +123,45 @@ public class PetServiceTest {
     }
 
     @Test
-    public void adoptShouldCreateFirstDogAndAllowKennelGrowthPastActivitySlots() {
+    public void adoptShouldCreateFirstDogAndAllowKennelGrowthPastActivitySlots() throws Exception {
         User user = accountUser(990002L);
 
         PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "小白"));
 
         Assert.assertEquals(1, profile.getDogs().size());
+        Assert.assertEquals(300, profile.getAssets().getBones());
         PetDogDTO dog = profile.getDogs().get(0);
         Assert.assertEquals("小白", dog.getName());
         Assert.assertEquals("corgi", dog.getBreed());
         Assert.assertEquals("puppy", dog.getStage());
         Assert.assertEquals(0, dog.getWeeklyPoints());
 
+        setAccountBones(user.getAccountId(), 1000);
+
         PetProfileDTO afterSecond = PetService.adopt(user, adopt("golden", "小黄"));
 
         Assert.assertEquals(1, afterSecond.getAssets().getDogSlots());
+        Assert.assertEquals(1000 - PUBLIC_DOG_ADOPTION_PRICE, afterSecond.getAssets().getBones());
         Assert.assertEquals(2, afterSecond.getDogs().size());
         Assert.assertEquals("小黄", afterSecond.getDogs().get(1).getName());
         Assert.assertEquals("golden", afterSecond.getDogs().get(1).getBreed());
+    }
+
+    @Test
+    public void adoptSecondPublicBreedRejectsWhenBonesAreNotEnough() {
+        User user = accountUser(990017L);
+        PetService.adopt(user, adopt("corgi", "小白"));
+
+        try {
+            PetService.adopt(user, adopt("golden", "小黄"));
+            Assert.fail("已有狗狗后购买公开品种应校验骨头币");
+        } catch (IllegalArgumentException e) {
+            Assert.assertEquals("骨头币不足", e.getMessage());
+        }
+
+        PetProfileDTO profile = PetProfileService.profile(user.getAccountId());
+        Assert.assertEquals(300, profile.getAssets().getBones());
+        Assert.assertEquals(1, profile.getDogs().size());
     }
 
     @Test
@@ -394,6 +417,30 @@ public class PetServiceTest {
         Assert.assertEquals("v5-explore-training", chest.getSkillSnapshotDefinitionVersion());
         Assert.assertEquals(0, findItemCount(user.getAccountId(), "chest_back_hill"));
         Assert.assertEquals(1, countItemLedger(user.getAccountId(), "chest_back_hill",
+                "gain", "explore_return_chest"));
+    }
+
+    @Test
+    public void exploreCancelShouldResetDogWithoutChestReward() throws Exception {
+        User user = accountUser(990034L);
+        PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "取消狗"));
+        String dogId = adopted.getDogs().get(0).getId();
+
+        PetProfileService.exploreStart(user.getAccountId(), exploreStart(dogId, "back_hill", 1));
+        PetProfileDTO canceled = PetProfileService.exploreCancel(user.getAccountId(), exploreOpen(dogId));
+
+        PetDogDTO dog = canceled.getDogs().stream()
+                .filter(item -> dogId.equals(item.getId()))
+                .findFirst()
+                .orElse(null);
+        Assert.assertNotNull(dog);
+        Assert.assertEquals("idle", dog.getStatus());
+        Assert.assertNull(dog.getExploreLocation());
+        Assert.assertNull(dog.getExploreEndsAt());
+        Assert.assertEquals(8, canceled.getAssets().getEnergy());
+        Assert.assertTrue(canceled.getExploreChests().isEmpty());
+        Assert.assertEquals(0, findItemCount(user.getAccountId(), "chest_back_hill"));
+        Assert.assertEquals(0, countItemLedger(user.getAccountId(), "chest_back_hill",
                 "gain", "explore_return_chest"));
     }
 
@@ -971,6 +1018,16 @@ public class PetServiceTest {
             statement.setString(2, energyDate);
             statement.setLong(3, accountId);
             statement.executeUpdate();
+        }
+    }
+
+    private static void setAccountBones(long accountId, int bones) throws Exception {
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "UPDATE pet_assets SET bones = ? WHERE account_id = ?")) {
+            statement.setInt(1, bones);
+            statement.setLong(2, accountId);
+            Assert.assertEquals(1, statement.executeUpdate());
         }
     }
 

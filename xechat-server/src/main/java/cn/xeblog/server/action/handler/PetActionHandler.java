@@ -168,6 +168,15 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
                 break;
+            case EXPLORE_CANCEL:
+                try {
+                    PetProfileDTO cancelProfile = PetProfileService.exploreCancel(user.getAccountId(),
+                            toBean(body.getContent(), PetExploreOpenDTO.class));
+                    send(user, PetResponseDTO.ok(petAction, requestId, cancelProfile));
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
             case RESOLVE_OLD_TENNIS_BALL:
                 try {
                     PetProfileDTO oldTennisBallProfile = PetProfileService.resolveOldTennisBall(user.getAccountId(),

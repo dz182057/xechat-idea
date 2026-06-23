@@ -2305,6 +2305,7 @@ public class PetActionHandlerTest {
     public void adoptAllowsSecondDogIntoKennelWhenActivitySlotIsFull() {
         User user = user();
         adoptDog(user, "corgi", "小短腿");
+        setAssets(user.getAccountId(), 1000, 1);
 
         PetRequestDTO adopt = new PetRequestDTO();
         adopt.setPetAction(PetAction.ADOPT);
@@ -2317,6 +2318,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.ADOPT, body.getPetAction());
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
         Assert.assertEquals(1, profile.getAssets().getDogSlots());
+        Assert.assertEquals(250, profile.getAssets().getBones());
         Assert.assertEquals(2, profile.getDogs().size());
         Assert.assertEquals("golden", profile.getDogs().get(1).getBreed());
         Assert.assertEquals(2, requestProfile(user).getDogs().size());
@@ -2394,6 +2396,7 @@ public class PetActionHandlerTest {
     @Test
     public void concurrentAdoptPersistsAllKennelDogs() throws Exception {
         int attempts = 8;
+        setAssets(user().getAccountId(), 5250, 1);
         ExecutorService executor = Executors.newFixedThreadPool(attempts);
         CountDownLatch ready = new CountDownLatch(attempts);
         CountDownLatch start = new CountDownLatch(1);
