@@ -34,8 +34,9 @@ public final class PetGameItemDeclarationService {
 
     public static GamePlayerPetItemsDTO normalizeForUser(User user, Game game, GamePlayerPetItemsDTO petItems) {
         long accountId = user == null ? 0L : user.getAccountId();
-        return PetGameItemRules.normalize(game, petItems, itemId ->
-                accountId > 0L && ownershipChecker.hasPositiveItem(accountId, itemId));
+        int carrySlotLimit = PetProfileService.itemCarrySlotLimit(accountId);
+        return PetGameItemRules.normalize(game, null, petItems, itemId ->
+                accountId > 0L && ownershipChecker.hasPositiveItem(accountId, itemId), carrySlotLimit);
     }
 
     public static GamePlayerPetItemsDTO applyDeclarationForUser(User user, GameRoom room,
@@ -50,8 +51,9 @@ public final class PetGameItemDeclarationService {
 
         boolean partyEqualizerRequested = petItems != null
                 && PetGameItemRules.isPartyEqualizerItem(petItems.getPetPlayItemId());
+        int carrySlotLimit = PetProfileService.itemCarrySlotLimit(player.getAccountId());
         GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(room.getGame(), room.getGameMode(), petItems,
-                itemId -> PetProfileService.hasPositiveItem(player.getAccountId(), itemId));
+                itemId -> PetProfileService.hasPositiveItem(player.getAccountId(), itemId), carrySlotLimit);
         synchronized (player) {
             String playItemId = updateReservedSlot(room, player, player.getPetPlayItemId(),
                     normalized.getPetPlayItemId(),

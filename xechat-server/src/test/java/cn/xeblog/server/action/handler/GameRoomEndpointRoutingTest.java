@@ -89,8 +89,8 @@ public class GameRoomEndpointRoutingTest {
         handler.process(acceptedEndpoint, room, ready);
 
         GameRoom.Player acceptedPlayer = room.getUsers().get(acceptedEndpoint.getIdentityKey());
-        Assert.assertNull("空玩法槽道具不应写入房间状态", acceptedPlayer.getPetPlayItemId());
-        Assert.assertNull("空互动槽道具不应写入房间状态", acceptedPlayer.getPetInteractionItemId());
+        Assert.assertNull("空携带道具不应写入房间状态", acceptedPlayer.getPetPlayItemId());
+        Assert.assertNull("空携带道具不应写入房间状态", acceptedPlayer.getPetInteractionItemId());
 
         Response homeownerReadyResponse = readResponse(homeowner);
         Response acceptedReadyResponse = readResponse(acceptedEndpoint);

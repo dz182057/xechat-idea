@@ -134,12 +134,12 @@ public class GameRoom implements Serializable {
         private boolean readied;
 
         /**
-         * 该玩家本局声明的狗狗玩法槽。
+         * 该玩家本局声明的携带道具兼容字段。
          */
         private String petPlayItemId;
 
         /**
-         * 该玩家本局声明的狗狗互动槽。
+         * 该玩家本局声明的携带道具兼容字段。
          */
         private String petInteractionItemId;
 

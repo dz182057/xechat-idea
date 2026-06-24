@@ -461,6 +461,22 @@ public class PetServiceTest {
     }
 
     @Test
+    public void openLegacyChestsShouldAllowBatchQuantity() throws Exception {
+        User user = accountUser(990037L);
+        PetService.profile(user);
+        insertItem(user.getAccountId(), "chest_back_hill", 2);
+
+        PetExploreOpenResultDTO result = PetProfileService.openBackHillChest(
+                user.getAccountId(), useChest("chest_back_hill", null, 2));
+
+        long boneRewardCount = result.getRewards().stream()
+                .filter(reward -> "bones".equals(reward.getType()))
+                .count();
+        Assert.assertEquals(2L, boneRewardCount);
+        Assert.assertEquals(0, findItemCount(user.getAccountId(), "chest_back_hill"));
+    }
+
+    @Test
     public void buyingNormalItemShouldRecordItemLedger() throws Exception {
         User user = accountUser(990029L);
 
@@ -849,10 +865,14 @@ public class PetServiceTest {
     }
 
     private static PetUseItemDTO useChest(String itemId, String chestId) {
+        return useChest(itemId, chestId, 1);
+    }
+
+    private static PetUseItemDTO useChest(String itemId, String chestId, int quantity) {
         PetUseItemDTO dto = new PetUseItemDTO();
         dto.setItemId(itemId);
         dto.setChestId(chestId);
-        dto.setQuantity(1);
+        dto.setQuantity(quantity);
         return dto;
     }
 

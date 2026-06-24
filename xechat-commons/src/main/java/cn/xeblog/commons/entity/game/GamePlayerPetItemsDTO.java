@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 
 /**
- * 玩家在单局游戏中声明的狗狗道具槽。
+ * 玩家在单局游戏中声明的狗狗携带道具。
  */
 @Data
 @AllArgsConstructor
@@ -15,12 +15,12 @@ import java.io.Serializable;
 public class GamePlayerPetItemsDTO implements Serializable {
 
     /**
-     * 玩法槽 itemId。
+     * 兼容字段：界面统一展示为携带栏，服务端仍按道具内部类型结算。
      */
     private String petPlayItemId;
 
     /**
-     * 互动槽 itemId。
+     * 兼容字段：界面统一展示为携带栏，服务端仍按道具内部类型结算。
      */
     private String petInteractionItemId;
 

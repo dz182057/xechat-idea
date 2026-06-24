@@ -491,7 +491,7 @@ public class PetActionHandlerTest {
     @Test
     public void buySlotSucceedsWhenBonesAreEnough() {
         User user = user();
-        setAssets(user.getAccountId(), 2300, 1);
+        setAssets(user.getAccountId(), 3300, 1);
 
         PetRequestDTO request = new PetRequestDTO();
         request.setPetAction(PetAction.BUY_SLOT);
@@ -515,7 +515,7 @@ public class PetActionHandlerTest {
     @Test
     public void buySlotRejectsWhenBonesAreNotEnoughWithoutSideEffects() {
         User user = user();
-        setAssets(user.getAccountId(), 1999, 1);
+        setAssets(user.getAccountId(), 2999, 1);
 
         PetRequestDTO request = new PetRequestDTO();
         request.setPetAction(PetAction.BUY_SLOT);
@@ -531,7 +531,7 @@ public class PetActionHandlerTest {
 
         PetProfileDTO profile = requestProfile(user);
         Assert.assertEquals(1, profile.getAssets().getDogSlots());
-        Assert.assertEquals(1999, profile.getAssets().getBones());
+        Assert.assertEquals(2999, profile.getAssets().getBones());
     }
 
     @Test
@@ -549,7 +549,7 @@ public class PetActionHandlerTest {
         Assert.assertFalse(body.isSuccess());
         Assert.assertEquals(PetAction.BUY_SLOT, body.getPetAction());
         Assert.assertEquals(Long.valueOf(70003L), body.getRequestId());
-        Assert.assertEquals("狗位已达上限", body.getError());
+        Assert.assertEquals("携带栏已达上限", body.getError());
 
         PetProfileDTO profile = requestProfile(user);
         Assert.assertEquals(2, profile.getAssets().getDogSlots());
@@ -560,7 +560,7 @@ public class PetActionHandlerTest {
     public void concurrentBuySlotAllowsOnlyOneSuccessForSameAccount() throws Exception {
         int attempts = 8;
         User seedUser = user();
-        setAssets(seedUser.getAccountId(), 5000, 1);
+        setAssets(seedUser.getAccountId(), 6000, 1);
         ExecutorService executor = Executors.newFixedThreadPool(attempts);
         CountDownLatch ready = new CountDownLatch(attempts);
         CountDownLatch start = new CountDownLatch(1);
@@ -589,7 +589,7 @@ public class PetActionHandlerTest {
         for (PetResponseDTO response : responses) {
             if (response.isSuccess()) {
                 successCount++;
-            } else if ("狗位已达上限".equals(response.getError())) {
+            } else if ("携带栏已达上限".equals(response.getError())) {
                 limitCount++;
             }
             Assert.assertEquals(Long.valueOf(70004L), response.getRequestId());
@@ -2347,7 +2347,7 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void setCompanionCanAddAndRemoveActiveDogsWithinSlots() {
+    public void setCompanionKeepsSingleCompanionDog() {
         User user = user();
         setAssets(user.getAccountId(), 2300, 2);
         PetDogDTO firstDog = adoptDog(user, "corgi", "小短腿");
@@ -2360,8 +2360,8 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.SET_COMPANION, addBody.getPetAction());
         Assert.assertEquals(Long.valueOf(80006L), addBody.getRequestId());
         PetProfileDTO addProfile = (PetProfileDTO) addBody.getContent();
-        Assert.assertEquals(Arrays.asList(firstDog.getId(), secondDog.getId()), addProfile.getActiveDogIds());
-        Assert.assertEquals(firstDog.getId(), addProfile.getCompanionDogId());
+        Assert.assertEquals(Collections.singletonList(secondDog.getId()), addProfile.getActiveDogIds());
+        Assert.assertEquals(secondDog.getId(), addProfile.getCompanionDogId());
 
         new PetActionHandler().process(user, setCompanionRequest(firstDog.getId(), false, 80007L));
         PetResponseDTO removeBody = readPetBody(user);
@@ -2374,32 +2374,28 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void setCompanionRejectsAddingBeyondSlotsAndRemovingLastActiveDog() {
+    public void setCompanionReplacesCompanionAndRejectsRemovingLastCompanionDog() {
         User user = user();
         setAssets(user.getAccountId(), 2300, 2);
-        PetDogDTO firstDog = adoptDog(user, "corgi", "小短腿");
         PetDogDTO secondDog = adoptDog(user, "golden", "金毛");
         PetDogDTO thirdDog = adoptDog(user, "poodle", "贵宾");
         new PetActionHandler().process(user, setCompanionRequest(secondDog.getId(), true, 80008L));
         Assert.assertTrue(readPetBody(user).isSuccess());
 
         new PetActionHandler().process(user, setCompanionRequest(thirdDog.getId(), true, 80009L));
-        PetResponseDTO fullBody = readPetBody(user);
-        Assert.assertFalse(fullBody.isSuccess());
-        Assert.assertEquals(PetAction.SET_COMPANION, fullBody.getPetAction());
-        Assert.assertEquals(Long.valueOf(80009L), fullBody.getRequestId());
-        Assert.assertEquals("活动狗位已满，请先取消一只活动狗", fullBody.getError());
-        Assert.assertEquals(Arrays.asList(firstDog.getId(), secondDog.getId()), requestProfile(user).getActiveDogIds());
+        PetResponseDTO replaceBody = readPetBody(user);
+        Assert.assertTrue(replaceBody.isSuccess());
+        Assert.assertEquals(PetAction.SET_COMPANION, replaceBody.getPetAction());
+        Assert.assertEquals(Long.valueOf(80009L), replaceBody.getRequestId());
+        Assert.assertEquals(Collections.singletonList(thirdDog.getId()), requestProfile(user).getActiveDogIds());
 
-        new PetActionHandler().process(user, setCompanionRequest(secondDog.getId(), false, 80010L));
-        Assert.assertTrue(readPetBody(user).isSuccess());
-        new PetActionHandler().process(user, setCompanionRequest(firstDog.getId(), false, 80011L));
+        new PetActionHandler().process(user, setCompanionRequest(thirdDog.getId(), false, 80011L));
         PetResponseDTO lastBody = readPetBody(user);
         Assert.assertFalse(lastBody.isSuccess());
         Assert.assertEquals(PetAction.SET_COMPANION, lastBody.getPetAction());
         Assert.assertEquals(Long.valueOf(80011L), lastBody.getRequestId());
-        Assert.assertEquals("至少需要保留一只活动狗", lastBody.getError());
-        Assert.assertEquals(Collections.singletonList(firstDog.getId()), requestProfile(user).getActiveDogIds());
+        Assert.assertEquals("至少需要保留一只陪伴犬", lastBody.getError());
+        Assert.assertEquals(Collections.singletonList(thirdDog.getId()), requestProfile(user).getActiveDogIds());
     }
 
     @Test

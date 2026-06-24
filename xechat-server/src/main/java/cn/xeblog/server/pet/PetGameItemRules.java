@@ -25,6 +25,11 @@ public final class PetGameItemRules {
 
     public static GamePlayerPetItemsDTO normalize(Game game, String gameMode, GamePlayerPetItemsDTO petItems,
                                                   Predicate<String> hasItem) {
+        return normalize(game, gameMode, petItems, hasItem, 2);
+    }
+
+    public static GamePlayerPetItemsDTO normalize(Game game, String gameMode, GamePlayerPetItemsDTO petItems,
+                                                  Predicate<String> hasItem, int carrySlotLimit) {
         if (petItems == null) {
             return new GamePlayerPetItemsDTO();
         }
@@ -33,6 +38,10 @@ public final class PetGameItemRules {
                 ? null
                 : normalizeSlot(true, game, petItems.getPetPlayItemId(), ownership);
         String interactionItemId = normalizeSlot(false, game, petItems.getPetInteractionItemId(), ownership);
+        int limit = Math.max(1, carrySlotLimit);
+        if (limit <= 1 && playItemId != null && interactionItemId != null) {
+            interactionItemId = null;
+        }
         return new GamePlayerPetItemsDTO(playItemId, interactionItemId);
     }
 

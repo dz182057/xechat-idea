@@ -67,7 +67,7 @@ public final class PetProfileService {
     private static final int DEFAULT_MAKEUP_CARDS = 0;
     private static final int DEFAULT_DOG_SLOTS = 1;
     private static final int MAX_DOG_SLOTS = 2;
-    private static final int SECOND_DOG_SLOT_PRICE = 2000;
+    private static final int SECOND_DOG_SLOT_PRICE = 3000;
     private static final int PUBLIC_DOG_ADOPTION_PRICE = 750;
     private static final int DEFAULT_ENERGY_LIMIT = 10;
     private static final int DAILY_FEED_LIMIT = 5;
@@ -392,6 +392,18 @@ public final class PetProfileService {
         }
     }
 
+    public static int itemCarrySlotLimit(long accountId) {
+        if (accountId <= 0L) {
+            return DEFAULT_DOG_SLOTS;
+        }
+        synchronized (accountLock(accountId)) {
+            try (SqlSession session = DbInitializer.factory().openSession(true)) {
+                PetAssetsRecord assets = findAssetsOrDefault(session, accountId);
+                return Math.min(MAX_DOG_SLOTS, Math.max(DEFAULT_DOG_SLOTS, assets.getDogSlots()));
+            }
+        }
+    }
+
     private static PetProfileDTO profileLocked(long accountId) {
         return profileLocked(accountId, null);
     }
@@ -457,7 +469,7 @@ public final class PetProfileService {
                 collections.add(toDTO(row));
             }
             profile.setCollections(collections);
-            List<String> activeDogIds = resolveActiveDogIds(assets.getCompanionDogId(), dogs, assets.getDogSlots());
+            List<String> activeDogIds = resolveActiveDogIds(assets.getCompanionDogId(), dogs);
             profile.setActiveDogIds(activeDogIds);
             profile.setCompanionDogId(activeDogIds.isEmpty() ? null : activeDogIds.get(0));
             profile.setCheckinStatus(new PetCheckinStatusDTO(todayText, todayCheckin != null, cycleDay,
@@ -1305,12 +1317,18 @@ public final class PetProfileService {
         String itemId = request == null ? null : StrUtil.trim(request.getItemId());
         String chestId = request == null ? null : StrUtil.trim(request.getChestId());
         Integer quantity = request == null ? null : request.getQuantity();
-        String location = exploreLocationByChestItemId(itemId);
-        if (location == null) {
+        String baseLocation = exploreLocationByChestItemId(itemId);
+        if (baseLocation == null) {
             throw new IllegalArgumentException("暂不支持该道具");
         }
-        if (quantity == null || quantity != 1) {
-            throw new IllegalArgumentException("道具使用数量必须为 1");
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("道具使用数量必须大于 0");
+        }
+        if (quantity > MAX_EXPLORE_CHEST_COUNT) {
+            throw new IllegalArgumentException("一次最多打开 99 个箱子");
+        }
+        if (StrUtil.isNotBlank(chestId) && quantity != 1) {
+            throw new IllegalArgumentException("指定箱子一次只能打开 1 个");
         }
 
         long now = System.currentTimeMillis();
@@ -1321,53 +1339,56 @@ public final class PetProfileService {
             PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
             PetExploreChestMapper chestMapper = session.getMapper(PetExploreChestMapper.class);
             PetItemLedgerMapper ledgerMapper = session.getMapper(PetItemLedgerMapper.class);
-            PetDogRecord snapshotDog = null;
-            int durationHours = EXPLORE_ONE_HOUR;
-            PetExploreChestRecord chest = null;
-            if (StrUtil.isNotBlank(chestId)) {
-                chest = chestMapper.findAvailableByIdAndAccountId(chestId, accountId);
-                if (chest == null || !itemId.equals(chest.getChestItemId())) {
-                    throw new IllegalArgumentException("箱子不存在或已打开");
-                }
-            } else {
-                for (PetExploreChestRecord candidate : chestMapper.listAvailableByAccountId(accountId)) {
-                    if (itemId.equals(candidate.getChestItemId())) {
-                        chest = candidate;
-                        break;
-                    }
-                }
-            }
-            if (chest != null) {
-                location = StrUtil.trim(chest.getLocation());
-                if (!isSupportedExploreLocation(location)) {
-                    throw new IllegalArgumentException("箱子地点数据异常");
-                }
-                durationHours = isSupportedExploreDuration(chest.getDurationHours())
-                        ? chest.getDurationHours()
-                        : EXPLORE_ONE_HOUR;
-                snapshotDog = exploreSnapshotDog(chest);
-                if (chestMapper.markOpened(chest.getId(), accountId, now) <= 0) {
-                    throw new IllegalArgumentException("箱子已打开，请刷新后重试");
-                }
-                recordItemLedger(ledgerMapper, accountId, itemId, 1, ITEM_LEDGER_SPEND,
-                        ITEM_LEDGER_SOURCE_OPEN_EXPLORE_CHEST, chest.getId(), null, now);
-            } else {
-                if (itemMapper.decrementItemIfEnough(accountId, itemId, 1, now) <= 0) {
-                    throw new IllegalArgumentException("道具数量不足");
-                }
-                recordItemLedger(ledgerMapper, accountId, itemId, 1, ITEM_LEDGER_SPEND,
-                        ITEM_LEDGER_SOURCE_OPEN_EXPLORE_CHEST, null, null, now);
-            }
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
             PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
-            addExploreBones(assetsMapper, accountId, applyExploreBonesTraining(effectiveExploreBaseBones(
-                    collectionMapper, accountId, exploreBaseBones(durationHours)), snapshotDog),
-                    rewards, now);
-            applyExploreRolls(session, accountId, durationHours, snapshotDog, location, rewards, today, now);
-            if (snapshotDog != null) {
-                PetAssetsRecord assets = assetsMapper.findByAccountId(accountId);
-                int energyLimit = effectiveEnergyLimit(collectionMapper, accountId, assets.getEnergyLimit());
-                applyExploreEnergyTraining(assetsMapper, accountId, snapshotDog, energyLimit, rewards, now);
+            for (int i = 0; i < quantity; i++) {
+                String location = baseLocation;
+                PetDogRecord snapshotDog = null;
+                int durationHours = EXPLORE_ONE_HOUR;
+                PetExploreChestRecord chest = null;
+                if (StrUtil.isNotBlank(chestId)) {
+                    chest = chestMapper.findAvailableByIdAndAccountId(chestId, accountId);
+                    if (chest == null || !itemId.equals(chest.getChestItemId())) {
+                        throw new IllegalArgumentException("箱子不存在或已打开");
+                    }
+                } else {
+                    for (PetExploreChestRecord candidate : chestMapper.listAvailableByAccountId(accountId)) {
+                        if (itemId.equals(candidate.getChestItemId())) {
+                            chest = candidate;
+                            break;
+                        }
+                    }
+                }
+                if (chest != null) {
+                    location = StrUtil.trim(chest.getLocation());
+                    if (!isSupportedExploreLocation(location)) {
+                        throw new IllegalArgumentException("箱子地点数据异常");
+                    }
+                    durationHours = isSupportedExploreDuration(chest.getDurationHours())
+                            ? chest.getDurationHours()
+                            : EXPLORE_ONE_HOUR;
+                    snapshotDog = exploreSnapshotDog(chest);
+                    if (chestMapper.markOpened(chest.getId(), accountId, now) <= 0) {
+                        throw new IllegalArgumentException("箱子已打开，请刷新后重试");
+                    }
+                    recordItemLedger(ledgerMapper, accountId, itemId, 1, ITEM_LEDGER_SPEND,
+                            ITEM_LEDGER_SOURCE_OPEN_EXPLORE_CHEST, chest.getId(), null, now);
+                } else {
+                    if (itemMapper.decrementItemIfEnough(accountId, itemId, 1, now) <= 0) {
+                        throw new IllegalArgumentException("道具数量不足");
+                    }
+                    recordItemLedger(ledgerMapper, accountId, itemId, 1, ITEM_LEDGER_SPEND,
+                            ITEM_LEDGER_SOURCE_OPEN_EXPLORE_CHEST, null, null, now);
+                }
+                addExploreBones(assetsMapper, accountId, applyExploreBonesTraining(effectiveExploreBaseBones(
+                        collectionMapper, accountId, exploreBaseBones(durationHours)), snapshotDog),
+                        rewards, now);
+                applyExploreRolls(session, accountId, durationHours, snapshotDog, location, rewards, today, now);
+                if (snapshotDog != null) {
+                    PetAssetsRecord assets = assetsMapper.findByAccountId(accountId);
+                    int energyLimit = effectiveEnergyLimit(collectionMapper, accountId, assets.getEnergyLimit());
+                    applyExploreEnergyTraining(assetsMapper, accountId, snapshotDog, energyLimit, rewards, now);
+                }
             }
             session.commit();
         }
@@ -1728,8 +1749,8 @@ public final class PetProfileService {
             }
             List<String> activeDogIds = request.getActive() == null
                     ? Collections.singletonList(dogId)
-                    : updateActiveDogIds(resolveActiveDogIds(assets.getCompanionDogId(), dogs, assets.getDogSlots()),
-                    dogId, request.getActive(), assets.getDogSlots());
+                    : updateActiveDogIds(resolveActiveDogIds(assets.getCompanionDogId(), dogs),
+                    dogId, request.getActive());
             session.getMapper(PetAssetsMapper.class).updateCompanionDogId(accountId,
                     serializeActiveDogIds(activeDogIds), now);
             session.commit();
@@ -2801,7 +2822,7 @@ public final class PetProfileService {
             PetAssetsRecord assets = ensureAssets(session, accountId);
             if (mapper.buySecondDogSlotIfAffordable(accountId, SECOND_DOG_SLOT_PRICE, now) <= 0) {
                 if (assets.getDogSlots() >= MAX_DOG_SLOTS) {
-                    throw new IllegalArgumentException("狗位已达上限");
+                    throw new IllegalArgumentException("携带栏已达上限");
                 }
                 throw new IllegalArgumentException("骨头币不足");
             }
@@ -3311,12 +3332,11 @@ public final class PetProfileService {
         return new PetCollectionItemDTO(row.getItemId(), row.getCount(), row.isDiscovered());
     }
 
-    private static List<String> resolveActiveDogIds(String savedDogIds, List<PetDogDTO> dogs, int dogSlots) {
+    private static List<String> resolveActiveDogIds(String savedDogIds, List<PetDogDTO> dogs) {
         if (dogs.isEmpty()) {
             return new ArrayList<>();
         }
         List<String> activeDogIds = new ArrayList<>();
-        int activeLimit = Math.max(1, dogSlots);
         for (String savedDogId : parseActiveDogIds(savedDogIds)) {
             for (PetDogDTO dog : dogs) {
                 if (savedDogId.equals(dog.getId()) && !activeDogIds.contains(savedDogId)) {
@@ -3324,7 +3344,7 @@ public final class PetProfileService {
                     break;
                 }
             }
-            if (activeDogIds.size() >= activeLimit) {
+            if (!activeDogIds.isEmpty()) {
                 break;
             }
         }
@@ -3336,28 +3356,16 @@ public final class PetProfileService {
 
     private static List<String> updateActiveDogIds(List<String> currentDogIds,
                                                    String dogId,
-                                                   boolean active,
-                                                   int dogSlots) {
+                                                   boolean active) {
         List<String> nextDogIds = new ArrayList<>(currentDogIds);
         if (active) {
-            if (nextDogIds.contains(dogId)) {
-                return nextDogIds;
-            }
-            if (nextDogIds.size() >= Math.max(1, dogSlots)) {
-                throw new IllegalArgumentException("活动狗位已满，请先取消一只活动狗");
-            }
-            nextDogIds.add(dogId);
-            return nextDogIds;
+            return Collections.singletonList(dogId);
         }
 
         if (!nextDogIds.contains(dogId)) {
             return nextDogIds;
         }
-        if (nextDogIds.size() <= 1) {
-            throw new IllegalArgumentException("至少需要保留一只活动狗");
-        }
-        nextDogIds.remove(dogId);
-        return nextDogIds;
+        throw new IllegalArgumentException("至少需要保留一只陪伴犬");
     }
 
     private static List<String> parseActiveDogIds(String savedDogIds) {

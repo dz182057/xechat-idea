@@ -62,6 +62,7 @@ public class PetGameItemDeclarationServiceTest {
     public void applyDeclarationForUserReservesOwnedItems() {
         User user = user(1002L);
         GameRoom room = room(user);
+        setDogSlots(user.getAccountId(), 2);
         insertPetItem(user.getAccountId(), "item_battle_echo", 1);
         insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
 
@@ -434,6 +435,28 @@ public class PetGameItemDeclarationServiceTest {
             statement.setString(2, itemId);
             statement.setInt(3, count);
             statement.setLong(4, System.currentTimeMillis());
+            statement.executeUpdate();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void setDogSlots(long accountId, int dogSlots) {
+        try (SqlSession session = DbInitializer.factory().openSession(true);
+             java.sql.PreparedStatement insert = session.getConnection().prepareStatement(
+                     "INSERT OR IGNORE INTO pet_assets " +
+                             "(account_id, bones, food, makeup_cards, dog_slots, energy, energy_date, energy_limit, companion_dog_id, created_at, updated_at) " +
+                             "VALUES (?, 0, 0, 0, 1, 10, ?, 10, NULL, ?, ?)");
+             java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
+                     "UPDATE pet_assets SET dog_slots = ? WHERE account_id = ?")) {
+            long now = System.currentTimeMillis();
+            insert.setLong(1, accountId);
+            insert.setString(2, java.time.LocalDate.now().toString());
+            insert.setLong(3, now);
+            insert.setLong(4, now);
+            insert.executeUpdate();
+            statement.setInt(1, dogSlots);
+            statement.setLong(2, accountId);
             statement.executeUpdate();
         } catch (Exception e) {
             throw new IllegalStateException(e);
