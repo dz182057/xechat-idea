@@ -3,6 +3,7 @@ package cn.xeblog.server.pet;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
+import cn.xeblog.commons.entity.pet.PetDailyCompanionDogStatusDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetExploreChestDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
@@ -35,9 +36,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,19 +46,6 @@ import java.util.function.IntSupplier;
 public class PetServiceTest {
 
     private static final int PUBLIC_DOG_ADOPTION_PRICE = 750;
-
-    private static final Set<String> FIRST_LAUNCH_RARE_ITEM_IDS = new HashSet<>(Arrays.asList(
-            "item_mine_shield",
-            "item_mine_detector",
-            "item_mine_counter",
-            "item_draw_reveal_char",
-            "item_sync_perspective",
-            "item_quiz_wrong_option",
-            "item_gomoku_guard",
-            "item_turtle_probe",
-            "item_battle_pebble",
-            "item_battle_airbag"
-    ));
 
     private Path tempDir;
 
@@ -249,6 +235,7 @@ public class PetServiceTest {
         PetDogDTO dog = afterThirdRace.getDogs().get(0);
         Assert.assertEquals(3, dog.getRaceCount());
         Assert.assertEquals(1, dog.getRaceFirstCount());
+        Assert.assertTrue(afterThirdRace.getDailyCompanionStatus().getDogs().get(dogId).isOutingCompleted());
     }
 
     @Test
@@ -331,7 +318,7 @@ public class PetServiceTest {
     }
 
     @Test
-    public void checkinShouldGrantMilestoneDecorationAndRareItemEvery28Checkins() throws Exception {
+    public void checkinShouldGrantMilestoneEpicItemEvery28Checkins() throws Exception {
         User user = accountUser(990017L);
         PetService.profile(user);
         insertCheckins(user.getAccountId(), 27);
@@ -341,12 +328,12 @@ public class PetServiceTest {
         PetCheckinMilestoneRewardDTO reward = profile.getCheckinStatus().getLastMilestoneReward();
         Assert.assertNotNull(reward);
         Assert.assertEquals(1, reward.getMilestoneIndex());
-        Assert.assertEquals("checkin_decoration_hat", reward.getDecorationId());
-        Assert.assertTrue(FIRST_LAUNCH_RARE_ITEM_IDS.contains(reward.getItemId()));
+        Assert.assertNull(reward.getDecorationId());
+        Assert.assertTrue(PetItemDefinitions.luckyBagEpicItemIds().contains(reward.getItemId()));
         Assert.assertEquals(0, reward.getOverflowBones());
         Assert.assertEquals(28, profile.getCheckinStatus().getTotalCheckins());
         Assert.assertEquals(28, profile.getCheckinStatus().getMilestoneRemaining());
-        Assert.assertEquals(1, findCollectionCount(user.getAccountId(), reward.getDecorationId()));
+        Assert.assertEquals(0, findCollectionCount(user.getAccountId(), "checkin_decoration_hat"));
         Assert.assertEquals(1, findItemCount(user.getAccountId(), reward.getItemId()));
         Assert.assertEquals(1, countItemLedger(user.getAccountId(), reward.getItemId(),
                 "gain", "checkin_reward"));
@@ -415,6 +402,7 @@ public class PetServiceTest {
         Assert.assertEquals("explore_bones", chest.getSkillSnapshotId());
         Assert.assertEquals(Integer.valueOf(1), chest.getSkillSnapshotLevel());
         Assert.assertEquals("v5-explore-training", chest.getSkillSnapshotDefinitionVersion());
+        Assert.assertTrue(settled.getDailyCompanionStatus().getDogs().get(dogId).isOutingCompleted());
         Assert.assertEquals(0, findItemCount(user.getAccountId(), "chest_back_hill"));
         Assert.assertEquals(1, countItemLedger(user.getAccountId(), "chest_back_hill",
                 "gain", "explore_return_chest"));
@@ -609,6 +597,41 @@ public class PetServiceTest {
         PetDogDTO repeatedDog = afterRepeatWalk.getDogs().get(0);
         Assert.assertEquals(11, repeatedDog.getBond());
         Assert.assertEquals(9, afterRepeatWalk.getAssets().getEnergy());
+    }
+
+    @Test
+    public void dailyCompanionStatusShouldTrackCareActions() {
+        User user = accountUser(990053L);
+        PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "陪伴状态狗"));
+        String dogId = profile.getDogs().get(0).getId();
+
+        PetDailyCompanionDogStatusDTO initialStatus = profile.getDailyCompanionStatus().getDogs().get(dogId);
+        Assert.assertFalse(initialStatus.isGreetCompleted());
+        Assert.assertFalse(initialStatus.isFeedCompleted());
+        Assert.assertFalse(initialStatus.isPlayCompleted());
+        Assert.assertFalse(initialStatus.isOutingCompleted());
+        Assert.assertEquals(0, initialStatus.getCompletedCount());
+        Assert.assertEquals(4, initialStatus.getTotalCount());
+
+        PetProfileDTO greeted = PetProfileService.greetAllDogs(user.getAccountId());
+        PetDailyCompanionDogStatusDTO greetedStatus = greeted.getDailyCompanionStatus().getDogs().get(dogId);
+        Assert.assertTrue(greetedStatus.isGreetCompleted());
+        Assert.assertEquals(1, greetedStatus.getCompletedCount());
+
+        PetProfileDTO fed = PetProfileService.feed(user.getAccountId(), feed(dogId));
+        PetDailyCompanionDogStatusDTO fedStatus = fed.getDailyCompanionStatus().getDogs().get(dogId);
+        Assert.assertTrue(fedStatus.isFeedCompleted());
+        Assert.assertEquals(2, fedStatus.getCompletedCount());
+
+        PetProfileDTO played = PetService.applyGameTraining(user.getAccountId(), Game.GOBANG, true);
+        PetDailyCompanionDogStatusDTO playedStatus = played.getDailyCompanionStatus().getDogs().get(dogId);
+        Assert.assertTrue(playedStatus.isPlayCompleted());
+        Assert.assertEquals(3, playedStatus.getCompletedCount());
+
+        PetProfileDTO walked = PetProfileService.walkDog(user.getAccountId(), walkDog(dogId));
+        PetDailyCompanionDogStatusDTO walkedStatus = walked.getDailyCompanionStatus().getDogs().get(dogId);
+        Assert.assertTrue(walkedStatus.isOutingCompleted());
+        Assert.assertEquals(4, walkedStatus.getCompletedCount());
     }
 
     @Test

@@ -2347,6 +2347,62 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void setCompanionCanAddAndRemoveActiveDogsWithinSlots() {
+        User user = user();
+        setAssets(user.getAccountId(), 2300, 2);
+        PetDogDTO firstDog = adoptDog(user, "corgi", "小短腿");
+        PetDogDTO secondDog = adoptDog(user, "golden", "金毛");
+        Assert.assertEquals(Collections.singletonList(firstDog.getId()), requestProfile(user).getActiveDogIds());
+
+        new PetActionHandler().process(user, setCompanionRequest(secondDog.getId(), true, 80006L));
+        PetResponseDTO addBody = readPetBody(user);
+        Assert.assertTrue(addBody.isSuccess());
+        Assert.assertEquals(PetAction.SET_COMPANION, addBody.getPetAction());
+        Assert.assertEquals(Long.valueOf(80006L), addBody.getRequestId());
+        PetProfileDTO addProfile = (PetProfileDTO) addBody.getContent();
+        Assert.assertEquals(Arrays.asList(firstDog.getId(), secondDog.getId()), addProfile.getActiveDogIds());
+        Assert.assertEquals(firstDog.getId(), addProfile.getCompanionDogId());
+
+        new PetActionHandler().process(user, setCompanionRequest(firstDog.getId(), false, 80007L));
+        PetResponseDTO removeBody = readPetBody(user);
+        Assert.assertTrue(removeBody.isSuccess());
+        Assert.assertEquals(Long.valueOf(80007L), removeBody.getRequestId());
+        PetProfileDTO removeProfile = (PetProfileDTO) removeBody.getContent();
+        Assert.assertEquals(Collections.singletonList(secondDog.getId()), removeProfile.getActiveDogIds());
+        Assert.assertEquals(secondDog.getId(), removeProfile.getCompanionDogId());
+        Assert.assertEquals(Collections.singletonList(secondDog.getId()), requestProfile(user).getActiveDogIds());
+    }
+
+    @Test
+    public void setCompanionRejectsAddingBeyondSlotsAndRemovingLastActiveDog() {
+        User user = user();
+        setAssets(user.getAccountId(), 2300, 2);
+        PetDogDTO firstDog = adoptDog(user, "corgi", "小短腿");
+        PetDogDTO secondDog = adoptDog(user, "golden", "金毛");
+        PetDogDTO thirdDog = adoptDog(user, "poodle", "贵宾");
+        new PetActionHandler().process(user, setCompanionRequest(secondDog.getId(), true, 80008L));
+        Assert.assertTrue(readPetBody(user).isSuccess());
+
+        new PetActionHandler().process(user, setCompanionRequest(thirdDog.getId(), true, 80009L));
+        PetResponseDTO fullBody = readPetBody(user);
+        Assert.assertFalse(fullBody.isSuccess());
+        Assert.assertEquals(PetAction.SET_COMPANION, fullBody.getPetAction());
+        Assert.assertEquals(Long.valueOf(80009L), fullBody.getRequestId());
+        Assert.assertEquals("活动狗位已满，请先取消一只活动狗", fullBody.getError());
+        Assert.assertEquals(Arrays.asList(firstDog.getId(), secondDog.getId()), requestProfile(user).getActiveDogIds());
+
+        new PetActionHandler().process(user, setCompanionRequest(secondDog.getId(), false, 80010L));
+        Assert.assertTrue(readPetBody(user).isSuccess());
+        new PetActionHandler().process(user, setCompanionRequest(firstDog.getId(), false, 80011L));
+        PetResponseDTO lastBody = readPetBody(user);
+        Assert.assertFalse(lastBody.isSuccess());
+        Assert.assertEquals(PetAction.SET_COMPANION, lastBody.getPetAction());
+        Assert.assertEquals(Long.valueOf(80011L), lastBody.getRequestId());
+        Assert.assertEquals("至少需要保留一只活动狗", lastBody.getError());
+        Assert.assertEquals(Collections.singletonList(firstDog.getId()), requestProfile(user).getActiveDogIds());
+    }
+
+    @Test
     public void setCompanionRejectsMissingOrOtherAccountDogWithoutChangingCurrentCompanion() {
         User owner = user();
         setAssets(owner.getAccountId(), 2300, 2);
@@ -4381,6 +4437,17 @@ public class PetActionHandlerTest {
     private static PetRequestDTO setCompanionRequest(String dogId, long requestId) {
         Map<String, Object> content = new HashMap<>();
         content.put("dogId", dogId);
+        PetRequestDTO request = new PetRequestDTO();
+        request.setPetAction(PetAction.SET_COMPANION);
+        request.setRequestId(requestId);
+        request.setContent(content);
+        return request;
+    }
+
+    private static PetRequestDTO setCompanionRequest(String dogId, boolean active, long requestId) {
+        Map<String, Object> content = new HashMap<>();
+        content.put("dogId", dogId);
+        content.put("active", active);
         PetRequestDTO request = new PetRequestDTO();
         request.setPetAction(PetAction.SET_COMPANION);
         request.setRequestId(requestId);

@@ -32,11 +32,15 @@ public class PetProfileDTO implements Serializable {
 
     private String companionDogId;
 
+    private List<String> activeDogIds;
+
     private PetCheckinStatusDTO checkinStatus;
 
     private PetExploreStatusDTO exploreStatus;
 
     private PetInteractionStatusDTO interactionStatus;
+
+    private PetDailyCompanionStatusDTO dailyCompanionStatus;
 
     private PetTrainingStatusDTO trainingStatus;
 
@@ -49,10 +53,12 @@ public class PetProfileDTO implements Serializable {
         profile.setItems(new ArrayList<>());
         profile.setExploreChests(new ArrayList<>());
         profile.setCollections(new ArrayList<>());
+        profile.setActiveDogIds(new ArrayList<>());
         profile.setExploreStatus(new PetExploreStatusDTO(3, 0, 5, 0, 0,
                 false, false, false, 0, 0, 0, 0, 0, null));
         profile.setInteractionStatus(new PetInteractionStatusDTO(150, 0, 150, 2,
                 new java.util.HashMap<>(), new java.util.HashMap<>()));
+        profile.setDailyCompanionStatus(new PetDailyCompanionStatusDTO(new java.util.HashMap<>()));
         profile.setTrainingStatus(new PetTrainingStatusDTO("pending",
                 java.util.Arrays.asList(100, 150, 300, 500, 800),
                 new ArrayList<>(), new ArrayList<>(), false));

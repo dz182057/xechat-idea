@@ -5,19 +5,18 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * 设置陪伴犬请求。
+ * 今日陪伴完成状态快照。
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class PetSetCompanionDTO implements Serializable {
+public class PetDailyCompanionStatusDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    private String dogId;
-
-    private Boolean active;
-
+    private Map<String, PetDailyCompanionDogStatusDTO> dogs = new HashMap<>();
 }

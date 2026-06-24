@@ -6,6 +6,8 @@ import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
 import cn.xeblog.commons.entity.pet.PetAssetsDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinStatusDTO;
 import cn.xeblog.commons.entity.pet.PetCollectionItemDTO;
+import cn.xeblog.commons.entity.pet.PetDailyCompanionDogStatusDTO;
+import cn.xeblog.commons.entity.pet.PetDailyCompanionStatusDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetExploreChestDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
@@ -45,6 +47,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -106,19 +109,11 @@ public final class PetProfileService {
     private static final int SEVENTH_DAY_CHECKIN_NORMAL_ITEM_COUNT = 2;
     private static final int CHECKIN_ITEM_OVERFLOW_BONES = 10;
     private static final int CHECKIN_MILESTONE_INTERVAL = 28;
-    private static final int CHECKIN_MILESTONE_RARE_ITEM_OVERFLOW_BONES = 80;
+    private static final int CHECKIN_MILESTONE_EPIC_ITEM_OVERFLOW_BONES = 80;
     private static final int SHIBA_CHECKIN_PITY_COUNT = 30;
     private static final int SHIBA_DAILY_CHECKIN_ROLL_THRESHOLD = 3;
     private static final String SHIBA_UNLOCK_COLLECTION_ID = "breed_shiba_unlocked";
     private static final int BACK_HILL_COLLECTION_CHECKIN_BONUS_BONES = 5;
-    private static final List<String> CHECKIN_MILESTONE_DECORATION_IDS = Collections.unmodifiableList(Arrays.asList(
-            "checkin_decoration_hat",
-            "checkin_decoration_scarf",
-            "checkin_decoration_sunhat",
-            "checkin_decoration_sunglasses",
-            "checkin_decoration_ribbon",
-            "checkin_decoration_cap"
-    ));
     private static final String TRAINING_DEFINITION_VERSION = "v5-explore-training";
     private static final String TRAINING_SKILL_ROUTE = "explore_route";
     private static final String TRAINING_SKILL_TREASURE = "explore_treasure";
@@ -462,7 +457,9 @@ public final class PetProfileService {
                 collections.add(toDTO(row));
             }
             profile.setCollections(collections);
-            profile.setCompanionDogId(resolveCompanionDogId(assets.getCompanionDogId(), dogs));
+            List<String> activeDogIds = resolveActiveDogIds(assets.getCompanionDogId(), dogs, assets.getDogSlots());
+            profile.setActiveDogIds(activeDogIds);
+            profile.setCompanionDogId(activeDogIds.isEmpty() ? null : activeDogIds.get(0));
             profile.setCheckinStatus(new PetCheckinStatusDTO(todayText, todayCheckin != null, cycleDay,
                     totalCheckins, checkinMilestoneRemaining(totalCheckins),
                     checkedDatesInMonth, lastMilestoneReward));
@@ -498,6 +495,7 @@ public final class PetProfileService {
                     oldLibraryCompletions,
                     pendingOldTennisBall(dailyCounterMapper, accountId, rows)));
             profile.setInteractionStatus(buildInteractionStatus(dailyCounterMapper, accountId, todayText));
+            profile.setDailyCompanionStatus(buildDailyCompanionStatus(dailyCounterMapper, accountId, todayText, rows));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             if (energyRefreshed || legacyChestMigrated || exploreSettled || dogStageChanged) {
                 session.commit();
@@ -1118,6 +1116,7 @@ public final class PetProfileService {
             int durationHours = inferExploreDurationHours(dog);
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
             PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
             addExploreBones(assetsMapper, accountId,
                     applyExploreBonesTraining(effectiveExploreBaseBones(collectionMapper, accountId,
                             exploreBaseBones(durationHours)), dog), rewards, now);
@@ -1126,8 +1125,9 @@ public final class PetProfileService {
                 collectionMapper.addCollection(accountId, MYSTERY_CAVE_COMPLETED_COLLECTION_ID, now);
                 rewards.add(new PetExploreRewardDTO("collection", MYSTERY_CAVE_COMPLETED_COLLECTION_ID, 1));
             } else {
-                recordExploreCompletion(session.getMapper(PetDailyCounterMapper.class), accountId, location, now);
+                recordExploreCompletion(counterMapper, accountId, location, now);
             }
+            grantOutingBondIfAvailable(counterMapper, dogMapper, accountId, today, dog, now);
             grantFirstExploreFreeLearnIfEligible(session.getMapper(PetTrainingMapper.class),
                     accountId, durationHours, now);
             if (dogMapper.openExplore(dogId, accountId, now) <= 0) {
@@ -1475,6 +1475,11 @@ public final class PetProfileService {
             if (dogMapper.recordRaceResult(dogId, accountId, firstPlaceIncrement, weeklyPoints, now) <= 0) {
                 throw new IllegalArgumentException("只能结算自己的狗狗赛跑结果");
             }
+            PetDogRecord dog = dogMapper.findByIdAndOwner(dogId, accountId);
+            if (dog != null) {
+                grantOutingBondIfAvailable(session.getMapper(PetDailyCounterMapper.class), dogMapper,
+                        accountId, LocalDate.now().toString(), dog, now);
+            }
             session.commit();
         }
 
@@ -1716,8 +1721,17 @@ public final class PetProfileService {
             if (StrUtil.isBlank(dogId) || dogMapper.findByIdAndOwner(dogId, accountId) == null) {
                 throw new IllegalArgumentException("只能设置自己的狗狗");
             }
-            ensureAssets(session, accountId);
-            session.getMapper(PetAssetsMapper.class).updateCompanionDogId(accountId, dogId, now);
+            PetAssetsRecord assets = ensureAssets(session, accountId);
+            List<PetDogDTO> dogs = new ArrayList<>();
+            for (PetDogRecord dog : dogMapper.listByOwner(accountId)) {
+                dogs.add(toDTO(dog));
+            }
+            List<String> activeDogIds = request.getActive() == null
+                    ? Collections.singletonList(dogId)
+                    : updateActiveDogIds(resolveActiveDogIds(assets.getCompanionDogId(), dogs, assets.getDogSlots()),
+                    dogId, request.getActive(), assets.getDogSlots());
+            session.getMapper(PetAssetsMapper.class).updateCompanionDogId(accountId,
+                    serializeActiveDogIds(activeDogIds), now);
             session.commit();
         }
 
@@ -2035,6 +2049,8 @@ public final class PetProfileService {
             recordItemLedger(ledgerMapper, accountId, chestItemId, 1, ITEM_LEDGER_GAIN,
                     ITEM_LEDGER_SOURCE_EXPLORE_RETURN_CHEST, chest.getId(), null, now);
             recordExploreCompletion(counterMapper, accountId, location, now);
+            grantOutingBondIfAvailable(counterMapper, dogMapper, accountId,
+                    LocalDate.now().toString(), dog, now);
             grantFirstExploreFreeLearnIfEligible(trainingMapper, accountId, inferExploreDurationHours(dog), now);
             if (dogMapper.openExplore(dog.getId(), accountId, now) <= 0) {
                 throw new IllegalArgumentException("探险结算失败，请刷新后重试");
@@ -2945,16 +2961,12 @@ public final class PetProfileService {
         }
 
         int milestoneIndex = totalCheckins / CHECKIN_MILESTONE_INTERVAL;
-        String decorationId = CHECKIN_MILESTONE_DECORATION_IDS.get(
-                Math.floorMod(milestoneIndex - 1, CHECKIN_MILESTONE_DECORATION_IDS.size()));
-        session.getMapper(PetCollectionMapper.class).addCollection(accountId, decorationId, now);
-
         PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
-        String itemId = pickAvailableLuckyBagItem(LUCKY_BAG_RARE_ITEM_IDS, luckyBagItemCounts(itemMapper, accountId));
+        String itemId = pickAvailableLuckyBagItem(LUCKY_BAG_EPIC_ITEM_IDS, luckyBagItemCounts(itemMapper, accountId));
         int overflowBones = 0;
         if (itemId == null || itemMapper.addItemIfUnderLimit(accountId, itemId, 1, MAX_ITEM_COUNT, now) <= 0) {
             itemId = null;
-            overflowBones = CHECKIN_MILESTONE_RARE_ITEM_OVERFLOW_BONES;
+            overflowBones = CHECKIN_MILESTONE_EPIC_ITEM_OVERFLOW_BONES;
             session.getMapper(PetAssetsMapper.class).addBones(accountId, overflowBones, now);
         } else {
             recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, 1,
@@ -2962,7 +2974,7 @@ public final class PetProfileService {
                     "milestone:" + milestoneIndex, null, now);
         }
 
-        return new PetCheckinMilestoneRewardDTO(milestoneIndex, decorationId, itemId, overflowBones);
+        return new PetCheckinMilestoneRewardDTO(milestoneIndex, null, itemId, overflowBones);
     }
 
     private static boolean hasCompletedBackHillCollectionSet(PetCollectionMapper collectionMapper, long accountId) {
@@ -3041,9 +3053,10 @@ public final class PetProfileService {
     }
 
     private static PetDogRecord resolveCompanionDog(String savedDogId, List<PetDogRecord> dogs) {
-        if (StrUtil.isNotBlank(savedDogId)) {
+        String primaryDogId = primaryActiveDogId(savedDogId);
+        if (StrUtil.isNotBlank(primaryDogId)) {
             for (PetDogRecord dog : dogs) {
-                if (savedDogId.equals(dog.getId())) {
+                if (primaryDogId.equals(dog.getId())) {
                     return dog;
                 }
             }
@@ -3105,6 +3118,47 @@ public final class PetProfileService {
                                              String date, String counter) {
         Integer value = mapper.findValue(accountId, date, counter);
         return value == null ? 0 : Math.max(0, value);
+    }
+
+    private static PetDailyCompanionStatusDTO buildDailyCompanionStatus(PetDailyCounterMapper mapper,
+                                                                        long accountId,
+                                                                        String today,
+                                                                        List<PetDogRecord> dogs) {
+        Map<String, PetDailyCompanionDogStatusDTO> dogStatuses = new LinkedHashMap<>();
+        for (PetDogRecord dog : dogs) {
+            boolean greetCompleted = findDailyCounterValue(mapper, accountId, today,
+                    DAILY_COUNTER_GREET_BOND_PREFIX + dog.getId()) > 0;
+            boolean feedCompleted = findDailyCounterValue(mapper, accountId, today,
+                    DAILY_COUNTER_FEED_BOND_PREFIX + dog.getId()) > 0;
+            boolean playCompleted = findDailyCounterValue(mapper, accountId, today,
+                    DAILY_COUNTER_GAME_BOND_PREFIX + dog.getId()) > 0;
+            boolean outingCompleted = findDailyCounterValue(mapper, accountId, today,
+                    DAILY_COUNTER_OUTING_BOND_PREFIX + dog.getId()) > 0;
+            int completedCount = 0;
+            if (greetCompleted) completedCount++;
+            if (feedCompleted) completedCount++;
+            if (playCompleted) completedCount++;
+            if (outingCompleted) completedCount++;
+            dogStatuses.put(dog.getId(), new PetDailyCompanionDogStatusDTO(
+                    greetCompleted, feedCompleted, playCompleted, outingCompleted, completedCount, 4));
+        }
+        return new PetDailyCompanionStatusDTO(dogStatuses);
+    }
+
+    private static void grantOutingBondIfAvailable(PetDailyCounterMapper counterMapper,
+                                                   PetDogMapper dogMapper,
+                                                   long accountId,
+                                                   String today,
+                                                   PetDogRecord dog,
+                                                   long now) {
+        if (dog == null || StrUtil.isBlank(dog.getId())) {
+            return;
+        }
+        int bond = grantDailyDogBond(counterMapper, accountId, today, dog,
+                DAILY_COUNTER_OUTING_BOND_PREFIX, now);
+        if (bond != dog.getBond()) {
+            dogMapper.updateCareStats(dog.getId(), accountId, bond, now);
+        }
     }
 
     private static int grantDailyDogBond(PetDailyCounterMapper counterMapper,
@@ -3257,18 +3311,76 @@ public final class PetProfileService {
         return new PetCollectionItemDTO(row.getItemId(), row.getCount(), row.isDiscovered());
     }
 
-    private static String resolveCompanionDogId(String savedDogId, List<PetDogDTO> dogs) {
+    private static List<String> resolveActiveDogIds(String savedDogIds, List<PetDogDTO> dogs, int dogSlots) {
         if (dogs.isEmpty()) {
-            return null;
+            return new ArrayList<>();
         }
-        if (StrUtil.isNotBlank(savedDogId)) {
+        List<String> activeDogIds = new ArrayList<>();
+        int activeLimit = Math.max(1, dogSlots);
+        for (String savedDogId : parseActiveDogIds(savedDogIds)) {
             for (PetDogDTO dog : dogs) {
-                if (savedDogId.equals(dog.getId())) {
-                    return savedDogId;
+                if (savedDogId.equals(dog.getId()) && !activeDogIds.contains(savedDogId)) {
+                    activeDogIds.add(savedDogId);
+                    break;
                 }
             }
+            if (activeDogIds.size() >= activeLimit) {
+                break;
+            }
         }
-        return dogs.get(0).getId();
+        if (activeDogIds.isEmpty()) {
+            activeDogIds.add(dogs.get(0).getId());
+        }
+        return activeDogIds;
+    }
+
+    private static List<String> updateActiveDogIds(List<String> currentDogIds,
+                                                   String dogId,
+                                                   boolean active,
+                                                   int dogSlots) {
+        List<String> nextDogIds = new ArrayList<>(currentDogIds);
+        if (active) {
+            if (nextDogIds.contains(dogId)) {
+                return nextDogIds;
+            }
+            if (nextDogIds.size() >= Math.max(1, dogSlots)) {
+                throw new IllegalArgumentException("活动狗位已满，请先取消一只活动狗");
+            }
+            nextDogIds.add(dogId);
+            return nextDogIds;
+        }
+
+        if (!nextDogIds.contains(dogId)) {
+            return nextDogIds;
+        }
+        if (nextDogIds.size() <= 1) {
+            throw new IllegalArgumentException("至少需要保留一只活动狗");
+        }
+        nextDogIds.remove(dogId);
+        return nextDogIds;
+    }
+
+    private static List<String> parseActiveDogIds(String savedDogIds) {
+        List<String> dogIds = new ArrayList<>();
+        if (StrUtil.isBlank(savedDogIds)) {
+            return dogIds;
+        }
+        for (String item : savedDogIds.split(",")) {
+            String dogId = StrUtil.trim(item);
+            if (StrUtil.isNotBlank(dogId) && !dogIds.contains(dogId)) {
+                dogIds.add(dogId);
+            }
+        }
+        return dogIds;
+    }
+
+    private static String serializeActiveDogIds(List<String> dogIds) {
+        return String.join(",", dogIds);
+    }
+
+    private static String primaryActiveDogId(String savedDogIds) {
+        List<String> dogIds = parseActiveDogIds(savedDogIds);
+        return dogIds.isEmpty() ? null : dogIds.get(0);
     }
 
     private static final class BreedConfig {

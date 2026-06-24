@@ -25,7 +25,10 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.PetAction;
 import cn.xeblog.server.annotation.DoAction;
 import cn.xeblog.server.builder.ResponseBuilder;
+import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.pet.PetProfileService;
+
+import java.util.Objects;
 
 /**
  * 狗狗宇宙个人数据入口。
@@ -55,7 +58,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
             case ADOPT:
                 try {
                     PetProfileDTO adoptedProfile = PetProfileService.adopt(user.getAccountId(), toBean(body.getContent(), PetAdoptDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, adoptedProfile));
+                    sendProfileResult(user, petAction, requestId, adoptedProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -63,7 +66,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
             case RENAME:
                 try {
                     PetProfileDTO renamedProfile = PetProfileService.rename(user.getAccountId(), toBean(body.getContent(), PetRenameDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, renamedProfile));
+                    sendProfileResult(user, petAction, requestId, renamedProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -71,20 +74,20 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
             case FEED:
                 try {
                     PetProfileDTO fedProfile = PetProfileService.feed(user.getAccountId(), toBean(body.getContent(), PetFeedDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, fedProfile));
+                    sendProfileResult(user, petAction, requestId, fedProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
                 break;
             case GREET_ALL_DOGS:
                 PetProfileDTO greetedProfile = PetProfileService.greetAllDogs(user.getAccountId());
-                send(user, PetResponseDTO.ok(petAction, requestId, greetedProfile));
+                sendProfileResult(user, petAction, requestId, greetedProfile);
                 break;
             case WALK_DOG:
                 try {
                     PetProfileDTO walkedProfile = PetProfileService.walkDog(user.getAccountId(),
                             toBean(body.getContent(), PetWalkDogDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, walkedProfile));
+                    sendProfileResult(user, petAction, requestId, walkedProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -92,7 +95,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
             case CHECKIN:
                 try {
                     PetProfileDTO checkedProfile = PetProfileService.checkin(user.getAccountId());
-                    send(user, PetResponseDTO.ok(petAction, requestId, checkedProfile));
+                    sendProfileResult(user, petAction, requestId, checkedProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -101,7 +104,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO makeupProfile = PetProfileService.makeupCheckin(user.getAccountId(),
                             toBean(body.getContent(), PetMakeupCheckinDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, makeupProfile));
+                    sendProfileResult(user, petAction, requestId, makeupProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -109,7 +112,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
             case BUY_SLOT:
                 try {
                     PetProfileDTO slotProfile = PetProfileService.buySlot(user.getAccountId());
-                    send(user, PetResponseDTO.ok(petAction, requestId, slotProfile));
+                    sendProfileResult(user, petAction, requestId, slotProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -118,7 +121,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO companionProfile = PetProfileService.setCompanion(user.getAccountId(),
                             toBean(body.getContent(), PetSetCompanionDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, companionProfile));
+                    sendProfileResult(user, petAction, requestId, companionProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -127,7 +130,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO shopProfile = PetProfileService.shopBuy(user.getAccountId(),
                             toBean(body.getContent(), PetShopBuyDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, shopProfile));
+                    sendProfileResult(user, petAction, requestId, shopProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -136,7 +139,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO sellProfile = PetProfileService.sellItem(user.getAccountId(),
                             toBean(body.getContent(), PetSellItemDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, sellProfile));
+                    sendProfileResult(user, petAction, requestId, sellProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -145,7 +148,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO sellCollectionProfile = PetProfileService.sellCollection(user.getAccountId(),
                             toBean(body.getContent(), PetSellItemDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, sellCollectionProfile));
+                    sendProfileResult(user, petAction, requestId, sellCollectionProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -154,7 +157,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO exploreProfile = PetProfileService.exploreStart(user.getAccountId(),
                             toBean(body.getContent(), PetExploreStartDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, exploreProfile));
+                    sendProfileResult(user, petAction, requestId, exploreProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -164,6 +167,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                     PetExploreOpenResultDTO openResult = PetProfileService.exploreOpen(user.getAccountId(),
                             toBean(body.getContent(), PetExploreOpenDTO.class));
                     send(user, PetResponseDTO.ok(petAction, requestId, openResult));
+                    pushProfileUpdateToOtherConnections(user, openResult.getProfile());
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -172,7 +176,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO cancelProfile = PetProfileService.exploreCancel(user.getAccountId(),
                             toBean(body.getContent(), PetExploreOpenDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, cancelProfile));
+                    sendProfileResult(user, petAction, requestId, cancelProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -181,7 +185,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO oldTennisBallProfile = PetProfileService.resolveOldTennisBall(user.getAccountId(),
                             toBean(body.getContent(), PetResolveOldTennisBallDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, oldTennisBallProfile));
+                    sendProfileResult(user, petAction, requestId, oldTennisBallProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -190,7 +194,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO trainingLearnProfile = PetProfileService.trainingLearn(user.getAccountId(),
                             toBean(body.getContent(), PetTrainingSkillActionDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, trainingLearnProfile));
+                    sendProfileResult(user, petAction, requestId, trainingLearnProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -199,7 +203,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO trainingUpgradeProfile = PetProfileService.trainingUpgrade(user.getAccountId(),
                             toBean(body.getContent(), PetTrainingSkillActionDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, trainingUpgradeProfile));
+                    sendProfileResult(user, petAction, requestId, trainingUpgradeProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -208,7 +212,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO trainingEquipProfile = PetProfileService.trainingEquip(user.getAccountId(),
                             toBean(body.getContent(), PetTrainingSkillActionDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, trainingEquipProfile));
+                    sendProfileResult(user, petAction, requestId, trainingEquipProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -220,9 +224,10 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                         PetExploreOpenResultDTO chestResult = PetProfileService.openBackHillChest(user.getAccountId(),
                                 useItemRequest);
                         send(user, PetResponseDTO.ok(petAction, requestId, chestResult));
+                        pushProfileUpdateToOtherConnections(user, chestResult.getProfile());
                     } else {
                         PetProfileDTO useItemProfile = PetProfileService.useItem(user.getAccountId(), useItemRequest);
-                        send(user, PetResponseDTO.ok(petAction, requestId, useItemProfile));
+                        sendProfileResult(user, petAction, requestId, useItemProfile);
                     }
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
@@ -232,7 +237,7 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 try {
                     PetProfileDTO raceProfile = PetProfileService.recordRaceResult(user.getAccountId(),
                             toBean(body.getContent(), PetRaceResultDTO.class));
-                    send(user, PetResponseDTO.ok(petAction, requestId, raceProfile));
+                    sendProfileResult(user, petAction, requestId, raceProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
@@ -267,6 +272,24 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
 
     private void send(User user, PetResponseDTO body) {
         user.send(ResponseBuilder.build(null, body, MessageType.PET));
+    }
+
+    private void sendProfileResult(User user, PetAction petAction, Long requestId, PetProfileDTO profile) {
+        send(user, PetResponseDTO.ok(petAction, requestId, profile));
+        pushProfileUpdateToOtherConnections(user, profile);
+    }
+
+    private void pushProfileUpdateToOtherConnections(User source, PetProfileDTO profile) {
+        if (source == null || source.getAccountId() <= 0L || profile == null) {
+            return;
+        }
+        PetResponseDTO pushBody = PetResponseDTO.ok(PetAction.PET_PROFILE, null, profile);
+        for (User target : UserCache.getByAccount(source.getAccountId())) {
+            if (target == null || Objects.equals(target.getId(), source.getId())) {
+                continue;
+            }
+            target.send(ResponseBuilder.build(null, pushBody, MessageType.PET));
+        }
     }
 
 }
