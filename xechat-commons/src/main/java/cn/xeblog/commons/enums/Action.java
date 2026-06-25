@@ -237,6 +237,21 @@ public enum Action {
     ADMIN_LIST_TURTLE_SOUP_RECORDS,
 
     /**
+     * 管理员:查看狗狗每日问候内容库
+     */
+    ADMIN_LIST_PET_DAILY_SAYINGS,
+
+    /**
+     * 管理员:保存狗狗每日问候内容
+     */
+    ADMIN_SAVE_PET_DAILY_SAYING,
+
+    /**
+     * 管理员:下架狗狗每日问候内容
+     */
+    ADMIN_DELETE_PET_DAILY_SAYING,
+
+    /**
      * 游客登录(无账号体系,仅大厅聊天,禁止私聊)
      */
     GUEST_LOGIN,

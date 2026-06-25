@@ -1,6 +1,9 @@
 package cn.xeblog.server.account;
 
 import cn.xeblog.server.config.GlobalConfig;
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.io.Resources;
 import org.apache.ibatis.session.SqlSession;
@@ -35,6 +38,7 @@ public final class DbInitializer {
 
     private static final String QUICK_QUIZ_TO_TACIT_QUIZ_MIGRATION = "quick_quiz_to_tacit_quiz_20260618";
     private static final String TACIT_QUIZ_SAME_ANSWERS_BACKFILL = "tacit_quiz_same_answers_backfill_20260625";
+    private static final String PET_DAILY_SAYING_RESOURCE = "pet_daily_saying_content_v1.json";
 
     private static volatile SqlSessionFactory FACTORY;
 
@@ -670,7 +674,113 @@ public final class DbInitializer {
                         "first_explore_free_used INTEGER NOT NULL DEFAULT 0," +
                         "updated_at INTEGER NOT NULL" +
                         ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_daily_saying_contents (" +
+                        "content_id TEXT PRIMARY KEY," +
+                        "category TEXT NOT NULL," +
+                        "subtype TEXT," +
+                        "title TEXT," +
+                        "primary_text TEXT NOT NULL," +
+                        "secondary_text TEXT," +
+                        "author TEXT," +
+                        "work TEXT," +
+                        "source_type TEXT," +
+                        "source_url TEXT," +
+                        "source_locator TEXT," +
+                        "source_original TEXT," +
+                        "language TEXT," +
+                        "translator_editor TEXT," +
+                        "tags TEXT," +
+                        "tone TEXT," +
+                        "recommended_weight REAL NOT NULL DEFAULT 1," +
+                        "copyright_status TEXT," +
+                        "review_status TEXT NOT NULL," +
+                        "risk_notes TEXT," +
+                        "active INTEGER NOT NULL DEFAULT 0," +
+                        "content_version TEXT NOT NULL," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_daily_saying_contents_publish " +
+                        "ON pet_daily_saying_contents(category, active, review_status)");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_daily_saying_assignments (" +
+                        "assignment_id TEXT PRIMARY KEY," +
+                        "account_id INTEGER NOT NULL," +
+                        "dog_id TEXT NOT NULL," +
+                        "dog_name_snapshot TEXT NOT NULL," +
+                        "dog_avatar_snapshot TEXT," +
+                        "content_id TEXT NOT NULL," +
+                        "assigned_server_date TEXT NOT NULL," +
+                        "status TEXT NOT NULL," +
+                        "assigned_at INTEGER NOT NULL," +
+                        "read_at INTEGER," +
+                        "read_server_date TEXT," +
+                        "greeting_reward_applied INTEGER," +
+                        "greeting_intimacy_delta INTEGER," +
+                        "content_version TEXT NOT NULL" +
+                        ")");
+                st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pet_daily_saying_assignments_day " +
+                        "ON pet_daily_saying_assignments(account_id, assigned_server_date)");
+                st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pet_daily_saying_assignments_unread " +
+                        "ON pet_daily_saying_assignments(account_id) WHERE status = 'UNREAD'");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_daily_saying_assignments_recent " +
+                        "ON pet_daily_saying_assignments(account_id, status, read_at DESC)");
             }
+            seedPetDailySayingContent(conn);
+        }
+    }
+
+    private static void seedPetDailySayingContent(Connection conn) {
+        try {
+            String raw = loadResource(PET_DAILY_SAYING_RESOURCE);
+            JSONObject root = JSONUtil.parseObj(raw);
+            String contentVersion = root.getStr("content_version", "pet-daily-saying-v1-2026-06-24");
+            JSONArray items = root.getJSONArray("items");
+            if (items == null || items.isEmpty()) {
+                return;
+            }
+            long now = System.currentTimeMillis();
+            int inserted = 0;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT OR IGNORE INTO pet_daily_saying_contents (" +
+                            "content_id, category, subtype, title, primary_text, secondary_text, author, work, " +
+                            "source_type, source_url, source_locator, source_original, language, translator_editor, " +
+                            "tags, tone, recommended_weight, copyright_status, review_status, risk_notes, " +
+                            "active, content_version, created_at, updated_at" +
+                            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                for (Object value : items) {
+                    JSONObject item = JSONUtil.parseObj(value);
+                    ps.setString(1, item.getStr("content_id"));
+                    ps.setString(2, item.getStr("category"));
+                    ps.setString(3, item.getStr("subtype"));
+                    ps.setString(4, item.getStr("title"));
+                    ps.setString(5, item.getStr("primary_text"));
+                    ps.setString(6, item.getStr("secondary_text"));
+                    ps.setString(7, item.getStr("author"));
+                    ps.setString(8, item.getStr("work"));
+                    ps.setString(9, item.getStr("source_type"));
+                    ps.setString(10, item.getStr("source_url"));
+                    ps.setString(11, item.getStr("source_locator"));
+                    ps.setString(12, item.getStr("source_original"));
+                    ps.setString(13, item.getStr("language"));
+                    ps.setString(14, item.getStr("translator_editor"));
+                    ps.setString(15, item.getStr("tags"));
+                    ps.setString(16, item.getStr("tone"));
+                    ps.setDouble(17, item.getDouble("recommended_weight", 1D));
+                    ps.setString(18, item.getStr("copyright_status"));
+                    ps.setString(19, item.getStr("review_status", "待编辑终审"));
+                    ps.setString(20, item.getStr("risk_notes"));
+                    ps.setInt(21, Boolean.TRUE.equals(item.getBool("active")) ? 1 : 0);
+                    ps.setString(22, contentVersion);
+                    ps.setLong(23, now);
+                    ps.setLong(24, now);
+                    inserted += ps.executeUpdate();
+                }
+            }
+            if (inserted > 0) {
+                log.info("狗狗每日问候内容库已导入候选内容 {} 条", inserted);
+            }
+        } catch (Exception e) {
+            log.warn("狗狗每日问候内容库初始化跳过: {}", e.getMessage());
         }
     }
 

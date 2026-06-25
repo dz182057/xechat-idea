@@ -415,7 +415,7 @@ public final class PetProfileService {
         }
     }
 
-    private static PetProfileDTO profileLocked(long accountId) {
+    static PetProfileDTO profileLocked(long accountId) {
         return profileLocked(accountId, null);
     }
 
@@ -535,6 +535,8 @@ public final class PetProfileService {
                     pendingOldTennisBall(dailyCounterMapper, accountId, rows)));
             profile.setInteractionStatus(buildInteractionStatus(dailyCounterMapper, accountId, todayText));
             profile.setDailyCompanionStatus(buildDailyCompanionStatus(dailyCounterMapper, accountId, todayText, rows));
+            profile.setDailySaying(PetDailySayingService.currentState(session, accountId, todayText));
+            profile.setRecentSayings(PetDailySayingService.recentSayings(session, accountId));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             profile.setShopStatus(buildShopStatus(dailyCounterMapper, accountId, now));
             if (energyRefreshed || legacyChestMigrated || exploreSettled || dogStageChanged) {
@@ -3291,7 +3293,7 @@ public final class PetProfileService {
                 .build();
     }
 
-    private static Object accountLock(long accountId) {
+    static Object accountLock(long accountId) {
         return ACCOUNT_LOCKS.computeIfAbsent(accountId, ignored -> new Object());
     }
 
@@ -3340,6 +3342,24 @@ public final class PetProfileService {
         if (bond != dog.getBond()) {
             dogMapper.updateCareStats(dog.getId(), accountId, bond, now);
         }
+    }
+
+    static int applyDailyGreetingBond(SqlSession session,
+                                      long accountId,
+                                      String today,
+                                      PetDogRecord dog,
+                                      long now) {
+        if (dog == null || StrUtil.isBlank(dog.getId())) {
+            return 0;
+        }
+        PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+        int bond = grantDailyDogBond(counterMapper, accountId, today, dog,
+                DAILY_COUNTER_GREET_BOND_PREFIX, now);
+        if (bond == dog.getBond()) {
+            return 0;
+        }
+        session.getMapper(PetDogMapper.class).updateCareStats(dog.getId(), accountId, bond, now);
+        return 1;
     }
 
     private static int grantDailyDogBond(PetDailyCounterMapper counterMapper,

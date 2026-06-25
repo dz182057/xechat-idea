@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetDailySayingContentMapper">
+
+    <sql id="cols">
+        content_id, category, subtype, title, primary_text, secondary_text, author, work,
+        source_type, source_url, source_locator, source_original, language, translator_editor,
+        tags, tone, recommended_weight, copyright_status, review_status, risk_notes,
+        active, content_version, created_at, updated_at
+    </sql>
+
+    <sql id="filters">
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    content_id LIKE '%' || #{keyword} || '%'
+                    OR title LIKE '%' || #{keyword} || '%'
+                    OR primary_text LIKE '%' || #{keyword} || '%'
+                    OR secondary_text LIKE '%' || #{keyword} || '%'
+                )
+            </if>
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+            <if test="reviewStatus != null and reviewStatus != ''">
+                AND review_status = #{reviewStatus}
+            </if>
+            <if test="active != null">
+                AND active = #{active}
+            </if>
+        </where>
+    </sql>
+
+    <select id="countByFilters" resultType="int">
+        SELECT COUNT(1)
+        FROM pet_daily_saying_contents
+        <include refid="filters"/>
+    </select>
+
+    <select id="listByFilters" resultType="cn.xeblog.server.pet.PetDailySayingContentRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_daily_saying_contents
+        <include refid="filters"/>
+        ORDER BY updated_at DESC, content_id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="findById" resultType="cn.xeblog.server.pet.PetDailySayingContentRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_daily_saying_contents
+        WHERE content_id = #{contentId}
+    </select>
+
+    <insert id="insertIgnore" parameterType="cn.xeblog.server.pet.PetDailySayingContentRecord">
+        INSERT OR IGNORE INTO pet_daily_saying_contents (
+            content_id, category, subtype, title, primary_text, secondary_text, author, work,
+            source_type, source_url, source_locator, source_original, language, translator_editor,
+            tags, tone, recommended_weight, copyright_status, review_status, risk_notes,
+            active, content_version, created_at, updated_at
+        ) VALUES (
+            #{contentId}, #{category}, #{subtype}, #{title}, #{primaryText}, #{secondaryText}, #{author}, #{work},
+            #{sourceType}, #{sourceUrl}, #{sourceLocator}, #{sourceOriginal}, #{language}, #{translatorEditor},
+            #{tags}, #{tone}, #{recommendedWeight}, #{copyrightStatus}, #{reviewStatus}, #{riskNotes},
+            #{active}, #{contentVersion}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <insert id="upsert" parameterType="cn.xeblog.server.pet.PetDailySayingContentRecord">
+        INSERT INTO pet_daily_saying_contents (
+            content_id, category, subtype, title, primary_text, secondary_text, author, work,
+            source_type, source_url, source_locator, source_original, language, translator_editor,
+            tags, tone, recommended_weight, copyright_status, review_status, risk_notes,
+            active, content_version, created_at, updated_at
+        ) VALUES (
+            #{contentId}, #{category}, #{subtype}, #{title}, #{primaryText}, #{secondaryText}, #{author}, #{work},
+            #{sourceType}, #{sourceUrl}, #{sourceLocator}, #{sourceOriginal}, #{language}, #{translatorEditor},
+            #{tags}, #{tone}, #{recommendedWeight}, #{copyrightStatus}, #{reviewStatus}, #{riskNotes},
+            #{active}, #{contentVersion}, #{createdAt}, #{updatedAt}
+        )
+        ON CONFLICT(content_id) DO UPDATE
+        SET category = excluded.category,
+            subtype = excluded.subtype,
+            title = excluded.title,
+            primary_text = excluded.primary_text,
+            secondary_text = excluded.secondary_text,
+            author = excluded.author,
+            work = excluded.work,
+            source_type = excluded.source_type,
+            source_url = excluded.source_url,
+            source_locator = excluded.source_locator,
+            source_original = excluded.source_original,
+            language = excluded.language,
+            translator_editor = excluded.translator_editor,
+            tags = excluded.tags,
+            tone = excluded.tone,
+            recommended_weight = excluded.recommended_weight,
+            copyright_status = excluded.copyright_status,
+            review_status = excluded.review_status,
+            risk_notes = excluded.risk_notes,
+            active = excluded.active,
+            content_version = excluded.content_version,
+            updated_at = excluded.updated_at
+    </insert>
+
+    <update id="softDelete">
+        UPDATE pet_daily_saying_contents
+        SET active = 0,
+            review_status = '下架',
+            updated_at = #{updatedAt}
+        WHERE content_id = #{contentId}
+    </update>
+
+    <select id="listPublishableByCategory" resultType="cn.xeblog.server.pet.PetDailySayingContentRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_daily_saying_contents
+        WHERE active = 1
+          AND review_status = '可发布'
+          AND category = #{category}
+        <if test="excludedContentIds != null and excludedContentIds.size() > 0">
+          AND content_id NOT IN
+          <foreach collection="excludedContentIds" item="contentId" open="(" separator="," close=")">
+              #{contentId}
+          </foreach>
+        </if>
+        ORDER BY content_id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="latestContentVersion" resultType="string">
+        SELECT content_version
+        FROM pet_daily_saying_contents
+        WHERE content_version IS NOT NULL
+          AND content_version != ''
+        ORDER BY updated_at DESC
+        LIMIT 1
+    </select>
+
+</mapper>

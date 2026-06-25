@@ -144,6 +144,10 @@ public enum MessageType {
      */
     TURTLE_SOUP_RECORDS,
     /**
+     * 狗狗每日问候内容库响应
+     */
+    PET_DAILY_SAYING_CONTENT_LIST,
+    /**
      * 对端身份公钥(GET_PEER_KEY 响应)
      */
     PEER_KEY,
