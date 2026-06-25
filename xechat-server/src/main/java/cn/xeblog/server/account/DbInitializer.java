@@ -1,5 +1,8 @@
 package cn.xeblog.server.account;
 
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.server.config.GlobalConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.io.Resources;
@@ -35,6 +38,7 @@ public final class DbInitializer {
 
     private static final String QUICK_QUIZ_TO_TACIT_QUIZ_MIGRATION = "quick_quiz_to_tacit_quiz_20260618";
     private static final String TACIT_QUIZ_SAME_ANSWERS_BACKFILL = "tacit_quiz_same_answers_backfill_20260625";
+    private static final String PET_DAILY_SAYING_CONTENT_RESOURCE = "pet_daily_saying_content_v1.json";
 
     private static volatile SqlSessionFactory FACTORY;
 
@@ -670,8 +674,122 @@ public final class DbInitializer {
                         "first_explore_free_used INTEGER NOT NULL DEFAULT 0," +
                         "updated_at INTEGER NOT NULL" +
                         ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_saying_content (" +
+                        "content_id TEXT PRIMARY KEY," +
+                        "category TEXT NOT NULL," +
+                        "subtype TEXT," +
+                        "title TEXT," +
+                        "primary_text TEXT NOT NULL," +
+                        "secondary_text TEXT," +
+                        "author TEXT," +
+                        "work TEXT," +
+                        "source_type TEXT," +
+                        "source_url TEXT," +
+                        "source_locator TEXT," +
+                        "source_original TEXT," +
+                        "language TEXT," +
+                        "translator_editor TEXT," +
+                        "tags TEXT," +
+                        "tone TEXT," +
+                        "char_count INTEGER NOT NULL DEFAULT 0," +
+                        "recommended_weight REAL NOT NULL DEFAULT 1.0," +
+                        "copyright_status TEXT," +
+                        "review_status TEXT NOT NULL DEFAULT '待编辑终审'," +
+                        "risk_notes TEXT," +
+                        "active INTEGER NOT NULL DEFAULT 0," +
+                        "content_version TEXT," +
+                        "created_at INTEGER NOT NULL," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_saying_content_publish " +
+                        "ON pet_saying_content(category, active, review_status)");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_daily_saying_assignment (" +
+                        "assignment_id TEXT PRIMARY KEY," +
+                        "account_id INTEGER NOT NULL," +
+                        "pet_id TEXT NOT NULL," +
+                        "pet_name_snapshot TEXT NOT NULL," +
+                        "pet_breed_snapshot TEXT," +
+                        "pet_stage_snapshot TEXT," +
+                        "content_id TEXT NOT NULL," +
+                        "assigned_server_date TEXT NOT NULL," +
+                        "status TEXT NOT NULL," +
+                        "assigned_at INTEGER NOT NULL," +
+                        "read_at INTEGER," +
+                        "read_server_date TEXT," +
+                        "greeting_reward_applied INTEGER," +
+                        "greeting_intimacy_delta INTEGER," +
+                        "content_version TEXT" +
+                        ")");
+                st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pet_daily_saying_assignment_day " +
+                        "ON pet_daily_saying_assignment(account_id, assigned_server_date)");
+                st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pet_daily_saying_assignment_unread " +
+                        "ON pet_daily_saying_assignment(account_id) WHERE status = 'UNREAD'");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_daily_saying_assignment_read " +
+                        "ON pet_daily_saying_assignment(account_id, read_at DESC)");
+            }
+            seedPetDailySayingContentIfEmpty(conn);
+        }
+    }
+
+    private static void seedPetDailySayingContentIfEmpty(Connection conn) throws Exception {
+        if (!tableExists(conn, "pet_saying_content")) {
+            return;
+        }
+        try (PreparedStatement ps = conn.prepareStatement("SELECT COUNT(1) FROM pet_saying_content");
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next() && rs.getInt(1) > 0) {
+                return;
             }
         }
+
+        JSONObject root = JSONUtil.parseObj(loadResource(PET_DAILY_SAYING_CONTENT_RESOURCE));
+        String contentVersion = jsonStr(root, "content_version");
+        JSONArray items = root.getJSONArray("items");
+        if (items == null || items.isEmpty()) {
+            log.warn("狗狗每日问候内容库资源为空: {}", PET_DAILY_SAYING_CONTENT_RESOURCE);
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        int inserted = 0;
+        String sql = "INSERT OR IGNORE INTO pet_saying_content (" +
+                "content_id, category, subtype, title, primary_text, secondary_text, " +
+                "author, work, source_type, source_url, source_locator, source_original, " +
+                "language, translator_editor, tags, tone, char_count, recommended_weight, " +
+                "copyright_status, review_status, risk_notes, active, content_version, created_at, updated_at" +
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (Object value : items) {
+                JSONObject item = value instanceof JSONObject ? (JSONObject) value : JSONUtil.parseObj(value);
+                ps.setString(1, jsonStr(item, "content_id"));
+                ps.setString(2, jsonStr(item, "category"));
+                ps.setString(3, jsonStr(item, "subtype"));
+                ps.setString(4, jsonStr(item, "title"));
+                ps.setString(5, jsonStr(item, "primary_text"));
+                ps.setString(6, jsonStr(item, "secondary_text"));
+                ps.setString(7, jsonStr(item, "author"));
+                ps.setString(8, jsonStr(item, "work"));
+                ps.setString(9, jsonStr(item, "source_type"));
+                ps.setString(10, jsonStr(item, "source_url"));
+                ps.setString(11, jsonStr(item, "source_locator"));
+                ps.setString(12, jsonStr(item, "source_original"));
+                ps.setString(13, jsonStr(item, "language"));
+                ps.setString(14, jsonStr(item, "translator_editor"));
+                ps.setString(15, jsonStr(item, "tags"));
+                ps.setString(16, jsonStr(item, "tone"));
+                ps.setInt(17, jsonInt(item, "char_count", 0));
+                ps.setDouble(18, jsonDouble(item, "recommended_weight", 1.0D));
+                ps.setString(19, jsonStr(item, "copyright_status"));
+                ps.setString(20, jsonStr(item, "review_status"));
+                ps.setString(21, jsonStr(item, "risk_notes"));
+                ps.setInt(22, jsonBool(item, "active") ? 1 : 0);
+                ps.setString(23, contentVersion);
+                ps.setLong(24, now);
+                ps.setLong(25, now);
+                inserted += ps.executeUpdate();
+            }
+        }
+        log.info("已导入狗狗每日问候候选内容 {} 条", inserted);
     }
 
     private static void migrateDogsToV5Shape(Connection conn, Statement st) throws Exception {
@@ -748,6 +866,46 @@ public final class DbInitializer {
             }
         }
         return false;
+    }
+
+    private static String jsonStr(JSONObject json, String key) {
+        Object value = json == null ? null : json.get(key);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static int jsonInt(JSONObject json, String key, int defaultValue) {
+        Object value = json == null ? null : json.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        try {
+            return value == null ? defaultValue : Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private static double jsonDouble(JSONObject json, String key, double defaultValue) {
+        Object value = json == null ? null : json.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        try {
+            return value == null ? defaultValue : Double.parseDouble(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private static boolean jsonBool(JSONObject json, String key) {
+        Object value = json == null ? null : json.get(key);
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        return value != null && Boolean.parseBoolean(String.valueOf(value));
     }
 
     /**

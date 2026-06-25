@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetDailySayingAssignmentMapper">
+
+    <sql id="cols">
+        assignment_id, account_id, pet_id, pet_name_snapshot, pet_breed_snapshot,
+        pet_stage_snapshot, content_id, assigned_server_date, status, assigned_at,
+        read_at, read_server_date, greeting_reward_applied, greeting_intimacy_delta,
+        content_version
+    </sql>
+
+    <insert id="insert" parameterType="cn.xeblog.server.pet.PetDailySayingAssignmentRecord">
+        INSERT INTO pet_daily_saying_assignment (
+            assignment_id, account_id, pet_id, pet_name_snapshot, pet_breed_snapshot,
+            pet_stage_snapshot, content_id, assigned_server_date, status, assigned_at,
+            read_at, read_server_date, greeting_reward_applied, greeting_intimacy_delta,
+            content_version
+        ) VALUES (
+            #{assignmentId}, #{accountId}, #{petId}, #{petNameSnapshot}, #{petBreedSnapshot},
+            #{petStageSnapshot}, #{contentId}, #{assignedServerDate}, #{status}, #{assignedAt},
+            #{readAt}, #{readServerDate}, #{greetingRewardApplied}, #{greetingIntimacyDelta},
+            #{contentVersion}
+        )
+    </insert>
+
+    <select id="findUnread" resultType="cn.xeblog.server.pet.PetDailySayingAssignmentRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_daily_saying_assignment
+        WHERE account_id = #{accountId}
+          AND status = 'UNREAD'
+        ORDER BY assigned_at ASC
+        LIMIT 1
+    </select>
+
+    <select id="findReadOnDate" resultType="cn.xeblog.server.pet.PetDailySayingAssignmentRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_daily_saying_assignment
+        WHERE account_id = #{accountId}
+          AND status = 'READ'
+          AND read_server_date = #{readServerDate}
+        ORDER BY read_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="findByIdAndAccount" resultType="cn.xeblog.server.pet.PetDailySayingAssignmentRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_daily_saying_assignment
+        WHERE assignment_id = #{assignmentId}
+          AND account_id = #{accountId}
+    </select>
+
+    <update id="markRead">
+        UPDATE pet_daily_saying_assignment
+        SET status = 'READ',
+            read_at = #{readAt},
+            read_server_date = #{readServerDate},
+            greeting_reward_applied = #{greetingRewardApplied},
+            greeting_intimacy_delta = #{greetingIntimacyDelta}
+        WHERE assignment_id = #{assignmentId}
+          AND account_id = #{accountId}
+          AND status = 'UNREAD'
+    </update>
+
+    <select id="listRecentContentIds" resultType="string">
+        SELECT content_id
+        FROM pet_daily_saying_assignment
+        WHERE account_id = #{accountId}
+          AND status = 'READ'
+        ORDER BY read_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listRecentCategories" resultType="string">
+        SELECT c.category
+        FROM pet_daily_saying_assignment a
+        INNER JOIN pet_saying_content c ON c.content_id = a.content_id
+        WHERE a.account_id = #{accountId}
+          AND a.status = 'READ'
+        ORDER BY a.read_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listRecentRead" resultType="cn.xeblog.server.pet.PetDailySayingAssignmentRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_daily_saying_assignment
+        WHERE account_id = #{accountId}
+          AND status = 'READ'
+        ORDER BY read_at DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

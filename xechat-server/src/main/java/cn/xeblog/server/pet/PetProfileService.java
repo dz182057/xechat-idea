@@ -78,7 +78,7 @@ public final class PetProfileService {
     private static final int PUBLIC_DOG_ADOPTION_PRICE = 750;
     private static final int DEFAULT_ENERGY_LIMIT = 10;
     private static final int DAILY_FEED_LIMIT = 5;
-    private static final int DAILY_DOG_BOND_LIMIT = 4;
+    static final int DAILY_DOG_BOND_LIMIT = 4;
     private static final String DOG_STAGE_PUPPY = "puppy";
     private static final String DOG_STAGE_ADULT = "adult";
     private static final String DOG_STAGE_CHAMPION = "champion";
@@ -224,8 +224,8 @@ public final class PetProfileService {
     private static final String ITEM_EXPRESS = "item_express";
     private static final String ITEM_LUCKY_DAY = "item_lucky_day";
     private static final int LUCKY_DAY_REWARD_MULTIPLIER = 2;
-    private static final String DAILY_COUNTER_DOG_BOND_TOTAL_PREFIX = "bond_total:";
-    private static final String DAILY_COUNTER_GREET_BOND_PREFIX = "bond_greet:";
+    static final String DAILY_COUNTER_DOG_BOND_TOTAL_PREFIX = "bond_total:";
+    static final String DAILY_COUNTER_GREET_BOND_PREFIX = "bond_greet:";
     private static final String DAILY_COUNTER_GAME_BOND_PREFIX = "bond_game:";
     private static final String DAILY_COUNTER_FEED_FOOD = "feed_food";
     private static final String DAILY_COUNTER_FEED_BOND_PREFIX = "feed_bond:";
@@ -415,11 +415,11 @@ public final class PetProfileService {
         }
     }
 
-    private static PetProfileDTO profileLocked(long accountId) {
+    static PetProfileDTO profileLocked(long accountId) {
         return profileLocked(accountId, null);
     }
 
-    private static PetProfileDTO profileLocked(long accountId, PetCheckinMilestoneRewardDTO lastMilestoneReward) {
+    static PetProfileDTO profileLocked(long accountId, PetCheckinMilestoneRewardDTO lastMilestoneReward) {
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             PetAssetsRecord assets = findAssetsOrDefault(session, accountId);
             LocalDate today = LocalDate.now();
@@ -537,6 +537,7 @@ public final class PetProfileService {
             profile.setDailyCompanionStatus(buildDailyCompanionStatus(dailyCounterMapper, accountId, todayText, rows));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             profile.setShopStatus(buildShopStatus(dailyCounterMapper, accountId, now));
+            PetDailySayingService.attachDailySaying(session, profile);
             if (energyRefreshed || legacyChestMigrated || exploreSettled || dogStageChanged) {
                 session.commit();
             }
@@ -3291,11 +3292,11 @@ public final class PetProfileService {
                 .build();
     }
 
-    private static Object accountLock(long accountId) {
+    static Object accountLock(long accountId) {
         return ACCOUNT_LOCKS.computeIfAbsent(accountId, ignored -> new Object());
     }
 
-    private static int findDailyCounterValue(PetDailyCounterMapper mapper, long accountId,
+    static int findDailyCounterValue(PetDailyCounterMapper mapper, long accountId,
                                              String date, String counter) {
         Integer value = mapper.findValue(accountId, date, counter);
         return value == null ? 0 : Math.max(0, value);
