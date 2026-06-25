@@ -174,6 +174,9 @@ public final class TacitQuizService {
             if (state.answers.containsKey(key)) {
                 return false;
             }
+            if (state.activeInteractionItemIds.containsKey(key)) {
+                return false;
+            }
             GameRoom.Player player = room.getUsers().get(key);
             if (player == null || !itemId.equals(player.getPetInteractionItemId())) {
                 return false;
@@ -306,12 +309,12 @@ public final class TacitQuizService {
             nextPlayers = getRoomUsers(room);
             finished = nextPlayers.size() < 2;
         }
-        List<String> petItemNotices = applyInteractionItemSettlements(
-                room, answers, state.perspectiveGuessChoiceIndexes, state.activeInteractionItemIds);
+        Map<String, List<String>> petItemNoticesByPlayer = applyInteractionItemSettlements(
+                room, state.currentQuestion, answers, state.perspectiveGuessChoiceIndexes, state.activeInteractionItemIds);
         TacitQuizAnswerResultDTO result = new TacitQuizAnswerResultDTO(
                 room.getId(), state.currentQuestion, answers, state.roundNo,
-                room.getTacitQuizQuestionCount(), finished, petItemNotices);
-        sendToRoom(room, ResponseBuilder.build(null, result, MessageType.TACIT_QUIZ_ANSWER_RESULT));
+                room.getTacitQuizQuestionCount(), finished, Collections.emptyList());
+        sendAnswerResultToRoom(room, result, petItemNoticesByPlayer);
         if (finished) {
             applyMiniGameRewards(state, answers, now);
             state.closed = true;
@@ -421,12 +424,14 @@ public final class TacitQuizService {
         }
     }
 
-    private static List<String> applyInteractionItemSettlements(GameRoom room, List<TacitQuizAnswerViewDTO> answers,
-                                                               Map<String, Integer> perspectiveGuessChoiceIndexes,
-                                                               Map<String, String> activeInteractionItemIds) {
-        List<String> notices = new ArrayList<>();
+    private static Map<String, List<String>> applyInteractionItemSettlements(GameRoom room,
+                                                                            TacitQuizQuestionDTO question,
+                                                                            List<TacitQuizAnswerViewDTO> answers,
+                                                                            Map<String, Integer> perspectiveGuessChoiceIndexes,
+                                                                            Map<String, String> activeInteractionItemIds) {
+        Map<String, List<String>> noticesByPlayer = new HashMap<>();
         if (room == null || answers == null || answers.isEmpty()) {
-            return notices;
+            return noticesByPlayer;
         }
         Map<String, TacitQuizAnswerViewDTO> answersByPlayer = new HashMap<>();
         for (TacitQuizAnswerViewDTO answer : answers) {
@@ -452,19 +457,70 @@ public final class TacitQuizService {
                     ? SYNC_PROPHECY_REWARD_BONES
                     : SYNC_PERSPECTIVE_REWARD_BONES;
             String itemName = ITEM_SYNC_PROPHECY.equals(itemId) ? "默契预言" : "换位骨牌";
+            String actionText = itemActionText(itemId, playerKey, question, answersByPlayer, perspectiveGuessChoiceIndexes);
             if (succeeded) {
                 int acceptedReward = PetGameItemDeclarationService.settleSucceededWithInteractionReward(
                         room, playerKey, itemId, SLOT_INTERACTION, rewardBones);
-                notices.add(acceptedReward > 0
-                        ? itemName + "命中，返还道具并获得 🦴" + acceptedReward + "。"
-                        : itemName + "命中，返还道具；今日互动奖励额度已用完。");
+                addInteractionItemNotices(noticesByPlayer, room, playerKey, player.getUsername(), itemName,
+                        actionText, true, acceptedReward);
             } else {
                 PetGameItemDeclarationService.settleFailed(room, playerKey, itemId, SLOT_INTERACTION);
-                notices.add(itemName + "未命中，道具已消耗。");
+                addInteractionItemNotices(noticesByPlayer, room, playerKey, player.getUsername(), itemName,
+                        actionText, false, 0);
             }
             player.setPetInteractionItemId(null);
         }
-        return notices;
+        return noticesByPlayer;
+    }
+
+    private static void addInteractionItemNotices(Map<String, List<String>> noticesByPlayer, GameRoom room,
+                                                  String actorKey, String actorName, String itemName,
+                                                  String actionText, boolean succeeded, int rewardBones) {
+        String actorResult;
+        if (succeeded && rewardBones > 0) {
+            actorResult = "猜中了，返还道具并获得 🦴" + rewardBones + "。";
+        } else if (succeeded) {
+            actorResult = "猜中了，返还道具；今日互动奖励额度已用完。";
+        } else {
+            actorResult = "猜错了，道具已消耗。";
+        }
+        String otherResult = succeeded ? "结果猜中了。" : "结果猜错了。";
+        addNotice(noticesByPlayer, actorKey, "你使用了" + itemName + "，" + actionText + "，" + actorResult);
+        for (Map.Entry<String, GameRoom.Player> entry : room.getUsers().entrySet()) {
+            if (actorKey.equals(entry.getKey())) {
+                continue;
+            }
+            String name = actorName == null || actorName.trim().isEmpty() ? "对方" : actorName;
+            addNotice(noticesByPlayer, entry.getKey(), name + " 使用了" + itemName + "，" + actionText + "，" + otherResult);
+        }
+    }
+
+    private static void addNotice(Map<String, List<String>> noticesByPlayer, String playerKey, String notice) {
+        noticesByPlayer.computeIfAbsent(playerKey, key -> new ArrayList<>()).add(notice);
+    }
+
+    private static String itemActionText(String itemId, String playerKey, TacitQuizQuestionDTO question,
+                                         Map<String, TacitQuizAnswerViewDTO> answersByPlayer,
+                                         Map<String, Integer> perspectiveGuessChoiceIndexes) {
+        if (ITEM_SYNC_PROPHECY.equals(itemId)) {
+            return "预测双方本题答案相同";
+        }
+        Integer guessChoiceIndex = perspectiveGuessChoiceIndexes.get(playerKey);
+        String guessText = guessChoiceIndex == null ? "未提交预测" : "选项 " + (guessChoiceIndex + 1);
+        if (guessChoiceIndex != null && question != null && question.getOptions() != null
+                && guessChoiceIndex >= 0 && guessChoiceIndex < question.getOptions().size()) {
+            guessText = "「" + question.getOptions().get(guessChoiceIndex) + "」";
+        }
+        String opponentName = "对方";
+        for (TacitQuizAnswerViewDTO answer : answersByPlayer.values()) {
+            if (answer != null && !playerKey.equals(answer.getPlayerKey())) {
+                opponentName = answer.getUsername() == null || answer.getUsername().trim().isEmpty()
+                        ? "对方"
+                        : answer.getUsername();
+                break;
+            }
+        }
+        return "预测" + opponentName + "会选择" + guessText;
     }
 
     private static boolean isSupportedInteractionItem(String itemId) {
@@ -518,6 +574,25 @@ public final class TacitQuizService {
             if (player != null) {
                 player.send(response);
             }
+        });
+    }
+
+    private static void sendAnswerResultToRoom(GameRoom room, TacitQuizAnswerResultDTO result,
+                                               Map<String, List<String>> petItemNoticesByPlayer) {
+        room.getUsers().forEach((playerKey, roomPlayer) -> {
+            User player = UserCache.get(roomPlayer.getChannelId());
+            if (player == null) {
+                return;
+            }
+            TacitQuizAnswerResultDTO playerResult = new TacitQuizAnswerResultDTO(
+                    result.getRoomId(),
+                    result.getQuestion(),
+                    result.getAnswers(),
+                    result.getRoundNo(),
+                    result.getTotalRounds(),
+                    result.isFinished(),
+                    petItemNoticesByPlayer.getOrDefault(playerKey, Collections.emptyList()));
+            player.send(ResponseBuilder.build(null, playerResult, MessageType.TACIT_QUIZ_ANSWER_RESULT));
         });
     }
 

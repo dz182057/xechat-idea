@@ -1,6 +1,7 @@
 package cn.xeblog.server.action.handler;
 
 import cn.xeblog.commons.entity.User;
+import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.game.GameDTO;
 import cn.xeblog.commons.entity.game.GamePlayerPetItemsDTO;
 import cn.xeblog.commons.entity.game.GameRoom;
@@ -10,10 +11,12 @@ import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizAnswerResultDTO;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizQuestionDTO;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizSubmitAnswerDTO;
+import cn.xeblog.commons.entity.game.tacitquiz.TacitQuizAnswerResultDTO;
 import cn.xeblog.commons.entity.game.tacitquiz.TacitQuizQuestionDTO;
 import cn.xeblog.commons.entity.game.tacitquiz.TacitQuizSubmitAnswerDTO;
 import cn.xeblog.commons.entity.game.turtlesoup.TurtleSoupDTO;
 import cn.xeblog.commons.enums.Game;
+import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.cache.GameRoomCache;
@@ -38,7 +41,9 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class GameRoomPetItemLifecycleTest {
 
@@ -318,17 +323,34 @@ public class GameRoomPetItemLifecycleTest {
                 new GamePlayerPetItemsDTO(null, "item_sync_perspective"));
 
         TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
-        Assert.assertTrue(TacitQuizService.activateInteractionItem(alice, room, "item_sync_perspective"));
+        drainOutbound(alice);
+        drainOutbound(bob);
+        useTacitItemThroughRoomMessage(alice, room, "item_sync_perspective");
+        Response<?> firstUse = readResponse(alice);
+        Assert.assertEquals(MessageType.GAME_ROOM, firstUse.getType());
+        Assert.assertNotNull(readResponse(bob));
+        useTacitItemThroughRoomMessage(alice, room, "item_sync_perspective");
+        Assert.assertNull(readResponse(alice));
+        Assert.assertNull(readResponse(bob));
         TacitQuizService.submitAnswer(alice, room,
                 new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A", 1, "B"));
         TacitQuizService.submitAnswer(bob, room,
                 new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 1, "B"));
+        TacitQuizAnswerResultDTO aliceResult = readTacitAnswerResult(alice);
+        TacitQuizAnswerResultDTO bobResult = readTacitAnswerResult(bob);
 
         Assert.assertEquals(1, countItem(alice.getAccountId(), "item_sync_perspective"));
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
                 "item_sync_perspective", "interaction", "succeeded"));
         Assert.assertEquals(30, maxRewardBones(room.getId(), alice.getAccountId(),
                 "item_sync_perspective", "interaction", "succeeded"));
+        Assert.assertEquals(1, aliceResult.getPetItemNotices().size());
+        Assert.assertTrue(aliceResult.getPetItemNotices().get(0).contains("你使用了换位骨牌"));
+        Assert.assertTrue(aliceResult.getPetItemNotices().get(0).contains("猜中了"));
+        Assert.assertEquals(1, bobResult.getPetItemNotices().size());
+        Assert.assertTrue(bobResult.getPetItemNotices().get(0).contains("玩家2052 使用了换位骨牌"));
+        Assert.assertTrue(bobResult.getPetItemNotices().get(0).contains("预测玩家2053会选择「B」"));
+        Assert.assertTrue(bobResult.getPetItemNotices().get(0).contains("结果猜中了"));
     }
 
     @Test
@@ -776,6 +798,30 @@ public class GameRoomPetItemLifecycleTest {
         TurtleSoupDTO dto = new TurtleSoupDTO("pet-item-end-room");
         dto.setEvent(event);
         return dto;
+    }
+
+    private static void useTacitItemThroughRoomMessage(User user, GameRoom room, String itemId) {
+        Map<String, Object> content = new HashMap<>();
+        content.put("itemId", itemId);
+        new GameRoomActionHandler().process(user, room, new GameRoomMsgDTO(
+                room.getId(), Game.TACIT_QUIZ, GameRoomMsgDTO.MsgType.MINE_ITEM_USED, content));
+    }
+
+    private static TacitQuizAnswerResultDTO readTacitAnswerResult(User user) {
+        Response<?> response = readResponse(user);
+        Assert.assertNotNull(response);
+        Assert.assertEquals(MessageType.TACIT_QUIZ_ANSWER_RESULT, response.getType());
+        return (TacitQuizAnswerResultDTO) response.getBody();
+    }
+
+    private static void drainOutbound(User user) {
+        while (readResponse(user) != null) {
+            // 清空上一阶段推送，方便断言当前阶段的响应。
+        }
+    }
+
+    private static Response<?> readResponse(User user) {
+        return ((EmbeddedChannel) user.getChannel()).readOutbound();
     }
 
     private static void insertTurtleSoupStory(String title, String surface, String bottom) {

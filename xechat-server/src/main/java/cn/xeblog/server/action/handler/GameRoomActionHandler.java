@@ -298,7 +298,9 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         if (raw == null) {
             return null;
         }
-        return JSONUtil.parseObj(raw).getStr("petItemId");
+        cn.hutool.json.JSONObject content = JSONUtil.parseObj(raw);
+        String itemId = content.getStr("itemId");
+        return itemId == null ? content.getStr("petItemId") : itemId;
     }
 
     private void sendMsg(GameRoom gameRoom, Response response) {
