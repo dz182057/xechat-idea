@@ -62,6 +62,10 @@ public class MinesweeperDTO extends GameDTO {
 
     private String petItemNotice;
 
+    private Integer petItemSlotIndex;
+
+    private Boolean petItemConsumed;
+
     private Integer petItemTargetX;
 
     private Integer petItemTargetY;

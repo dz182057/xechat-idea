@@ -53,6 +53,54 @@ public class MinesweeperServiceTest {
     }
 
     @Test
+    public void singleMineShieldShouldPreventMineFailureAndMarkSlotUsed() {
+        MinesweeperService.setBoardGeneratorForTest((rows, cols, mines, firstClick) ->
+                NoGuessMinesweeper.Board.fromMines(rows, cols,
+                        Collections.singletonList(new NoGuessMinesweeper.Point(1, 0))));
+
+        MinesweeperDTO openMine = actionRequest(5, 5, 1, 1, 0);
+        openMine.setPetItemId("item_mine_shield");
+        openMine.setPetItemSlotIndex(1);
+        MinesweeperService.handleSingle(user, openMine);
+        MinesweeperDTO response = gameBody(readResponse(user));
+
+        Assert.assertEquals(MinesweeperDTO.Phase.playing, response.getPhase());
+        Assert.assertEquals(Boolean.FALSE, response.getHitMine());
+        Assert.assertEquals("item_mine_shield", response.getPetItemId());
+        Assert.assertEquals(Integer.valueOf(1), response.getPetItemSlotIndex());
+        Assert.assertEquals(Boolean.TRUE, response.getPetItemConsumed());
+        Assert.assertTrue(Boolean.TRUE.equals(cell(response, 1, 0).getSharedMarked()));
+    }
+
+    @Test
+    public void singleStartRequestShouldClearPreviousBoardMarks() {
+        MinesweeperService.setBoardGeneratorForTest((rows, cols, mines, firstClick) ->
+                NoGuessMinesweeper.Board.fromMines(rows, cols,
+                        Collections.singletonList(new NoGuessMinesweeper.Point(1, 0))));
+
+        MinesweeperDTO openMine = actionRequest(5, 5, 1, 1, 0);
+        openMine.setPetItemId("item_mine_shield");
+        openMine.setPetItemSlotIndex(0);
+        MinesweeperService.handleSingle(user, openMine);
+        MinesweeperDTO shielded = gameBody(readResponse(user));
+        Assert.assertTrue(Boolean.TRUE.equals(cell(shielded, 1, 0).getSharedMarked()));
+
+        MinesweeperDTO restart = new MinesweeperDTO("single");
+        restart.setEvent(MinesweeperDTO.Event.SERVER_START_REQUEST);
+        restart.setRows(5);
+        restart.setCols(5);
+        restart.setMines(1);
+        MinesweeperService.handleSingle(user, restart);
+        drain(user);
+
+        MinesweeperDTO safeOpen = actionRequest(5, 5, 1, 0, 0);
+        MinesweeperService.handleSingle(user, safeOpen);
+        MinesweeperDTO restarted = gameBody(readResponse(user));
+
+        Assert.assertFalse(Boolean.TRUE.equals(cell(restarted, 1, 0).getSharedMarked()));
+    }
+
+    @Test
     public void roomActionShouldRebuildWhenRequestedSizeChangesAfterTurnMovedToOpponent() {
         User homeowner = user("home-channel", 9101L, "home");
         User opponent = user("opponent-channel", 9102L, "opponent");
@@ -678,6 +726,16 @@ public class MinesweeperServiceTest {
         Assert.assertEquals(MessageType.GAME, response.getType());
         Assert.assertTrue(response.getBody() instanceof MinesweeperDTO);
         return (MinesweeperDTO) response.getBody();
+    }
+
+    private static cn.xeblog.commons.entity.game.minesweeper.MinesweeperCellDTO cell(
+            MinesweeperDTO dto, int x, int y) {
+        for (cn.xeblog.commons.entity.game.minesweeper.MinesweeperCellDTO cell : dto.getCells()) {
+            if (cell.getX() == x && cell.getY() == y) {
+                return cell;
+            }
+        }
+        throw new AssertionError("未找到扫雷格子: " + x + "," + y);
     }
 
     private static Response readResponse(User user) {
