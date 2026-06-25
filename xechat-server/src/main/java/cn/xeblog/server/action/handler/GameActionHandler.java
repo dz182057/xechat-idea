@@ -63,13 +63,25 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
             handleDrawGuessPetItems(gameRoom, body);
         }
         boolean gobangOpeningColorMessage = false;
+        GameDTO responseBody = body;
         if (gameRoom.getGame() == Game.GOBANG && body instanceof GobangDTO) {
             GobangDTO gobangDTO = (GobangDTO) body;
             gobangOpeningColorMessage = GobangPetItemService.isOpeningColorMessage(user, gameRoom, gobangDTO);
-            GobangPetItemService.handleMove(user, gameRoom, gobangDTO);
+            GobangDTO acceptedMove = GobangPetItemService.handleMove(user, gameRoom, gobangDTO);
+            if (!gobangOpeningColorMessage && acceptedMove == null) {
+                GobangDTO rejectedMove = GobangPetItemService.rejectedMove(gameRoom, gobangDTO);
+                if (rejectedMove != null) {
+                    user.send(ResponseBuilder.build(user, rejectedMove, MessageType.GAME));
+                }
+                return;
+            }
+            if (acceptedMove != null) {
+                responseBody = acceptedMove;
+            }
         }
 
         boolean echoGobangMoveToSender = body instanceof GobangDTO && !gobangOpeningColorMessage;
+        GameDTO finalResponseBody = responseBody;
         gameRoom.getUsers().forEach((k, v) -> {
             if (v.isConnection(user) && !echoGobangMoveToSender) {
                 return;
@@ -77,7 +89,7 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
 
             User player = UserCache.get(v.getChannelId());
             if (player != null) {
-                player.send(ResponseBuilder.build(user, body, MessageType.GAME));
+                player.send(ResponseBuilder.build(user, finalResponseBody, MessageType.GAME));
             }
         });
     }

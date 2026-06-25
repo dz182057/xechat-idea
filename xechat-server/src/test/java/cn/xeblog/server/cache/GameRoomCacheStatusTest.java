@@ -83,15 +83,46 @@ public class GameRoomCacheStatusTest {
     }
 
     @Test
-    public void disconnectRemovesRoomWhenNoActivePlayerRemains() {
+    public void disconnectKeepsGobangRoomWhenNoActivePlayerRemainsThenReconnects() {
+        GameRoomCache.setGobangEmptyRoomTtlMillisForTest(20L);
         User homeowner = user("channel-last", 1006L, "房主");
         GameRoom room = room("room-empty", Game.GOBANG, 2);
+        room.setHomeowner(homeowner);
 
         Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), homeowner));
 
-        Assert.assertTrue(GameRoomCache.disconnectRoomConnection(room.getId(), homeowner));
+        Assert.assertFalse(GameRoomCache.disconnectRoomConnection(room.getId(), homeowner));
+        Assert.assertSame(room, GameRoomCache.getGameRoom(room.getId()));
+        Assert.assertSame(room, GameRoomCache.getGameRoomByUserId(homeowner.getIdentityKey()));
+
+        User reconnected = user("channel-last-new", homeowner.getAccountId(), "房主");
+        Assert.assertSame(room, GameRoomCache.reconnectRoom(reconnected));
+        Assert.assertSame(room, GameRoomCache.getGameRoomByConnectionId(reconnected.getId()));
+        Assert.assertTrue(room.isHomeowner(reconnected));
+        sleep(60L);
+        Assert.assertSame(room, GameRoomCache.getGameRoom(room.getId()));
+    }
+
+    @Test
+    public void disconnectClosesGobangRoomAfterGraceWhenNoPlayerReconnects() {
+        GameRoomCache.setGobangEmptyRoomTtlMillisForTest(20L);
+        User homeowner = user("channel-expire", 1009L, "房主");
+        User opponent = user("channel-expire-opponent", 1010L, "对手");
+        GameRoom room = room("room-expire", Game.GOBANG, 2);
+        room.setHomeowner(homeowner);
+
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), homeowner));
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), opponent));
+
+        Assert.assertFalse(GameRoomCache.disconnectRoomConnection(room.getId(), homeowner));
+        Assert.assertFalse(GameRoomCache.disconnectRoomConnection(room.getId(), opponent));
+        Assert.assertSame(room, GameRoomCache.getGameRoom(room.getId()));
+
+        sleep(80L);
+
         Assert.assertNull(GameRoomCache.getGameRoom(room.getId()));
         Assert.assertNull(GameRoomCache.getGameRoomByUserId(homeowner.getIdentityKey()));
+        Assert.assertNull(GameRoomCache.getGameRoomByUserId(opponent.getIdentityKey()));
     }
 
     @Test
@@ -137,6 +168,15 @@ public class GameRoomCacheStatusTest {
         user.setNickname(nickname);
         user.setStatus(UserStatus.FISHING);
         return user;
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Assert.fail("等待五子棋空房关闭任务被中断");
+        }
     }
 
 }

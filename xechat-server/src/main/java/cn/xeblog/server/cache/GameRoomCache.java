@@ -2,12 +2,18 @@ package cn.xeblog.server.cache;
 
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.User;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.action.ChannelAction;
+import cn.xeblog.server.game.gobang.GobangPetItemService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author anlingyi
@@ -30,6 +36,14 @@ public class GameRoomCache {
      * 玩家实际进入游戏的连接缓存，key -> user.id(channelId)
      */
     private static final Map<String, GameRoom> CONNECTION_ROOM_MAP = new ConcurrentHashMap<>(32);
+
+    private static final Map<String, ScheduledFuture<?>> EMPTY_ROOM_CLOSE_TASKS = new ConcurrentHashMap<>(32);
+    private static final ScheduledExecutorService EMPTY_ROOM_CLOSE_EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread thread = new Thread(r, "gobang-empty-room-close");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static volatile long gobangEmptyRoomTtlMillis = 90_000L;
 
     /**
      * 抢占房间
@@ -57,6 +71,7 @@ public class GameRoomCache {
      * @param roomId 房间ID
      */
     public static void removeRoom(String roomId) {
+        cancelEmptyRoomClose(roomId);
         GameRoom gameRoom = getGameRoom(roomId);
         if (gameRoom == null) {
             return;
@@ -119,6 +134,7 @@ public class GameRoomCache {
         }
 
         if (gameRoom.addUser(user)) {
+            cancelEmptyRoomClose(gameRoom.getId());
             USER_ROOM_MAP.put(identityKey, gameRoom);
             if (user.getId() != null) {
                 CONNECTION_ROOM_MAP.put(user.getId(), gameRoom);
@@ -181,6 +197,10 @@ public class GameRoomCache {
             CONNECTION_ROOM_MAP.remove(user.getId());
         }
         if (gameRoom.getActiveNums() == 0) {
+            if (gameRoom.getGame() == Game.GOBANG) {
+                scheduleEmptyGobangRoomClose(gameRoom.getId());
+                return false;
+            }
             removeRoom(gameRoom.getId());
             return true;
         }
@@ -198,6 +218,7 @@ public class GameRoomCache {
         }
 
         CONNECTION_ROOM_MAP.put(user.getId(), gameRoom);
+        cancelEmptyRoomClose(gameRoom.getId());
         user.setStatus(UserStatus.PLAYING);
         user.setCurrentGame(gameRoom.getGame());
         ChannelAction.updateUserStatus(user);
@@ -217,9 +238,50 @@ public class GameRoomCache {
     }
 
     static void clear() {
+        EMPTY_ROOM_CLOSE_TASKS.values().forEach(task -> task.cancel(false));
+        EMPTY_ROOM_CLOSE_TASKS.clear();
         GAME_ROOM_MAP.clear();
         USER_ROOM_MAP.clear();
         CONNECTION_ROOM_MAP.clear();
+        gobangEmptyRoomTtlMillis = 90_000L;
+    }
+
+    static void setGobangEmptyRoomTtlMillisForTest(long ttlMillis) {
+        gobangEmptyRoomTtlMillis = ttlMillis;
+    }
+
+    private static void scheduleEmptyGobangRoomClose(String roomId) {
+        if (roomId == null || EMPTY_ROOM_CLOSE_TASKS.containsKey(roomId)) {
+            return;
+        }
+        ScheduledFuture<?> task = EMPTY_ROOM_CLOSE_EXECUTOR.schedule(
+                () -> closeEmptyGobangRoom(roomId),
+                Math.max(1L, gobangEmptyRoomTtlMillis),
+                TimeUnit.MILLISECONDS);
+        ScheduledFuture<?> previous = EMPTY_ROOM_CLOSE_TASKS.putIfAbsent(roomId, task);
+        if (previous != null) {
+            task.cancel(false);
+        }
+    }
+
+    private static void closeEmptyGobangRoom(String roomId) {
+        EMPTY_ROOM_CLOSE_TASKS.remove(roomId);
+        GameRoom gameRoom = GAME_ROOM_MAP.get(roomId);
+        if (gameRoom == null || gameRoom.getGame() != Game.GOBANG || gameRoom.getActiveNums() > 0) {
+            return;
+        }
+        GobangPetItemService.clearRoom(roomId);
+        removeRoom(roomId);
+    }
+
+    private static void cancelEmptyRoomClose(String roomId) {
+        if (roomId == null) {
+            return;
+        }
+        ScheduledFuture<?> task = EMPTY_ROOM_CLOSE_TASKS.remove(roomId);
+        if (task != null) {
+            task.cancel(false);
+        }
     }
 
 }

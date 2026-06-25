@@ -32,22 +32,30 @@ public final class GobangPetItemService {
     private GobangPetItemService() {
     }
 
-    public static void handleMove(User user, GameRoom room, GobangDTO dto) {
+    public static GobangDTO handleMove(User user, GameRoom room, GobangDTO dto) {
         if (user == null || room == null || dto == null || !isValidCell(dto.getX(), dto.getY())) {
-            return;
+            return null;
         }
         RoomState state = STATES.computeIfAbsent(room.getId(), id -> new RoomState(nowSupplier.getAsLong()));
         synchronized (state) {
             if (shouldSkipOpeningColorMessage(user, room, dto, state)) {
                 state.started = true;
                 recordOpeningTypes(user, room, dto, state);
-                return;
+                state.phase = "playing";
+                state.turn = 1;
+                state.winner = 0;
+                return null;
             }
             String playerKey = user.getIdentityKey();
-            settlePredictionForMove(room, playerKey, dto, state);
-            if (state.board[dto.getY()][dto.getX()] != 0) {
-                return;
+            Integer expectedType = state.playerTypes.get(playerKey);
+            if (!"playing".equals(state.phase)
+                    || expectedType == null
+                    || expectedType != dto.getType()
+                    || state.turn != dto.getType()
+                    || state.board[dto.getY()][dto.getX()] != 0) {
+                return null;
             }
+            settlePredictionForMove(room, playerKey, dto, state);
             state.started = true;
             state.board[dto.getY()][dto.getX()] = dto.getType();
             state.playerTypes.put(playerKey, dto.getType());
@@ -60,7 +68,38 @@ public final class GobangPetItemService {
                 settleProphecies(room, playerKey, dto);
                 applyMiniGameRewards(room, playerKey, state);
             }
-            state.moveHistory.add(copyMove(room, dto));
+            state.winner = winningMove ? dto.getType() : 0;
+            state.phase = winningMove || isDraw(state.board) ? "over" : "playing";
+            if ("over".equals(state.phase) && !state.gameOverReleased) {
+                state.gameOverReleased = true;
+                PetGameItemDeclarationService.releaseReservedForRoom(room);
+            }
+            state.turn = dto.getType() == 1 ? 2 : 1;
+            state.moveSeq = state.moveHistory.size() + 1;
+            GobangDTO acceptedMove = copyMove(room, dto);
+            applyAuthoritativeFields(acceptedMove, state, "MOVE");
+            state.moveHistory.add(copyMove(room, acceptedMove));
+            return acceptedMove;
+        }
+    }
+
+    public static GobangDTO rejectedMove(GameRoom room, GobangDTO source) {
+        if (room == null || source == null) {
+            return null;
+        }
+        GobangDTO dto = copyMove(room, source);
+        RoomState state = STATES.get(room.getId());
+        if (state == null) {
+            dto.setEvent("REJECTED");
+            dto.setPhase("idle");
+            dto.setTurn(1);
+            dto.setWinner(0);
+            dto.setMoveSeq(0);
+            return dto;
+        }
+        synchronized (state) {
+            applyAuthoritativeFields(dto, state, "REJECTED");
+            return dto;
         }
     }
 
@@ -77,7 +116,9 @@ public final class GobangPetItemService {
             List<GobangDTO> snapshot = new ArrayList<>();
             Integer myType = state.playerTypes.get(user.getIdentityKey());
             if (myType != null) {
-                snapshot.add(copyMove(room, new GobangDTO(0, 0, myType)));
+                GobangDTO start = copyMove(room, new GobangDTO(0, 0, myType));
+                applyAuthoritativeFields(start, state, "START");
+                snapshot.add(start);
             }
             state.moveHistory.forEach(move -> snapshot.add(copyMove(room, move)));
             return snapshot;
@@ -152,10 +193,23 @@ public final class GobangPetItemService {
         GobangDTO dto = new GobangDTO(source.getX(), source.getY(), source.getType());
         dto.setRoomId(room.getId());
         dto.setGame(Game.GOBANG);
+        dto.setEvent(source.getEvent());
+        dto.setPhase(source.getPhase());
+        dto.setTurn(source.getTurn());
+        dto.setWinner(source.getWinner());
+        dto.setMoveSeq(source.getMoveSeq());
         dto.setPetItemNotice(source.getPetItemNotice());
         dto.setPetItemGuardX(source.getPetItemGuardX());
         dto.setPetItemGuardY(source.getPetItemGuardY());
         return dto;
+    }
+
+    private static void applyAuthoritativeFields(GobangDTO dto, RoomState state, String event) {
+        dto.setEvent(event);
+        dto.setPhase(state.phase);
+        dto.setTurn(state.turn);
+        dto.setWinner(state.winner);
+        dto.setMoveSeq(state.moveSeq);
     }
 
     private static void settlePredictionForMove(GameRoom room, String playerKey, GobangDTO dto, RoomState state) {
@@ -336,6 +390,17 @@ public final class GobangPetItemService {
         return x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE;
     }
 
+    private static boolean isDraw(int[][] board) {
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                if (board[y][x] == 0) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     private static Cell findWinningCell(int[][] board, int type) {
         for (int y = 0; y < BOARD_SIZE; y++) {
             for (int x = 0; x < BOARD_SIZE; x++) {
@@ -424,8 +489,13 @@ public final class GobangPetItemService {
         private final Map<String, Integer> playerTypes = new ConcurrentHashMap<>();
         private final List<GobangDTO> moveHistory = new ArrayList<>();
         private final long startedAt;
+        private String phase = "idle";
+        private int turn = 1;
+        private int winner;
+        private int moveSeq;
         private boolean started;
         private boolean miniGameRewardsApplied;
+        private boolean gameOverReleased;
 
         private RoomState(long startedAt) {
             this.startedAt = startedAt;
