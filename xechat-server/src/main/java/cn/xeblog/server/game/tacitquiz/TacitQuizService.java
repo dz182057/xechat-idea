@@ -143,8 +143,12 @@ public final class TacitQuizService {
             if (choiceIndex < 0 || choiceIndex >= options.size()) {
                 throw new IllegalArgumentException("请选择有效答案");
             }
-            state.answers.putIfAbsent(key, new TacitQuizAnswerViewDTO(
-                    key, user.getUsername(), choiceIndex, options.get(choiceIndex), now()));
+            Integer perspectiveGuessChoiceIndex = normalizePerspectiveGuessChoiceIndex(body, options);
+            TacitQuizAnswerViewDTO answer = new TacitQuizAnswerViewDTO(
+                    key, user.getUsername(), choiceIndex, options.get(choiceIndex), now());
+            if (state.answers.putIfAbsent(key, answer) == null && perspectiveGuessChoiceIndex != null) {
+                state.perspectiveGuessChoiceIndexes.put(key, perspectiveGuessChoiceIndex);
+            }
             if (state.answers.size() >= state.expectedPlayerKeys.size()) {
                 revealIfNeededLocked(room, state, body.getQuestionId(), questionPicker, answerRecorder);
             }
@@ -274,7 +278,7 @@ public final class TacitQuizService {
             nextPlayers = getRoomUsers(room);
             finished = nextPlayers.size() < 2;
         }
-        List<String> petItemNotices = applyInteractionItemSettlements(room, answers);
+        List<String> petItemNotices = applyInteractionItemSettlements(room, answers, state.perspectiveGuessChoiceIndexes);
         TacitQuizAnswerResultDTO result = new TacitQuizAnswerResultDTO(
                 room.getId(), state.currentQuestion, answers, state.roundNo,
                 room.getTacitQuizQuestionCount(), finished, petItemNotices);
@@ -388,7 +392,8 @@ public final class TacitQuizService {
         }
     }
 
-    private static List<String> applyInteractionItemSettlements(GameRoom room, List<TacitQuizAnswerViewDTO> answers) {
+    private static List<String> applyInteractionItemSettlements(GameRoom room, List<TacitQuizAnswerViewDTO> answers,
+                                                               Map<String, Integer> perspectiveGuessChoiceIndexes) {
         List<String> notices = new ArrayList<>();
         if (room == null || answers == null || answers.isEmpty()) {
             return notices;
@@ -413,7 +418,7 @@ public final class TacitQuizService {
             }
             boolean succeeded = ITEM_SYNC_PROPHECY.equals(itemId)
                     ? isMatchedRound(answers)
-                    : didMatchOpponentChoice(playerKey, answersByPlayer);
+                    : didGuessOpponentChoice(playerKey, answersByPlayer, perspectiveGuessChoiceIndexes);
             int rewardBones = ITEM_SYNC_PROPHECY.equals(itemId)
                     ? SYNC_PROPHECY_REWARD_BONES
                     : SYNC_PERSPECTIVE_REWARD_BONES;
@@ -433,9 +438,21 @@ public final class TacitQuizService {
         return notices;
     }
 
-    private static boolean didMatchOpponentChoice(String playerKey, Map<String, TacitQuizAnswerViewDTO> answersByPlayer) {
-        TacitQuizAnswerViewDTO mine = answersByPlayer.get(playerKey);
-        if (mine == null || mine.getChoiceIndex() < 0) {
+    private static Integer normalizePerspectiveGuessChoiceIndex(TacitQuizSubmitAnswerDTO body, List<String> options) {
+        Integer guessChoiceIndex = body.getPerspectiveGuessChoiceIndex();
+        if (guessChoiceIndex == null) {
+            return null;
+        }
+        if (guessChoiceIndex < 0 || guessChoiceIndex >= options.size()) {
+            throw new IllegalArgumentException("请选择有效的换位骨牌预测");
+        }
+        return guessChoiceIndex;
+    }
+
+    private static boolean didGuessOpponentChoice(String playerKey, Map<String, TacitQuizAnswerViewDTO> answersByPlayer,
+                                                 Map<String, Integer> perspectiveGuessChoiceIndexes) {
+        Integer guessChoiceIndex = perspectiveGuessChoiceIndexes.get(playerKey);
+        if (guessChoiceIndex == null || guessChoiceIndex < 0) {
             return false;
         }
         for (Map.Entry<String, TacitQuizAnswerViewDTO> entry : answersByPlayer.entrySet()) {
@@ -443,7 +460,7 @@ public final class TacitQuizService {
                 continue;
             }
             TacitQuizAnswerViewDTO opponent = entry.getValue();
-            if (opponent != null && opponent.getChoiceIndex() == mine.getChoiceIndex()) {
+            if (opponent != null && opponent.getChoiceIndex() == guessChoiceIndex) {
                 return true;
             }
         }
@@ -600,6 +617,7 @@ public final class TacitQuizService {
         private final String roomId;
         private final Set<Long> usedQuestionIds = new HashSet<>();
         private final Map<String, TacitQuizAnswerViewDTO> answers = new ConcurrentHashMap<>();
+        private final Map<String, Integer> perspectiveGuessChoiceIndexes = new ConcurrentHashMap<>();
         private final Set<String> expectedPlayerKeys = new HashSet<>();
         private final List<User> players = new ArrayList<>();
         private TacitQuizQuestionDTO currentQuestion;
@@ -618,6 +636,7 @@ public final class TacitQuizService {
                 this.matchStartedAt = question.getStartedAt();
             }
             this.answers.clear();
+            this.perspectiveGuessChoiceIndexes.clear();
             this.expectedPlayerKeys.clear();
             this.players.clear();
             this.players.addAll(users);

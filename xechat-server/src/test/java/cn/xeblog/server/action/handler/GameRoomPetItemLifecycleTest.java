@@ -233,7 +233,7 @@ public class GameRoomPetItemLifecycleTest {
     }
 
     @Test
-    public void tacitQuizPerspectiveShouldConsumeWhenAnswersDiffer() {
+    public void tacitQuizPerspectiveShouldConsumeWhenOpponentGuessMisses() {
         User alice = user(2050L);
         User bob = user(2051L);
         GameRoom room = room(Game.TACIT_QUIZ, alice, bob);
@@ -247,13 +247,39 @@ public class GameRoomPetItemLifecycleTest {
 
         TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
         TacitQuizService.submitAnswer(alice, room,
-                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A"));
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A", 0, "A"));
         TacitQuizService.submitAnswer(bob, room,
                 new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 1, "B"));
 
         Assert.assertEquals(0, countItem(alice.getAccountId(), "item_sync_perspective"));
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
                 "item_sync_perspective", "interaction", "failed"));
+    }
+
+    @Test
+    public void tacitQuizPerspectiveShouldRewardWhenOpponentGuessHitsEvenIfOwnAnswerDiffers() {
+        User alice = user(2052L);
+        User bob = user(2053L);
+        GameRoom room = room(Game.TACIT_QUIZ, alice, bob);
+        room.setTacitQuizQuestionCount(1);
+        insertTacitQuizQuestion("猜对方选什么");
+        insertPetItem(alice.getAccountId(), "item_sync_perspective", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO(null, "item_sync_perspective"));
+
+        TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
+        TacitQuizService.submitAnswer(alice, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A", 1, "B"));
+        TacitQuizService.submitAnswer(bob, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 1, "B"));
+
+        Assert.assertEquals(1, countItem(alice.getAccountId(), "item_sync_perspective"));
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "succeeded"));
+        Assert.assertEquals(30, maxRewardBones(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "succeeded"));
     }
 
     @Test

@@ -20,11 +20,22 @@ public class TacitQuizSubmitAnswerDTO extends GameDTO {
 
     private String choiceText;
 
+    private Integer perspectiveGuessChoiceIndex;
+
+    private String perspectiveGuessChoiceText;
+
     public TacitQuizSubmitAnswerDTO(String roomId, long questionId, int choiceIndex, String choiceText) {
         super(roomId, Game.TACIT_QUIZ);
         this.questionId = questionId;
         this.choiceIndex = choiceIndex;
         this.choiceText = choiceText;
+    }
+
+    public TacitQuizSubmitAnswerDTO(String roomId, long questionId, int choiceIndex, String choiceText,
+                                    Integer perspectiveGuessChoiceIndex, String perspectiveGuessChoiceText) {
+        this(roomId, questionId, choiceIndex, choiceText);
+        this.perspectiveGuessChoiceIndex = perspectiveGuessChoiceIndex;
+        this.perspectiveGuessChoiceText = perspectiveGuessChoiceText;
     }
 
 }
