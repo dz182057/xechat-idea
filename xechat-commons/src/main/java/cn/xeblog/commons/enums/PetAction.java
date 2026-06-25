@@ -14,6 +14,7 @@ public enum PetAction {
     BUY_SLOT,
     SET_COMPANION,
     SHOP_BUY,
+    SHOP_REFRESH,
     SELL_ITEM,
     SELL_COLLECTION,
     EXPLORE_START,

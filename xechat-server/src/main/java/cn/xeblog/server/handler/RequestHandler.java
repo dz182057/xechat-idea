@@ -20,8 +20,11 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.Protocol;
 import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.action.handler.ActionHandler;
+import cn.xeblog.server.action.ChannelAction;
+import cn.xeblog.server.behavior.PlayerBehaviorLogService;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.factory.ActionHandlerFactory;
+import cn.xeblog.server.util.IpUtil;
 import io.netty.channel.ChannelHandlerContext;
 
 /**
@@ -53,6 +56,8 @@ public class RequestHandler {
 
         // 部分查询类 action 允许 body 为空；其它 action 缺少参数时直接拒绝。
         if (!allowsEmptyBodyAction(request.getAction()) && ObjectUtil.isEmpty(request.getBody())) {
+            PlayerBehaviorLogService.record(ChannelAction.getUser(ctx), IpUtil.getIpByCtx(ctx), request,
+                    "REJECTED", "Body is null: " + request.getAction());
             ctx.writeAndFlush(ResponseBuilder.system("Body is null: " + request.getAction()));
             return;
         }
@@ -63,12 +68,12 @@ public class RequestHandler {
 
             // 真正无参的 action 直接走 handler；可选 body 的 action 若传了 body 仍需保留反序列化。
             if (skipsBodyConversion(request.getAction())) {
-                produce.handle(ctx, body);
+                handleAndRecord(produce, body);
                 return;
             }
 
             if (ObjectUtil.isEmpty(body)) {
-                produce.handle(ctx, null);
+                handleAndRecord(produce, null);
                 return;
             }
 
@@ -89,13 +94,27 @@ public class RequestHandler {
                         body = JSONUtil.toBean(body.toString(), resolveBodyClass(request.getAction(), produce));
                     }
                 } catch (Exception e) {
+                    PlayerBehaviorLogService.record(ChannelAction.getUser(ctx), IpUtil.getIpByCtx(ctx), request,
+                            "FAILED", "消息内容解析异常");
                     ctx.writeAndFlush(ResponseBuilder.system("消息内容解析异常!"));
                     return;
                 }
             }
 
-            produce.handle(ctx, body);
+            handleAndRecord(produce, body);
         });
+    }
+
+    private void handleAndRecord(ActionHandler produce, Object body) {
+        try {
+            produce.handle(ctx, body);
+            PlayerBehaviorLogService.record(ChannelAction.getUser(ctx), IpUtil.getIpByCtx(ctx), request,
+                    "HANDLED", null);
+        } catch (RuntimeException e) {
+            PlayerBehaviorLogService.record(ChannelAction.getUser(ctx), IpUtil.getIpByCtx(ctx), request,
+                    "ERROR", e.getMessage());
+            throw e;
+        }
     }
 
     private static Class<?> resolveBodyClass(Action action, Object produce) {

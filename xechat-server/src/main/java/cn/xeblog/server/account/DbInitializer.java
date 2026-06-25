@@ -78,6 +78,7 @@ public final class DbInitializer {
             // 3. 首次启动建表
             ensureSchema();
             ensureLoginLogsTable();
+            ensurePlayerBehaviorLogTable();
             ensureMessageColumns();
             ensureFriendTables();
             ensureDrawGuessWordTable();
@@ -153,6 +154,43 @@ public final class DbInitializer {
                         "created_at INTEGER NOT NULL" +
                         ")");
                 log.info("数据库迁移: 创建 login_logs 表");
+            }
+        }
+    }
+
+    /**
+     * 给已有数据库补齐玩家行为流水表。
+     */
+    private static void ensurePlayerBehaviorLogTable() throws Exception {
+        try (SqlSession session = FACTORY.openSession(true)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE IF NOT EXISTS player_behavior_logs (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "account_id INTEGER," +
+                        "account TEXT," +
+                        "nickname TEXT," +
+                        "guest INTEGER NOT NULL DEFAULT 0," +
+                        "platform TEXT," +
+                        "client_uuid TEXT," +
+                        "ip TEXT," +
+                        "region TEXT," +
+                        "action TEXT NOT NULL," +
+                        "sub_action TEXT," +
+                        "protocol TEXT," +
+                        "result_status TEXT," +
+                        "error_message TEXT," +
+                        "request_body_json TEXT," +
+                        "related_type TEXT," +
+                        "related_id TEXT," +
+                        "created_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_player_behavior_logs_account_time " +
+                        "ON player_behavior_logs(account_id, created_at)");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_player_behavior_logs_action_time " +
+                        "ON player_behavior_logs(action, sub_action, created_at)");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_player_behavior_logs_created " +
+                        "ON player_behavior_logs(created_at)");
             }
         }
     }

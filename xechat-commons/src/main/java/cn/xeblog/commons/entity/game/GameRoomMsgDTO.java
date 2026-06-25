@@ -71,7 +71,11 @@ public class GameRoomMsgDTO extends GameDTO {
         /**
          * 悔棋响应：对方的同意/拒绝。content 是布尔值 true=同意 / false=拒绝
          */
-        REGRET_RESPONSE;
+        REGRET_RESPONSE,
+        /**
+         * 扫雷道具使用提示：content 携带道具名称、图标和说明，仅用于房间内提示。
+         */
+        MINE_ITEM_USED;
     }
 
     public void setMsgType(MsgType msgType) {

@@ -20,6 +20,16 @@ public final class PetItemDefinitions {
     private static final int EPIC_SELL_PRICE = 200;
     private static final String ITEM_WILD_COMMON = "item_wild_common";
     private static final String ITEM_PARTY_EQUALIZER = "item_party_equalizer";
+    private static final Set<String> TEMPORARILY_DISABLED_ITEM_IDS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(List.of(
+                    "item_battle_echo",
+                    "item_battle_direct_hit",
+                    "item_battle_pebble",
+                    "item_battle_airbag",
+                    "item_race_knee"
+            )));
+    private static final Set<Game> TEMPORARILY_DISABLED_GAMES = Collections.unmodifiableSet(
+            new LinkedHashSet<>(List.of(Game.DOG_BATTLE, Game.DOG_RACE)));
 
     private static final List<PetItemDefinition> DEFINITIONS = createDefinitions();
     private static final Map<String, PetItemDefinition> DEFINITIONS_BY_ID = indexById(DEFINITIONS);
@@ -69,24 +79,29 @@ public final class PetItemDefinitions {
 
     public static boolean isPlayItem(Game game, String itemId) {
         PetItemDefinition definition = byId(itemId);
-        return definition != null
+        return !isTemporarilyDisabledGame(game)
+                && !isTemporarilyDisabledItem(itemId)
+                && definition != null
                 && definition.getSlot() == Slot.PLAY
                 && definition.getRelatedGames().contains(game);
     }
 
     public static boolean isInteractionItem(Game game, String itemId) {
         PetItemDefinition definition = byId(itemId);
-        return definition != null
+        return !isTemporarilyDisabledGame(game)
+                && !isTemporarilyDisabledItem(itemId)
+                && definition != null
                 && definition.getSlot() == Slot.INTERACTION
                 && definition.getRelatedGames().contains(game);
     }
 
     public static String firstCommonPlayItem(Game game) {
-        if (game == null) {
+        if (game == null || isTemporarilyDisabledGame(game)) {
             return null;
         }
         for (PetItemDefinition definition : DEFINITIONS) {
-            if (definition.getSlot() == Slot.PLAY
+            if (!isTemporarilyDisabledItem(definition.getItemId())
+                    && definition.getSlot() == Slot.PLAY
                     && definition.isCommonPlayTarget()
                     && definition.getRelatedGames().contains(game)) {
                 return definition.getItemId();
@@ -101,6 +116,14 @@ public final class PetItemDefinitions {
 
     public static boolean isPartyEqualizerItem(String itemId) {
         return ITEM_PARTY_EQUALIZER.equals(trimToNull(itemId));
+    }
+
+    public static boolean isTemporarilyDisabledItem(String itemId) {
+        return TEMPORARILY_DISABLED_ITEM_IDS.contains(trimToNull(itemId));
+    }
+
+    private static boolean isTemporarilyDisabledGame(Game game) {
+        return TEMPORARILY_DISABLED_GAMES.contains(game);
     }
 
     private static List<PetItemDefinition> createDefinitions() {
@@ -199,7 +222,9 @@ public final class PetItemDefinitions {
     private static List<String> itemIdsByRarity(Rarity rarity) {
         List<String> itemIds = new ArrayList<>();
         for (PetItemDefinition definition : DEFINITIONS) {
-            if (definition.getRarity() == rarity && definition.getReleaseStage() == ReleaseStage.CORE) {
+            if (!isTemporarilyDisabledItem(definition.getItemId())
+                    && definition.getRarity() == rarity
+                    && definition.getReleaseStage() == ReleaseStage.CORE) {
                 itemIds.add(definition.getItemId());
             }
         }
@@ -225,7 +250,8 @@ public final class PetItemDefinitions {
     private static Map<String, Integer> interactionRewards() {
         Map<String, Integer> rewards = new LinkedHashMap<>();
         for (PetItemDefinition definition : DEFINITIONS) {
-            if (definition.getInteractionRewardBones() != null) {
+            if (!isTemporarilyDisabledItem(definition.getItemId())
+                    && definition.getInteractionRewardBones() != null) {
                 rewards.put(definition.getItemId(), definition.getInteractionRewardBones());
             }
         }

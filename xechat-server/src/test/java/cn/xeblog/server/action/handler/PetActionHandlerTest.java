@@ -16,6 +16,7 @@ import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRequestDTO;
 import cn.xeblog.commons.entity.pet.PetRenameDTO;
 import cn.xeblog.commons.entity.pet.PetResponseDTO;
+import cn.xeblog.commons.entity.pet.PetShopStatusDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDefinitionDTO;
 import cn.hutool.json.JSONArray;
@@ -39,8 +40,11 @@ import org.junit.Test;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -146,6 +150,7 @@ public class PetActionHandlerTest {
         User user = user(9011L, "interaction_status_user");
         setDailyCounter(user.getAccountId(), "interaction_bonus_bones", 120);
         setDailyCounter(user.getAccountId(), "interaction_item_item_battle_direct_hit", 1);
+        setDailyCounter(user.getAccountId(), "interaction_item_item_quiz_duel", 1);
         setDailyCounter(user.getAccountId(), "interaction_item_item_sync_prophecy", 2);
 
         PetProfileDTO profile = requestProfile(user);
@@ -156,8 +161,10 @@ public class PetActionHandlerTest {
         Assert.assertEquals(120, status.getDailyBonusUsed());
         Assert.assertEquals(30, status.getDailyBonusRemaining());
         Assert.assertEquals(2, status.getSameItemDailyRewardLimit());
-        Assert.assertEquals(Integer.valueOf(1), status.getItemRewardCounts().get("item_battle_direct_hit"));
-        Assert.assertEquals(Integer.valueOf(1), status.getItemRemainingRewardCounts().get("item_battle_direct_hit"));
+        Assert.assertFalse(status.getItemRewardCounts().containsKey("item_battle_direct_hit"));
+        Assert.assertFalse(status.getItemRemainingRewardCounts().containsKey("item_battle_direct_hit"));
+        Assert.assertEquals(Integer.valueOf(1), status.getItemRewardCounts().get("item_quiz_duel"));
+        Assert.assertEquals(Integer.valueOf(1), status.getItemRemainingRewardCounts().get("item_quiz_duel"));
         Assert.assertEquals(Integer.valueOf(2), status.getItemRewardCounts().get("item_sync_prophecy"));
         Assert.assertEquals(Integer.valueOf(0), status.getItemRemainingRewardCounts().get("item_sync_prophecy"));
     }
@@ -846,8 +853,9 @@ public class PetActionHandlerTest {
     public void shopBuyNormalItemSucceedsForSingleItemAndEchoesRequestId() {
         User user = user();
         setAssets(user.getAccountId(), 300, 1);
+        String itemId = currentShopNormalItemId(user);
 
-        new PetActionHandler().process(user, shopBuyRequest("item_draw_advance_hint", 1, 92001L));
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 1, 92001L));
 
         PetResponseDTO body = readPetBody(user);
         Assert.assertTrue(body.isSuccess());
@@ -856,26 +864,118 @@ public class PetActionHandlerTest {
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
         Assert.assertEquals(220, profile.getAssets().getBones());
         Assert.assertEquals(1, profile.getItems().size());
-        assertItem(profile.getItems().get(0), "item_draw_advance_hint", 1);
+        assertItem(profile.getItems().get(0), itemId, 1);
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "shop_normal_item_buy"));
 
         PetProfileDTO persistedProfile = requestProfile(user);
         Assert.assertEquals(220, persistedProfile.getAssets().getBones());
         Assert.assertEquals(1, persistedProfile.getItems().size());
-        assertItem(persistedProfile.getItems().get(0), "item_draw_advance_hint", 1);
+        assertItem(persistedProfile.getItems().get(0), itemId, 1);
     }
 
     @Test
-    public void interactionItemRewardUsesHalfConfiguredRewardWhenRequestIsHigher() {
+    public void petProfileIncludesPersonalShopShelfWithOneRareAndThreeNormalItems() {
+        User firstUser = user(92011L, "shop_shelf_user_a");
+        User secondUser = user(92012L, "shop_shelf_user_b");
+
+        PetShopStatusDTO firstShelf = requestProfile(firstUser).getShopStatus();
+        PetShopStatusDTO secondShelf = requestProfile(secondUser).getShopStatus();
+
+        Assert.assertNotNull(firstShelf);
+        Assert.assertTrue(rareLuckyBagItemIds().contains(firstShelf.getRareItemId()));
+        Assert.assertEquals(3, firstShelf.getNormalItemIds().size());
+        Assert.assertEquals(3, new HashSet<>(firstShelf.getNormalItemIds()).size());
+        Assert.assertTrue(normalLuckyBagItemIds().containsAll(firstShelf.getNormalItemIds()));
+        Assert.assertEquals(0, firstShelf.getPaidRefreshesUsed());
+        Assert.assertEquals(3, firstShelf.getMaxPaidRefreshes());
+        Assert.assertEquals(Arrays.asList(30, 50, 70), firstShelf.getPaidRefreshCosts());
+        Assert.assertEquals(Integer.valueOf(30), firstShelf.getNextPaidRefreshCost());
+        Assert.assertTrue(firstShelf.getNextFreeRefreshAt() > firstShelf.getCurrentPeriodStartAt());
+        Assert.assertNotEquals(firstShelf.getRareItemId() + firstShelf.getNormalItemIds(),
+                secondShelf.getRareItemId() + secondShelf.getNormalItemIds());
+    }
+
+    @Test
+    public void petShopShelfFreeRefreshUsesSixHourSlotsFromLocalMidnight() {
+        User user = user(92018L, "shop_shelf_period_user");
+
+        PetShopStatusDTO shelf = requestProfile(user).getShopStatus();
+        ZonedDateTime periodStart = Instant.ofEpochMilli(shelf.getCurrentPeriodStartAt())
+                .atZone(ZoneId.systemDefault());
+        ZonedDateTime nextFreeRefresh = Instant.ofEpochMilli(shelf.getNextFreeRefreshAt())
+                .atZone(ZoneId.systemDefault());
+
+        Assert.assertEquals(0, periodStart.getHour() % 6);
+        Assert.assertEquals(0, periodStart.getMinute());
+        Assert.assertEquals(0, periodStart.getSecond());
+        Assert.assertEquals(0, periodStart.getNano());
+        Assert.assertEquals(periodStart.plusHours(6), nextFreeRefresh);
+    }
+
+    @Test
+    public void shopRefreshConsumesIncreasingBonesAndAllowsThreePaidRefreshesPerFreePeriod() {
+        User user = user(92013L, "shop_refresh_user");
+        setAssets(user.getAccountId(), 500, 1);
+        PetShopStatusDTO initialShelf = requestProfile(user).getShopStatus();
+
+        new PetActionHandler().process(user, shopRefreshRequest(92013L));
+        PetResponseDTO firstBody = readPetBody(user);
+        Assert.assertTrue(firstBody.isSuccess());
+        PetProfileDTO firstProfile = (PetProfileDTO) firstBody.getContent();
+        Assert.assertEquals(470, firstProfile.getAssets().getBones());
+        Assert.assertEquals(1, firstProfile.getShopStatus().getPaidRefreshesUsed());
+        Assert.assertEquals(Integer.valueOf(50), firstProfile.getShopStatus().getNextPaidRefreshCost());
+        Assert.assertNotEquals(initialShelf.getRareItemId() + initialShelf.getNormalItemIds(),
+                firstProfile.getShopStatus().getRareItemId() + firstProfile.getShopStatus().getNormalItemIds());
+
+        new PetActionHandler().process(user, shopRefreshRequest(92014L));
+        PetProfileDTO secondProfile = (PetProfileDTO) readPetBody(user).getContent();
+        Assert.assertEquals(420, secondProfile.getAssets().getBones());
+        Assert.assertEquals(2, secondProfile.getShopStatus().getPaidRefreshesUsed());
+        Assert.assertEquals(Integer.valueOf(70), secondProfile.getShopStatus().getNextPaidRefreshCost());
+
+        new PetActionHandler().process(user, shopRefreshRequest(92015L));
+        PetProfileDTO thirdProfile = (PetProfileDTO) readPetBody(user).getContent();
+        Assert.assertEquals(350, thirdProfile.getAssets().getBones());
+        Assert.assertEquals(3, thirdProfile.getShopStatus().getPaidRefreshesUsed());
+        Assert.assertNull(thirdProfile.getShopStatus().getNextPaidRefreshCost());
+
+        new PetActionHandler().process(user, shopRefreshRequest(92016L));
+        PetResponseDTO limitBody = readPetBody(user);
+        Assert.assertFalse(limitBody.isSuccess());
+        Assert.assertEquals(PetAction.SHOP_REFRESH, limitBody.getPetAction());
+        Assert.assertEquals(Long.valueOf(92016L), limitBody.getRequestId());
+        Assert.assertEquals("本轮商店刷新次数已达上限", limitBody.getError());
+        Assert.assertEquals(350, requestProfile(user).getAssets().getBones());
+    }
+
+    @Test
+    public void shopBuyNormalItemRejectsItemOutsideCurrentShelfWithoutSideEffects() {
+        User user = user(92017L, "shop_shelf_reject_user");
+        setAssets(user.getAccountId(), 500, 1);
+        String itemId = normalItemNotOnShelf(user);
+
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 1, 92017L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertFalse(body.isSuccess());
+        Assert.assertEquals(PetAction.SHOP_BUY, body.getPetAction());
+        Assert.assertEquals("当前货架未出售该普通道具", body.getError());
+        Assert.assertEquals(500, requestProfile(user).getAssets().getBones());
+        Assert.assertEquals(0, countItem(user.getAccountId(), itemId));
+    }
+
+    @Test
+    public void interactionItemRewardUsesConfiguredRewardWhenRequestIsHigher() {
         User user = user();
         setAssets(user.getAccountId(), 300, 1);
 
         PetProfileDTO profile = PetProfileService.applyInteractionItemReward(
-                user.getAccountId(), "item_battle_direct_hit", 80);
+                user.getAccountId(), "item_quiz_duel", 80);
 
-        Assert.assertEquals(340, profile.getAssets().getBones());
-        Assert.assertEquals(40, countDailyCounter(user.getAccountId(), "interaction_bonus_bones"));
-        Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "interaction_item_item_battle_direct_hit"));
+        Assert.assertEquals(330, profile.getAssets().getBones());
+        Assert.assertEquals(30, countDailyCounter(user.getAccountId(), "interaction_bonus_bones"));
+        Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "interaction_item_item_quiz_duel"));
     }
 
     @Test
@@ -932,8 +1032,9 @@ public class PetActionHandlerTest {
         User user = user();
         setAssets(user.getAccountId(), 500, 1);
         insertPetItem(user.getAccountId(), "item_battle_echo", 1);
+        String itemId = currentShopNormalItemId(user);
 
-        new PetActionHandler().process(user, shopBuyRequest("item_draw_advance_hint", 2, 92002L));
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 2, 92002L));
 
         PetResponseDTO body = readPetBody(user);
         Assert.assertTrue(body.isSuccess());
@@ -941,9 +1042,8 @@ public class PetActionHandlerTest {
         Assert.assertEquals(Long.valueOf(92002L), body.getRequestId());
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
         Assert.assertEquals(340, profile.getAssets().getBones());
-        Assert.assertEquals(2, profile.getItems().size());
-        assertItem(profile.getItems().get(0), "item_battle_echo", 1);
-        assertItem(profile.getItems().get(1), "item_draw_advance_hint", 2);
+        Assert.assertEquals(itemId.equals("item_battle_echo") ? 1 : 2, profile.getItems().size());
+        Assert.assertEquals(2, countItem(user.getAccountId(), itemId));
         Assert.assertEquals(2, countDailyCounter(user.getAccountId(), "shop_normal_item_buy"));
     }
 
@@ -951,8 +1051,9 @@ public class PetActionHandlerTest {
     public void shopBuyNormalItemRejectsWhenBonesAreNotEnoughWithoutSideEffects() {
         User user = user();
         setAssets(user.getAccountId(), 79, 1);
+        String itemId = currentShopNormalItemId(user);
 
-        new PetActionHandler().process(user, shopBuyRequest("item_draw_advance_hint", 1, 92003L));
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 1, 92003L));
 
         PetResponseDTO body = readPetBody(user);
         Assert.assertFalse(body.isSuccess());
@@ -970,9 +1071,10 @@ public class PetActionHandlerTest {
     public void shopBuyNormalItemRejectsWhenItemLimitWouldBeExceededWithoutSideEffects() {
         User user = user();
         setAssets(user.getAccountId(), 300, 1);
-        insertPetItem(user.getAccountId(), "item_draw_advance_hint", 8);
+        String itemId = currentShopNormalItemId(user);
+        insertPetItem(user.getAccountId(), itemId, 8);
 
-        new PetActionHandler().process(user, shopBuyRequest("item_draw_advance_hint", 2, 92004L));
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 2, 92004L));
 
         PetResponseDTO body = readPetBody(user);
         Assert.assertFalse(body.isSuccess());
@@ -983,7 +1085,7 @@ public class PetActionHandlerTest {
         PetProfileDTO profile = requestProfile(user);
         Assert.assertEquals(300, profile.getAssets().getBones());
         Assert.assertEquals(1, profile.getItems().size());
-        assertItem(profile.getItems().get(0), "item_draw_advance_hint", 8);
+        assertItem(profile.getItems().get(0), itemId, 8);
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "shop_normal_item_buy"));
     }
 
@@ -991,10 +1093,11 @@ public class PetActionHandlerTest {
     public void shopBuyNormalItemRejectsWhenDailySharedLimitWouldBeExceededWithoutSideEffects() {
         User user = user();
         setAssets(user.getAccountId(), 500, 1);
-        insertPetItem(user.getAccountId(), "item_draw_advance_hint", 1);
+        String itemId = currentShopNormalItemId(user);
+        insertPetItem(user.getAccountId(), itemId, 1);
         setDailyCounter(user.getAccountId(), "shop_normal_item_buy", 2);
 
-        new PetActionHandler().process(user, shopBuyRequest("item_battle_direct_hit", 2, 92005L));
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 2, 92005L));
 
         PetResponseDTO body = readPetBody(user);
         Assert.assertFalse(body.isSuccess());
@@ -1005,7 +1108,7 @@ public class PetActionHandlerTest {
         PetProfileDTO profile = requestProfile(user);
         Assert.assertEquals(500, profile.getAssets().getBones());
         Assert.assertEquals(1, profile.getItems().size());
-        assertItem(profile.getItems().get(0), "item_draw_advance_hint", 1);
+        assertItem(profile.getItems().get(0), itemId, 1);
         Assert.assertEquals(2, countDailyCounter(user.getAccountId(), "shop_normal_item_buy"));
     }
 
@@ -1016,8 +1119,9 @@ public class PetActionHandlerTest {
         setAssets(user.getAccountId(), 300, 1);
         insertDailyCounter(user.getAccountId(), today.minusDays(1).toString(),
                 "shop_normal_item_buy", 3);
+        String itemId = currentShopNormalItemId(user);
 
-        new PetActionHandler().process(user, shopBuyRequest("item_draw_advance_hint", 1, 92006L));
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 1, 92006L));
 
         PetResponseDTO body = readPetBody(user);
         Assert.assertTrue(body.isSuccess());
@@ -1026,7 +1130,7 @@ public class PetActionHandlerTest {
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
         Assert.assertEquals(220, profile.getAssets().getBones());
         Assert.assertEquals(1, profile.getItems().size());
-        assertItem(profile.getItems().get(0), "item_draw_advance_hint", 1);
+        assertItem(profile.getItems().get(0), itemId, 1);
         Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "shop_normal_item_buy"));
         Assert.assertEquals(3, countCounter(user.getAccountId(), today.minusDays(1).toString(),
                 "shop_normal_item_buy"));
@@ -1036,15 +1140,14 @@ public class PetActionHandlerTest {
     public void shopBuyRejectsRareEpicAndUnknownItemWithoutSideEffects() {
         User user = user();
         setAssets(user.getAccountId(), 500, 1);
-        String todayRareItemId = dailyRareShopItemId(LocalDate.now());
-        String unavailableRareItemId = "item_battle_pebble".equals(todayRareItemId) ? "item_turtle_probe" : "item_battle_pebble";
+        String unavailableRareItemId = rareItemNotOnShelf(user);
 
         new PetActionHandler().process(user, shopBuyRequest(unavailableRareItemId, 1, 92007L));
         PetResponseDTO rareBody = readPetBody(user);
         Assert.assertFalse(rareBody.isSuccess());
         Assert.assertEquals(PetAction.SHOP_BUY, rareBody.getPetAction());
         Assert.assertEquals(Long.valueOf(92007L), rareBody.getRequestId());
-        Assert.assertEquals("今日未出售该稀有道具", rareBody.getError());
+        Assert.assertEquals("当前货架未出售该稀有道具", rareBody.getError());
 
         new PetActionHandler().process(user, shopBuyRequest("item_lucky_day", 1, 92008L));
         PetResponseDTO epicBody = readPetBody(user);
@@ -1224,9 +1327,9 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void shopBuyLuckyBagDoublesMineItemWeightAfterConstructionSiteCollectionSet() {
+    public void shopBuyLuckyBagDoublesQuickQuizItemWeightAfterConstructionSiteCollectionSet() {
         IntSupplier originalRarityRollSupplier = setLuckyBagRarityRollSupplier(() -> 0);
-        IntSupplier originalItemIndexSupplier = setLuckyBagItemIndexSupplier(() -> 2);
+        IntSupplier originalItemIndexSupplier = setLuckyBagItemIndexSupplier(() -> 7);
 
         try {
             User normalUser = user(92114L, "normal_lucky_bag_user");
@@ -1237,8 +1340,8 @@ public class PetActionHandlerTest {
             PetResponseDTO normalBody = readPetBody(normalUser);
             Assert.assertTrue(normalBody.isSuccess());
             PetProfileDTO normalProfile = (PetProfileDTO) normalBody.getContent();
-            Assert.assertEquals(1, findInventoryCount(normalProfile, "item_draw_advance_hint"));
-            Assert.assertEquals(0, findInventoryCount(normalProfile, "item_mine_safe_ping"));
+            Assert.assertEquals(1, findInventoryCount(normalProfile, "item_quiz_duel"));
+            Assert.assertEquals(0, findInventoryCount(normalProfile, "item_quiz_score_pad"));
 
             User bonusUser = user(92115L, "construction_collection_user");
             setAssets(bonusUser.getAccountId(), 300, 1);
@@ -1251,8 +1354,8 @@ public class PetActionHandlerTest {
             PetResponseDTO bonusBody = readPetBody(bonusUser);
             Assert.assertTrue(bonusBody.isSuccess());
             PetProfileDTO bonusProfile = (PetProfileDTO) bonusBody.getContent();
-            Assert.assertEquals(0, findInventoryCount(bonusProfile, "item_draw_advance_hint"));
-            Assert.assertEquals(1, findInventoryCount(bonusProfile, "item_mine_safe_ping"));
+            Assert.assertEquals(0, findInventoryCount(bonusProfile, "item_quiz_duel"));
+            Assert.assertEquals(1, findInventoryCount(bonusProfile, "item_quiz_score_pad"));
         } finally {
             setLuckyBagRarityRollSupplier(originalRarityRollSupplier);
             setLuckyBagItemIndexSupplier(originalItemIndexSupplier);
@@ -1263,8 +1366,9 @@ public class PetActionHandlerTest {
     public void shopBuyNormalItemRejectsInvalidQuantityWithoutSideEffects() {
         User user = user();
         setAssets(user.getAccountId(), 300, 1);
+        String itemId = currentShopNormalItemId(user);
 
-        new PetActionHandler().process(user, shopBuyRequest("item_draw_advance_hint", 0, 92010L));
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 0, 92010L));
 
         PetResponseDTO body = readPetBody(user);
         Assert.assertFalse(body.isSuccess());
@@ -1282,7 +1386,7 @@ public class PetActionHandlerTest {
     public void shopBuyDailyRareItemSucceedsForTodayOffer() {
         User user = user();
         setAssets(user.getAccountId(), 1000, 1);
-        String itemId = dailyRareShopItemId(LocalDate.now());
+        String itemId = currentShopRareItemId(user);
 
         new PetActionHandler().process(user, shopBuyRequest(itemId, 1, 90008L));
 
@@ -1300,8 +1404,7 @@ public class PetActionHandlerTest {
     public void shopBuyDailyRareItemRejectsNonTodayOfferWithoutSideEffects() {
         User user = user();
         setAssets(user.getAccountId(), 1000, 1);
-        String todayItemId = dailyRareShopItemId(LocalDate.now());
-        String otherItemId = "item_mine_shield".equals(todayItemId) ? "item_mine_detector" : "item_mine_shield";
+        String otherItemId = rareItemNotOnShelf(user);
 
         new PetActionHandler().process(user, shopBuyRequest(otherItemId, 1, 90009L));
 
@@ -1309,7 +1412,7 @@ public class PetActionHandlerTest {
         Assert.assertFalse(body.isSuccess());
         Assert.assertEquals(PetAction.SHOP_BUY, body.getPetAction());
         Assert.assertEquals(Long.valueOf(90009L), body.getRequestId());
-        Assert.assertEquals("今日未出售该稀有道具", body.getError());
+        Assert.assertEquals("当前货架未出售该稀有道具", body.getError());
         Assert.assertEquals(0, countItem(user.getAccountId(), otherItemId));
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "shop_daily_rare_item_buy"));
         Assert.assertEquals(1000, requestProfile(user).getAssets().getBones());
@@ -2714,7 +2817,7 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void seventhDayCheckinRewardsBonesAndTwoNormalItems() {
+    public void seventhDayCheckinRewardsBonesAndOneNormalItem() {
         User user = user(96001L, "seventh_checkin_user");
         seedSixHistoricalCheckins(user.getAccountId());
 
@@ -2727,7 +2830,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.CHECKIN, body.getPetAction());
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
         Assert.assertEquals(400, profile.getAssets().getBones());
-        Assert.assertEquals(2, totalInventoryCount(profile));
+        Assert.assertEquals(1, totalInventoryCount(profile));
         assertOnlyNormalItems(profile);
         Assert.assertTrue(profile.getCheckinStatus().isTodayCheckedIn());
         Assert.assertEquals(7, profile.getCheckinStatus().getCycleDay());
@@ -2736,14 +2839,14 @@ public class PetActionHandlerTest {
 
         PetProfileDTO persistedProfile = requestProfile(user);
         Assert.assertEquals(400, persistedProfile.getAssets().getBones());
-        Assert.assertEquals(2, totalInventoryCount(persistedProfile));
+        Assert.assertEquals(1, totalInventoryCount(persistedProfile));
         assertOnlyNormalItems(persistedProfile);
         Assert.assertEquals(7, persistedProfile.getCheckinStatus().getTotalCheckins());
         Assert.assertEquals(21, persistedProfile.getCheckinStatus().getMilestoneRemaining());
     }
 
     @Test
-    public void seventhDayMakeupCheckinRewardsBonesAndTwoNormalItems() {
+    public void seventhDayMakeupCheckinRewardsBonesAndOneNormalItem() {
         User user = user(96002L, "seventh_makeup_user");
         setMakeupCards(user.getAccountId(), 1);
         seedSixHistoricalCheckins(user.getAccountId());
@@ -2757,7 +2860,7 @@ public class PetActionHandlerTest {
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
         Assert.assertEquals(400, profile.getAssets().getBones());
         Assert.assertEquals(0, profile.getAssets().getMakeupCards());
-        Assert.assertEquals(2, totalInventoryCount(profile));
+        Assert.assertEquals(1, totalInventoryCount(profile));
         assertOnlyNormalItems(profile);
         Assert.assertEquals(1, countCheckins(user.getAccountId(), checkinDate));
     }
@@ -2777,7 +2880,7 @@ public class PetActionHandlerTest {
         PetResponseDTO body = readPetBody(user);
         Assert.assertTrue(body.isSuccess());
         PetProfileDTO profile = (PetProfileDTO) body.getContent();
-        Assert.assertEquals(420, profile.getAssets().getBones());
+        Assert.assertEquals(410, profile.getAssets().getBones());
         Assert.assertEquals(normalLuckyBagItemIds().size() * 9, totalInventoryCount(profile));
         for (PetInventoryItemDTO item : profile.getItems()) {
             Assert.assertTrue(item.getCount() <= 9);
@@ -3017,6 +3120,61 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void makeupCheckinRejectsDateBeforePetAccountCreatedWithoutSideEffects() {
+        LocalDate today = LocalDate.now();
+        Assume.assumeTrue("每月前两天没有足够的当前月份历史日期验证补签起始日", today.getDayOfMonth() > 2);
+        User user = user();
+        adoptDog(user, "corgi", "小短腿");
+        setMakeupCards(user.getAccountId(), 1);
+        LocalDate availableSince = today.minusDays(1);
+        String checkinDate = today.minusDays(2).toString();
+        setPetAssetsCreatedAt(user.getAccountId(), availableSince);
+
+        PetProfileDTO before = requestProfile(user);
+        Assert.assertEquals(availableSince.toString(), before.getCheckinStatus().getMakeupAvailableSince());
+
+        new PetActionHandler().process(user, makeupCheckinRequest(checkinDate, 60023L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertFalse(body.isSuccess());
+        Assert.assertEquals(PetAction.MAKEUP_CHECKIN, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(60023L), body.getRequestId());
+        Assert.assertEquals("只能补签账号可签到日期之后的漏签日期", body.getError());
+        PetProfileDTO after = requestProfile(user);
+        Assert.assertEquals(before.getAssets().getMakeupCards(), after.getAssets().getMakeupCards());
+        Assert.assertEquals(before.getAssets().getBones(), after.getAssets().getBones());
+        Assert.assertEquals(0, countCheckins(user.getAccountId(), checkinDate));
+    }
+
+    @Test
+    public void makeupCheckinUsesAccountCreatedAtBeforePetAssetsCreatedAt() {
+        LocalDate today = LocalDate.now();
+        Assume.assumeTrue("每月前两天没有足够的当前月份历史日期验证补签起始日", today.getDayOfMonth() > 2);
+        User user = user(9022L, "makeup_account_created_user");
+        adoptDog(user, "corgi", "小短腿");
+        setMakeupCards(user.getAccountId(), 1);
+        LocalDate availableSince = today.minusDays(1);
+        String checkinDate = today.minusDays(2).toString();
+        setAccountCreatedAt(user, availableSince);
+        setPetAssetsCreatedAt(user.getAccountId(), today.withDayOfMonth(1));
+
+        PetProfileDTO before = requestProfile(user);
+        Assert.assertEquals(availableSince.toString(), before.getCheckinStatus().getMakeupAvailableSince());
+
+        new PetActionHandler().process(user, makeupCheckinRequest(checkinDate, 60024L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertFalse(body.isSuccess());
+        Assert.assertEquals(PetAction.MAKEUP_CHECKIN, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(60024L), body.getRequestId());
+        Assert.assertEquals("只能补签账号可签到日期之后的漏签日期", body.getError());
+        PetProfileDTO after = requestProfile(user);
+        Assert.assertEquals(before.getAssets().getMakeupCards(), after.getAssets().getMakeupCards());
+        Assert.assertEquals(before.getAssets().getBones(), after.getAssets().getBones());
+        Assert.assertEquals(0, countCheckins(user.getAccountId(), checkinDate));
+    }
+
+    @Test
     public void makeupCheckinDoesNotRewardCurrentCompanionDogWhenSecondDogSelected() {
         User user = user();
         setAssets(user.getAccountId(), 2300, 2);
@@ -3098,6 +3256,9 @@ public class PetActionHandlerTest {
     public void makeupCheckinRejectsWhenNoMakeupCardWithoutSideEffects() {
         User user = user();
         adoptDog(user, "corgi", "小短腿");
+        LocalDate availableSince = LocalDate.now().withDayOfMonth(1);
+        setAccountCreatedAt(user, availableSince);
+        setPetAssetsCreatedAt(user.getAccountId(), availableSince);
         String checkinDate = pastDateInCurrentMonthOrSkip();
         PetProfileDTO before = requestProfile(user);
 
@@ -3282,10 +3443,12 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void exploreStartRejectsCreekBeforeBackHillCompletionCount() {
+    public void exploreStartRejectsCreekBeforeDrawGuessOrTacitQuizWins() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_draw_guess", 9);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_tacit_quiz_same_answers", 29);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "creek", 1, 97043L));
 
@@ -3293,7 +3456,7 @@ public class PetActionHandlerTest {
         Assert.assertFalse(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97043L), body.getRequestId());
-        Assert.assertEquals("完成后山探险 3 次后才能进入小溪", body.getError());
+        Assert.assertEquals("你画我猜胜利 10 次或默契问答答案相同 30 次后才能进入小溪", body.getError());
         PetProfileDTO persistedProfile = requestProfile(user);
         PetDogDTO persistedDog = findDog(persistedProfile, dog.getId());
         Assert.assertEquals("idle", persistedDog.getStatus());
@@ -3303,11 +3466,11 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void exploreStartAllowsCreekAfterBackHillCompletionCount() {
+    public void exploreStartAllowsCreekAfterDrawGuessWins() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
-        insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_back_hill", 3);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_draw_guess", 10);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "creek", 1, 97044L));
 
@@ -3324,11 +3487,11 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void exploreStartRejectsConstructionSiteBeforeMinesweeperWins() {
+    public void exploreStartRejectsConstructionSiteBeforeQuickQuizWins() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
-        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper", 9);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_quick_quiz", 9);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "construction_site", 1, 97048L));
 
@@ -3336,16 +3499,16 @@ public class PetActionHandlerTest {
         Assert.assertFalse(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97048L), body.getRequestId());
-        Assert.assertEquals("扫雷累计胜利 10 局后才能进入废弃工地", body.getError());
+        Assert.assertEquals("快问快答累计胜利 10 局后才能进入废弃工地", body.getError());
         Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "explore_start"));
     }
 
     @Test
-    public void exploreStartAllowsConstructionSiteAfterMinesweeperWins() {
+    public void exploreStartAllowsConstructionSiteAfterQuickQuizWins() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
-        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper", 10);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_quick_quiz", 10);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "construction_site", 1, 97049L));
 
@@ -3389,6 +3552,9 @@ public class PetActionHandlerTest {
         insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_back_hill", 2);
         insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_creek", 1);
         insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper", 10);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_draw_guess", 6);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_tacit_quiz", 4);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_quick_quiz", 10);
         insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_gobang", 4);
         insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_turtle_soup", 6);
 
@@ -3397,6 +3563,11 @@ public class PetActionHandlerTest {
         Assert.assertEquals(2, profile.getExploreStatus().getBackHillCompletions());
         Assert.assertEquals(1, profile.getExploreStatus().getCreekCompletions());
         Assert.assertEquals(10, profile.getExploreStatus().getMinesweeperWins());
+        Assert.assertEquals(6, profile.getExploreStatus().getDrawGuessWins());
+        Assert.assertEquals(4, profile.getExploreStatus().getTacitQuizWins());
+        Assert.assertEquals(10, profile.getExploreStatus().getQuickQuizWins());
+        Assert.assertEquals(4, profile.getExploreStatus().getGobangWins());
+        Assert.assertEquals(6, profile.getExploreStatus().getTurtleSoupWins());
         Assert.assertEquals(10, profile.getExploreStatus().getOldLibraryWins());
     }
 
@@ -3666,7 +3837,7 @@ public class PetActionHandlerTest {
     public void petProfileSettlesEndedCreekExploreIntoCreekChestAndIdleDog() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        insertDailyCounter(user.getAccountId(), "lifetime", "explore_complete_back_hill", 3);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_draw_guess", 10);
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "creek", 1, 97047L));
         Assert.assertTrue(readPetBody(user).isSuccess());
         setExploreEnded(user.getAccountId(), dog.getId());
@@ -4000,6 +4171,33 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void useItemBackHillChestReturnsMinesweeperItemReward() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        insertPetItem(user.getAccountId(), BACK_HILL_CHEST_ITEM_ID, 1);
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 0);
+        IntSupplier originalItemIndexSupplier = setLuckyBagItemIndexSupplier(() -> 0);
+
+        try {
+            new PetActionHandler().process(user, useItemRequest(BACK_HILL_CHEST_ITEM_ID, null, 97053L));
+
+            PetResponseDTO body = readPetBody(user);
+            Assert.assertTrue(body.isSuccess());
+            JSONObject result = JSONUtil.parseObj(body.getContent());
+            PetProfileDTO profile = result.getBean("profile", PetProfileDTO.class);
+            JSONArray rewards = result.getJSONArray("rewards");
+            Assert.assertEquals(0, countItem(user.getAccountId(), BACK_HILL_CHEST_ITEM_ID));
+            Assert.assertEquals(0, findInventoryCount(profile, BACK_HILL_CHEST_ITEM_ID));
+            Assert.assertEquals("idle", findDog(profile, dog.getId()).getStatus());
+            Assert.assertTrue(hasReward(rewards, "item", "item_mine_mark")
+                    || hasReward(rewards, "item", "item_mine_safe_ping"));
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+            setLuckyBagItemIndexSupplier(originalItemIndexSupplier);
+        }
+    }
+
+    @Test
     public void useItemCreekChestConsumesInventoryAndReturnsCreekCollectionReward() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
@@ -4049,9 +4247,9 @@ public class PetActionHandlerTest {
             Assert.assertEquals(0, countItem(user.getAccountId(), CONSTRUCTION_SITE_CHEST_ITEM_ID));
             Assert.assertEquals(0, findInventoryCount(profile, CONSTRUCTION_SITE_CHEST_ITEM_ID));
             Assert.assertEquals("idle", findDog(profile, dog.getId()).getStatus());
-            Assert.assertTrue(hasReward(rewards, "item", "item_mine_shield")
-                    || hasReward(rewards, "item", "item_mine_detector")
-                    || hasReward(rewards, "item", "item_mine_counter"));
+            Assert.assertTrue(hasReward(rewards, "item", "item_quiz_score_pad")
+                    || hasReward(rewards, "item", "item_quiz_duel")
+                    || hasReward(rewards, "item", "item_quiz_wrong_option"));
         } finally {
             setExploreRollSupplier(originalRollSupplier);
         }
@@ -4077,10 +4275,8 @@ public class PetActionHandlerTest {
             Assert.assertEquals(0, countItem(user.getAccountId(), OLD_LIBRARY_CHEST_ITEM_ID));
             Assert.assertEquals(0, findInventoryCount(profile, OLD_LIBRARY_CHEST_ITEM_ID));
             Assert.assertEquals("idle", findDog(profile, dog.getId()).getStatus());
-            Assert.assertTrue(hasReward(rewards, "item", "item_quiz_score_pad")
-                    || hasReward(rewards, "item", "item_quiz_duel")
-                    || hasReward(rewards, "item", "item_gomoku_prediction")
-                    || hasReward(rewards, "item", "item_quiz_wrong_option")
+            Assert.assertTrue(hasReward(rewards, "item", "item_gomoku_prediction")
+                    || hasReward(rewards, "item", "item_prophecy")
                     || hasReward(rewards, "item", "item_gomoku_guard")
                     || hasReward(rewards, "item", "item_turtle_probe"));
         } finally {
@@ -4367,8 +4563,6 @@ public class PetActionHandlerTest {
                 "item_quiz_score_pad",
                 "item_quiz_duel",
                 "item_gomoku_prediction",
-                "item_battle_echo",
-                "item_battle_direct_hit",
                 "item_prophecy"
         ));
     }
@@ -4381,11 +4575,38 @@ public class PetActionHandlerTest {
                 "item_sync_perspective",
                 "item_quiz_wrong_option",
                 "item_gomoku_guard",
-                "item_turtle_probe",
-                "item_battle_pebble",
-                "item_battle_airbag"
+                "item_turtle_probe"
         ));
     }
+
+    private static String currentShopNormalItemId(User user) {
+        return requestProfile(user).getShopStatus().getNormalItemIds().get(0);
+    }
+
+    private static String currentShopRareItemId(User user) {
+        return requestProfile(user).getShopStatus().getRareItemId();
+    }
+
+    private static String normalItemNotOnShelf(User user) {
+        Set<String> shelfItemIds = new HashSet<>(requestProfile(user).getShopStatus().getNormalItemIds());
+        for (String itemId : normalLuckyBagItemIds()) {
+            if (!shelfItemIds.contains(itemId)) {
+                return itemId;
+            }
+        }
+        throw new IllegalStateException("没有可用于测试的非货架普通道具");
+    }
+
+    private static String rareItemNotOnShelf(User user) {
+        String shelfItemId = requestProfile(user).getShopStatus().getRareItemId();
+        for (String itemId : rareLuckyBagItemIds()) {
+            if (!itemId.equals(shelfItemId)) {
+                return itemId;
+            }
+        }
+        throw new IllegalStateException("没有可用于测试的非货架稀有道具");
+    }
+
     private static String dailyRareShopItemId(LocalDate date) {
         List<String> itemIds = Arrays.asList(
                 "item_mine_shield",
@@ -4395,9 +4616,7 @@ public class PetActionHandlerTest {
                 "item_sync_perspective",
                 "item_quiz_wrong_option",
                 "item_gomoku_guard",
-                "item_turtle_probe",
-                "item_battle_pebble",
-                "item_battle_airbag"
+                "item_turtle_probe"
         );
         int itemIndex = (int) Math.floorMod(date.toEpochDay(), itemIds.size());
         return itemIds.get(itemIndex);
@@ -4473,6 +4692,14 @@ public class PetActionHandlerTest {
         return request;
     }
 
+    private static PetRequestDTO shopRefreshRequest(long requestId) {
+        PetRequestDTO request = new PetRequestDTO();
+        request.setPetAction(PetAction.SHOP_REFRESH);
+        request.setRequestId(requestId);
+        request.setContent(new HashMap<>());
+        return request;
+    }
+
     private static PetRequestDTO sellCollectionRequest(String itemId, int quantity, long requestId) {
         Map<String, Object> content = new HashMap<>();
         content.put("itemId", itemId);
@@ -4524,9 +4751,48 @@ public class PetActionHandlerTest {
 
     private static void setMakeupCards(long accountId, int makeupCards) {
         ensureAssetsRow(accountId);
-        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true)) {
-            session.getConnection().createStatement().executeUpdate(
-                    "UPDATE pet_assets SET makeup_cards = " + makeupCards + " WHERE account_id = " + accountId);
+        long createdAt = LocalDate.now().withDayOfMonth(1)
+                .atStartOfDay(java.time.ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
+                     "UPDATE pet_assets SET makeup_cards = ?, created_at = ? WHERE account_id = ?")) {
+            statement.setInt(1, makeupCards);
+            statement.setLong(2, createdAt);
+            statement.setLong(3, accountId);
+            Assert.assertEquals(1, statement.executeUpdate());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void setPetAssetsCreatedAt(long accountId, LocalDate createdDate) {
+        ensureAssetsRow(accountId);
+        long createdAt = createdDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
+                     "UPDATE pet_assets SET created_at = ? WHERE account_id = ?")) {
+            statement.setLong(1, createdAt);
+            statement.setLong(2, accountId);
+            Assert.assertEquals(1, statement.executeUpdate());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void setAccountCreatedAt(User user, LocalDate createdDate) {
+        long createdAt = createdDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
+                     "INSERT OR REPLACE INTO accounts " +
+                             "(account_id, account, nickname, password_hash, avatar_version, role, permit, stealth, status, deleted_at, created_at, created_ip, last_login_at, last_login_ip, e2ee_salt, identity_pub_key) " +
+                             "VALUES (?, ?, ?, 'hash', 0, 'USER', 0, 0, 'ACTIVE', NULL, ?, '127.0.0.1', NULL, NULL, NULL, NULL)")) {
+            statement.setLong(1, user.getAccountId());
+            statement.setString(2, user.getAccount());
+            statement.setString(3, user.getNickname() + user.getAccountId());
+            statement.setLong(4, createdAt);
+            statement.executeUpdate();
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }

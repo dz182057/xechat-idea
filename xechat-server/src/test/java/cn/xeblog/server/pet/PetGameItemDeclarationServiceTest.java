@@ -23,6 +23,10 @@ import java.util.Set;
 
 public class PetGameItemDeclarationServiceTest {
 
+    private static final String ACTIVE_PLAY_ITEM_ID = "item_quiz_score_pad";
+    private static final String ACTIVE_INTERACTION_ITEM_ID = "item_quiz_duel";
+    private static final int ACTIVE_INTERACTION_REWARD_BONES = 30;
+
     @Before
     public void setUp() throws Exception {
         Path root = Files.createTempDirectory("xechat-pet-item-declaration-test");
@@ -45,16 +49,16 @@ public class PetGameItemDeclarationServiceTest {
         User user = new User();
         user.setAccountId(1001L);
         Set<String> ownedItems = new HashSet<>();
-        ownedItems.add("item_battle_echo");
+        ownedItems.add(ACTIVE_PLAY_ITEM_ID);
         PetGameItemDeclarationService.setOwnershipCheckerForTest(
                 (accountId, itemId) -> accountId == 1001L && ownedItems.contains(itemId));
 
         GamePlayerPetItemsDTO normalized = PetGameItemDeclarationService.normalizeForUser(
                 user,
-                Game.DOG_BATTLE,
-                new GamePlayerPetItemsDTO("item_battle_echo", "item_battle_direct_hit"));
+                Game.QUICK_QUIZ,
+                new GamePlayerPetItemsDTO(ACTIVE_PLAY_ITEM_ID, ACTIVE_INTERACTION_ITEM_ID));
 
-        Assert.assertEquals("item_battle_echo", normalized.getPetPlayItemId());
+        Assert.assertEquals(ACTIVE_PLAY_ITEM_ID, normalized.getPetPlayItemId());
         Assert.assertNull(normalized.getPetInteractionItemId());
     }
 
@@ -63,95 +67,136 @@ public class PetGameItemDeclarationServiceTest {
         User user = user(1002L);
         GameRoom room = room(user);
         setDogSlots(user.getAccountId(), 2);
-        insertPetItem(user.getAccountId(), "item_battle_echo", 1);
-        insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID, 1);
+        insertPetItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID, 1);
 
         GamePlayerPetItemsDTO normalized = PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
+                new GamePlayerPetItemsDTO(ACTIVE_PLAY_ITEM_ID, ACTIVE_INTERACTION_ITEM_ID));
+
+        Assert.assertEquals(ACTIVE_PLAY_ITEM_ID, normalized.getPetPlayItemId());
+        Assert.assertEquals(ACTIVE_INTERACTION_ITEM_ID, normalized.getPetInteractionItemId());
+        Assert.assertEquals(0, countItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID));
+        Assert.assertEquals(0, countItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID));
+        Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(), ACTIVE_PLAY_ITEM_ID, "gameplay", "reserved"));
+        Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID, "interaction", "reserved"));
+    }
+
+    @Test
+    public void applyDeclarationClearsTemporarilyDisabledItemsWithoutSpendingInventory() {
+        User user = user(1016L);
+        GameRoom battleRoom = room(user, Game.DOG_BATTLE);
+        setDogSlots(user.getAccountId(), 2);
+        insertPetItem(user.getAccountId(), "item_battle_echo", 1);
+        insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
+
+        GamePlayerPetItemsDTO battleNormalized = PetGameItemDeclarationService.applyDeclarationForUser(
+                user,
+                battleRoom,
                 new GamePlayerPetItemsDTO("item_battle_echo", "item_battle_direct_hit"));
 
-        Assert.assertEquals("item_battle_echo", normalized.getPetPlayItemId());
-        Assert.assertEquals("item_battle_direct_hit", normalized.getPetInteractionItemId());
-        Assert.assertEquals(0, countItem(user.getAccountId(), "item_battle_echo"));
-        Assert.assertEquals(0, countItem(user.getAccountId(), "item_battle_direct_hit"));
-        Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(), "item_battle_echo", "gameplay", "reserved"));
-        Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(), "item_battle_direct_hit", "interaction", "reserved"));
+        Assert.assertNull(battleNormalized.getPetPlayItemId());
+        Assert.assertNull(battleNormalized.getPetInteractionItemId());
+        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_echo"));
+        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_direct_hit"));
+        Assert.assertEquals(0, countUsages(battleRoom.getId(), user.getAccountId(),
+                "item_battle_echo", "gameplay", "reserved"));
+        Assert.assertEquals(0, countUsages(battleRoom.getId(), user.getAccountId(),
+                "item_battle_direct_hit", "interaction", "reserved"));
+
+        User raceUser = user(1017L);
+        GameRoom raceRoom = room(raceUser, Game.DOG_RACE);
+        insertPetItem(raceUser.getAccountId(), "item_race_knee", 1);
+
+        GamePlayerPetItemsDTO raceNormalized = PetGameItemDeclarationService.applyDeclarationForUser(
+                raceUser,
+                raceRoom,
+                new GamePlayerPetItemsDTO(null, "item_race_knee"));
+
+        Assert.assertNull(raceNormalized.getPetPlayItemId());
+        Assert.assertNull(raceNormalized.getPetInteractionItemId());
+        Assert.assertEquals(1, countItem(raceUser.getAccountId(), "item_race_knee"));
+        Assert.assertEquals(0, countUsages(raceRoom.getId(), raceUser.getAccountId(),
+                "item_race_knee", "interaction", "reserved"));
     }
 
     @Test
     public void releaseReservedForPlayerRefundsDeclaredItems() {
         User user = user(1003L);
         GameRoom room = room(user);
-        insertPetItem(user.getAccountId(), "item_battle_echo", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID, 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO("item_battle_echo", null));
+                new GamePlayerPetItemsDTO(ACTIVE_PLAY_ITEM_ID, null));
 
         PetGameItemDeclarationService.releaseReservedForPlayer(room, user);
 
         Assert.assertNull(room.getUsers().get(user.getIdentityKey()).getPetPlayItemId());
-        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_echo"));
-        Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(), "item_battle_echo", "gameplay", "refunded"));
+        Assert.assertEquals(1, countItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID));
+        Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(), ACTIVE_PLAY_ITEM_ID, "gameplay", "refunded"));
     }
 
     @Test
     public void settleSucceededRefundsItemAndMarksUsageSucceeded() {
         User user = user(1004L);
         GameRoom room = room(user);
-        insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID, 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO(null, "item_battle_direct_hit"));
+                new GamePlayerPetItemsDTO(null, ACTIVE_INTERACTION_ITEM_ID));
 
         PetGameItemDeclarationService.settleSucceeded(
                 room,
                 user.getIdentityKey(),
-                "item_battle_direct_hit",
+                ACTIVE_INTERACTION_ITEM_ID,
                 "interaction",
-                40);
+                ACTIVE_INTERACTION_REWARD_BONES);
 
-        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_direct_hit"));
+        Assert.assertEquals(1, countItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "succeeded"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "succeeded"));
     }
 
     @Test
     public void settleSucceededWithInteractionRewardCommitsItemAndRewardTogether() {
         User user = user(1008L);
         GameRoom room = room(user);
-        insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID, 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO(null, "item_battle_direct_hit"));
+                new GamePlayerPetItemsDTO(null, ACTIVE_INTERACTION_ITEM_ID));
 
         PetGameItemDeclarationService.settleSucceededWithInteractionReward(
                 room,
                 user.getIdentityKey(),
-                "item_battle_direct_hit",
+                ACTIVE_INTERACTION_ITEM_ID,
                 "interaction",
-                40);
+                ACTIVE_INTERACTION_REWARD_BONES);
 
-        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_direct_hit"));
-        Assert.assertEquals(340, findBones(user.getAccountId()));
+        Assert.assertEquals(1, countItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID));
+        Assert.assertEquals(330, findBones(user.getAccountId()));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "succeeded"));
-        Assert.assertEquals(40, findUsageRewardBones(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "succeeded"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "succeeded"));
+        Assert.assertEquals(ACTIVE_INTERACTION_REWARD_BONES, findUsageRewardBones(room.getId(), user.getAccountId(),
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "succeeded"));
     }
 
     @Test
-    public void dogBattleDefaultSucceededSettlementAppliesInteractionReward() throws Exception {
+    public void dogBattleDisabledItemCannotBeDeclaredOrSettled() throws Exception {
         User user = user(1010L);
-        GameRoom room = room(user);
+        GameRoom room = room(user, Game.DOG_BATTLE);
         insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
-        PetGameItemDeclarationService.applyDeclarationForUser(
+        GamePlayerPetItemsDTO normalized = PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
                 new GamePlayerPetItemsDTO(null, "item_battle_direct_hit"));
+
+        Assert.assertNull(normalized.getPetPlayItemId());
+        Assert.assertNull(normalized.getPetInteractionItemId());
 
         Method settleGameItem = DogBattleService.class.getDeclaredMethod(
                 "settleGameItem",
@@ -166,10 +211,10 @@ public class PetGameItemDeclarationServiceTest {
                 "item_battle_direct_hit", "interaction", "succeeded", 40);
 
         Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_direct_hit"));
-        Assert.assertEquals(340, findBones(user.getAccountId()));
-        Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
+        Assert.assertEquals(0, findBones(user.getAccountId()));
+        Assert.assertEquals(0, countUsages(room.getId(), user.getAccountId(),
                 "item_battle_direct_hit", "interaction", "succeeded"));
-        Assert.assertEquals(40, findUsageRewardBones(room.getId(), user.getAccountId(),
+        Assert.assertEquals(0, findUsageRewardBones(room.getId(), user.getAccountId(),
                 "item_battle_direct_hit", "interaction", "succeeded"));
     }
 
@@ -177,17 +222,17 @@ public class PetGameItemDeclarationServiceTest {
     public void settleSucceededWithInteractionRewardRollsBackWhenRewardFails() {
         User user = user(1009L);
         GameRoom room = room(user);
-        insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID, 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO(null, "item_battle_direct_hit"));
+                new GamePlayerPetItemsDTO(null, ACTIVE_INTERACTION_ITEM_ID));
 
         try {
             PetGameItemDeclarationService.settleSucceededWithInteractionReward(
                     room,
                     user.getIdentityKey(),
-                    "item_battle_direct_hit",
+                    ACTIVE_INTERACTION_ITEM_ID,
                     "interaction",
                     -1);
             Assert.fail("负数互动奖励应回滚整笔结算");
@@ -195,139 +240,139 @@ public class PetGameItemDeclarationServiceTest {
             Assert.assertEquals("互动奖励必须为正数", expected.getMessage());
         }
 
-        Assert.assertEquals(0, countItem(user.getAccountId(), "item_battle_direct_hit"));
+        Assert.assertEquals(0, countItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID));
         Assert.assertEquals(0, findBones(user.getAccountId()));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "reserved"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "reserved"));
         Assert.assertEquals(0, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "succeeded"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "succeeded"));
     }
 
     @Test
     public void settleSucceededWithInteractionRewardIsIdempotent() {
         User user = user(1011L);
         GameRoom room = room(user);
-        insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID, 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO(null, "item_battle_direct_hit"));
+                new GamePlayerPetItemsDTO(null, ACTIVE_INTERACTION_ITEM_ID));
 
         PetGameItemDeclarationService.settleSucceededWithInteractionReward(
                 room,
                 user.getIdentityKey(),
-                "item_battle_direct_hit",
+                ACTIVE_INTERACTION_ITEM_ID,
                 "interaction",
-                40);
+                ACTIVE_INTERACTION_REWARD_BONES);
         PetGameItemDeclarationService.settleSucceededWithInteractionReward(
                 room,
                 user.getIdentityKey(),
-                "item_battle_direct_hit",
+                ACTIVE_INTERACTION_ITEM_ID,
                 "interaction",
-                40);
+                ACTIVE_INTERACTION_REWARD_BONES);
 
-        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_direct_hit"));
-        Assert.assertEquals(340, findBones(user.getAccountId()));
+        Assert.assertEquals(1, countItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID));
+        Assert.assertEquals(330, findBones(user.getAccountId()));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "succeeded"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "succeeded"));
         Assert.assertEquals(0, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "reserved"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "reserved"));
     }
 
     @Test
     public void settleFailedConsumesItemAndMarksUsageFailed() {
         User user = user(1005L);
         GameRoom room = room(user);
-        insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID, 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO(null, "item_battle_direct_hit"));
+                new GamePlayerPetItemsDTO(null, ACTIVE_INTERACTION_ITEM_ID));
 
         PetGameItemDeclarationService.settleFailed(
                 room,
                 user.getIdentityKey(),
-                "item_battle_direct_hit",
+                ACTIVE_INTERACTION_ITEM_ID,
                 "interaction");
 
-        Assert.assertEquals(0, countItem(user.getAccountId(), "item_battle_direct_hit"));
+        Assert.assertEquals(0, countItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "failed"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "failed"));
     }
 
     @Test
     public void settleConsumedKeepsItemSpentAndMarksUsageConsumed() {
         User user = user(1006L);
         GameRoom room = room(user);
-        insertPetItem(user.getAccountId(), "item_battle_pebble", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID, 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO("item_battle_pebble", null));
+                new GamePlayerPetItemsDTO(ACTIVE_PLAY_ITEM_ID, null));
 
         PetGameItemDeclarationService.settleConsumed(
                 room,
                 user.getIdentityKey(),
-                "item_battle_pebble",
+                ACTIVE_PLAY_ITEM_ID,
                 "gameplay");
 
-        Assert.assertEquals(0, countItem(user.getAccountId(), "item_battle_pebble"));
+        Assert.assertEquals(0, countItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_pebble", "gameplay", "consumed"));
+                ACTIVE_PLAY_ITEM_ID, "gameplay", "consumed"));
     }
 
     @Test
     public void settleConsumedIsIdempotentAfterFirstSettlement() {
         User user = user(1012L);
         GameRoom room = room(user);
-        insertPetItem(user.getAccountId(), "item_battle_pebble", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID, 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO("item_battle_pebble", null));
+                new GamePlayerPetItemsDTO(ACTIVE_PLAY_ITEM_ID, null));
 
         PetGameItemDeclarationService.settleConsumed(
                 room,
                 user.getIdentityKey(),
-                "item_battle_pebble",
+                ACTIVE_PLAY_ITEM_ID,
                 "gameplay");
         PetGameItemDeclarationService.settleConsumed(
                 room,
                 user.getIdentityKey(),
-                "item_battle_pebble",
+                ACTIVE_PLAY_ITEM_ID,
                 "gameplay");
 
-        Assert.assertEquals(0, countItem(user.getAccountId(), "item_battle_pebble"));
+        Assert.assertEquals(0, countItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_pebble", "gameplay", "consumed"));
+                ACTIVE_PLAY_ITEM_ID, "gameplay", "consumed"));
         Assert.assertEquals(0, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_pebble", "gameplay", "reserved"));
+                ACTIVE_PLAY_ITEM_ID, "gameplay", "reserved"));
     }
 
     @Test
     public void refundedItemCannotBeSettledAgain() {
         User user = user(1013L);
         GameRoom room = room(user);
-        insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID, 1);
         PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO(null, "item_battle_direct_hit"));
+                new GamePlayerPetItemsDTO(null, ACTIVE_INTERACTION_ITEM_ID));
 
         PetGameItemDeclarationService.releaseReservedForPlayer(room, user);
         PetGameItemDeclarationService.settleSucceededWithInteractionReward(
                 room,
                 user.getIdentityKey(),
-                "item_battle_direct_hit",
+                ACTIVE_INTERACTION_ITEM_ID,
                 "interaction",
-                40);
+                ACTIVE_INTERACTION_REWARD_BONES);
 
-        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_direct_hit"));
+        Assert.assertEquals(1, countItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID));
         Assert.assertEquals(0, findBones(user.getAccountId()));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "refunded"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "refunded"));
         Assert.assertEquals(0, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "succeeded"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "succeeded"));
     }
 
     @Test
@@ -335,20 +380,20 @@ public class PetGameItemDeclarationServiceTest {
         User user = user(1007L);
         GameRoom room = room(user);
         room.setGameMode("正式模式");
-        insertPetItem(user.getAccountId(), "item_battle_echo", 1);
-        insertPetItem(user.getAccountId(), "item_battle_direct_hit", 1);
+        insertPetItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID, 1);
+        insertPetItem(user.getAccountId(), ACTIVE_INTERACTION_ITEM_ID, 1);
 
         GamePlayerPetItemsDTO normalized = PetGameItemDeclarationService.applyDeclarationForUser(
                 user,
                 room,
-                new GamePlayerPetItemsDTO("item_battle_echo", "item_battle_direct_hit"));
+                new GamePlayerPetItemsDTO(ACTIVE_PLAY_ITEM_ID, ACTIVE_INTERACTION_ITEM_ID));
 
         Assert.assertNull(normalized.getPetPlayItemId());
-        Assert.assertEquals("item_battle_direct_hit", normalized.getPetInteractionItemId());
-        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_echo"));
-        Assert.assertEquals(0, countUsages(room.getId(), user.getAccountId(), "item_battle_echo", "gameplay", "reserved"));
+        Assert.assertEquals(ACTIVE_INTERACTION_ITEM_ID, normalized.getPetInteractionItemId());
+        Assert.assertEquals(1, countItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID));
+        Assert.assertEquals(0, countUsages(room.getId(), user.getAccountId(), ACTIVE_PLAY_ITEM_ID, "gameplay", "reserved"));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_direct_hit", "interaction", "reserved"));
+                ACTIVE_INTERACTION_ITEM_ID, "interaction", "reserved"));
     }
 
     @Test
@@ -362,20 +407,20 @@ public class PetGameItemDeclarationServiceTest {
                 room,
                 new GamePlayerPetItemsDTO("item_wild_common", null));
 
-        Assert.assertEquals("item_battle_echo", normalized.getPetPlayItemId());
+        Assert.assertEquals(ACTIVE_PLAY_ITEM_ID, normalized.getPetPlayItemId());
         Assert.assertNull(normalized.getPetInteractionItemId());
         Assert.assertEquals(0, countItem(user.getAccountId(), "item_wild_common"));
-        Assert.assertEquals(0, countItem(user.getAccountId(), "item_battle_echo"));
+        Assert.assertEquals(0, countItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_echo", "gameplay", "reserved"));
+                ACTIVE_PLAY_ITEM_ID, "gameplay", "reserved"));
 
         PetGameItemDeclarationService.releaseReservedForPlayer(room, user);
 
         Assert.assertNull(room.getUsers().get(user.getIdentityKey()).getPetPlayItemId());
         Assert.assertEquals(0, countItem(user.getAccountId(), "item_wild_common"));
-        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_echo"));
+        Assert.assertEquals(1, countItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_echo", "gameplay", "refunded"));
+                ACTIVE_PLAY_ITEM_ID, "gameplay", "refunded"));
     }
 
     @Test
@@ -391,21 +436,21 @@ public class PetGameItemDeclarationServiceTest {
                 room,
                 new GamePlayerPetItemsDTO("item_party_equalizer", null));
 
-        Assert.assertEquals("item_battle_echo", normalized.getPetPlayItemId());
-        Assert.assertEquals("item_battle_echo", room.getUsers().get(other.getIdentityKey()).getPetPlayItemId());
+        Assert.assertEquals(ACTIVE_PLAY_ITEM_ID, normalized.getPetPlayItemId());
+        Assert.assertEquals(ACTIVE_PLAY_ITEM_ID, room.getUsers().get(other.getIdentityKey()).getPetPlayItemId());
         Assert.assertEquals(0, countItem(user.getAccountId(), "item_party_equalizer"));
-        Assert.assertEquals(0, countItem(user.getAccountId(), "item_battle_echo"));
-        Assert.assertEquals(0, countItem(other.getAccountId(), "item_battle_echo"));
+        Assert.assertEquals(0, countItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID));
+        Assert.assertEquals(0, countItem(other.getAccountId(), ACTIVE_PLAY_ITEM_ID));
         Assert.assertEquals(1, countUsages(room.getId(), user.getAccountId(),
-                "item_battle_echo", "gameplay", "reserved"));
+                ACTIVE_PLAY_ITEM_ID, "gameplay", "reserved"));
 
         PetGameItemDeclarationService.releaseReservedForRoom(room);
 
         Assert.assertNull(room.getUsers().get(user.getIdentityKey()).getPetPlayItemId());
         Assert.assertNull(room.getUsers().get(other.getIdentityKey()).getPetPlayItemId());
         Assert.assertEquals(0, countItem(user.getAccountId(), "item_party_equalizer"));
-        Assert.assertEquals(1, countItem(user.getAccountId(), "item_battle_echo"));
-        Assert.assertEquals(0, countItem(other.getAccountId(), "item_battle_echo"));
+        Assert.assertEquals(1, countItem(user.getAccountId(), ACTIVE_PLAY_ITEM_ID));
+        Assert.assertEquals(0, countItem(other.getAccountId(), ACTIVE_PLAY_ITEM_ID));
     }
 
     private static User user(long accountId) {
@@ -419,9 +464,13 @@ public class PetGameItemDeclarationServiceTest {
     }
 
     private static GameRoom room(User user) {
+        return room(user, Game.QUICK_QUIZ);
+    }
+
+    private static GameRoom room(User user, Game game) {
         GameRoom room = new GameRoom();
         room.setId("declaration-room-" + user.getAccountId());
-        room.setGame(Game.DOG_BATTLE);
+        room.setGame(game);
         room.setNums(2);
         room.addUser(user);
         return room;

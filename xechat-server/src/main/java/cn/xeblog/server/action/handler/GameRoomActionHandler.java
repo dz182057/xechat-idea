@@ -126,6 +126,12 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                     sendToPlayer(v, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 });
                 break;
+            case MINE_ITEM_USED:
+                if (!gameRoom.isPlayerConnection(user) || gameRoom.getGame() != Game.MINESWEEPER) {
+                    return;
+                }
+                sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                break;
         }
     }
 

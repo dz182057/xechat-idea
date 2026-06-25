@@ -38,6 +38,18 @@ public class PetExploreStatusDTO implements Serializable {
 
     private int minesweeperWins;
 
+    private int drawGuessWins;
+
+    private int tacitQuizWins;
+
+    private int tacitQuizSameAnswers;
+
+    private int quickQuizWins;
+
+    private int gobangWins;
+
+    private int turtleSoupWins;
+
     private int oldLibraryWins;
 
     private int oldLibraryCompletions;

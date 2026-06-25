@@ -27,6 +27,7 @@ import cn.xeblog.commons.entity.pet.PetRenameDTO;
 import cn.xeblog.commons.entity.pet.PetSellItemDTO;
 import cn.xeblog.commons.entity.pet.PetSetCompanionDTO;
 import cn.xeblog.commons.entity.pet.PetShopBuyDTO;
+import cn.xeblog.commons.entity.pet.PetShopStatusDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillActionDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDefinitionDTO;
@@ -35,11 +36,16 @@ import cn.xeblog.commons.entity.pet.PetUseItemDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.account.DbInitializer;
+import cn.xeblog.server.account.entity.Account;
+import cn.xeblog.server.account.mapper.AccountMapper;
 import org.apache.ibatis.exceptions.PersistenceException;
 import org.apache.ibatis.session.SqlSession;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,6 +57,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -98,6 +105,11 @@ public final class PetProfileService {
     private static final int SHOP_NORMAL_ITEM_PRICE = 80;
     private static final int SHOP_DAILY_RARE_ITEM_PRICE = 320;
     private static final int SHOP_LUCKY_BAG_PRICE = 250;
+    private static final long SHOP_SHELF_REFRESH_INTERVAL_MILLIS = 6L * 60L * 60L * 1000L;
+    private static final int SHOP_SHELF_NORMAL_ITEM_COUNT = 3;
+    private static final int SHOP_SHELF_MAX_PAID_REFRESHES = 3;
+    private static final List<Integer> SHOP_SHELF_PAID_REFRESH_COSTS =
+            Collections.unmodifiableList(Arrays.asList(30, 50, 70));
     private static final int MAX_FOOD = 99;
     private static final int MAX_MAKEUP_CARDS = 3;
     private static final int MAX_ITEM_COUNT = 9;
@@ -106,7 +118,7 @@ public final class PetProfileService {
     private static final int DAILY_RARE_ITEM_BUY_LIMIT = 1;
     private static final int DAILY_LUCKY_BAG_BUY_LIMIT = 2;
     private static final int SEVENTH_DAY_CHECKIN_BONES = 100;
-    private static final int SEVENTH_DAY_CHECKIN_NORMAL_ITEM_COUNT = 2;
+    private static final int SEVENTH_DAY_CHECKIN_NORMAL_ITEM_COUNT = 1;
     private static final int CHECKIN_ITEM_OVERFLOW_BONES = 10;
     private static final int CHECKIN_MILESTONE_INTERVAL = 28;
     private static final int CHECKIN_MILESTONE_EPIC_ITEM_OVERFLOW_BONES = 80;
@@ -159,8 +171,10 @@ public final class PetProfileService {
     private static final String COUNTER_DATE_LIFETIME = "lifetime";
     private static final String COUNTER_EXPLORE_COMPLETE_PREFIX = "explore_complete_";
     private static final String COUNTER_MINI_GAME_WIN_PREFIX = "mini_game_win_";
-    private static final int CREEK_UNLOCK_BACK_HILL_COMPLETIONS = 3;
-    private static final int CONSTRUCTION_SITE_UNLOCK_MINESWEEPER_WINS = 10;
+    private static final String COUNTER_TACIT_QUIZ_SAME_ANSWERS = "mini_game_tacit_quiz_same_answers";
+    private static final int CREEK_UNLOCK_DRAW_GUESS_WINS = 10;
+    private static final int CREEK_UNLOCK_TACIT_QUIZ_SAME_ANSWERS = 30;
+    private static final int CONSTRUCTION_SITE_UNLOCK_QUICK_QUIZ_WINS = 10;
     private static final int OLD_LIBRARY_UNLOCK_LIBRARY_WINS = 10;
     private static final int SNOW_MOUNTAIN_UNLOCK_OLD_LIBRARY_COMPLETIONS = 3;
     private static final int EXPLORE_ONE_HOUR = 1;
@@ -221,6 +235,7 @@ public final class PetProfileService {
     private static final String DAILY_COUNTER_SHOP_NORMAL_ITEM_BUY = "shop_normal_item_buy";
     private static final String DAILY_COUNTER_SHOP_DAILY_RARE_ITEM_BUY = "shop_daily_rare_item_buy";
     private static final String DAILY_COUNTER_SHOP_LUCKY_BAG_BUY = "shop_lucky_bag_buy";
+    private static final String COUNTER_SHOP_SHELF_PAID_REFRESH = "shop_shelf_paid_refresh";
     private static final String DAILY_COUNTER_EXPLORE_START = "explore_start";
     private static final String DAILY_COUNTER_EXPLORE_ITEM_GAIN = "explore_item_gain";
     private static final String DAILY_COUNTER_MINI_GAME_COMPLETE = "mini_game_complete";
@@ -235,13 +250,13 @@ public final class PetProfileService {
     private static final List<String> LUCKY_BAG_RARE_ITEM_IDS = PetItemDefinitions.luckyBagRareItemIds();
     private static final List<String> LUCKY_BAG_EPIC_ITEM_IDS = PetItemDefinitions.luckyBagEpicItemIds();
     private static final List<String> BACK_HILL_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_battle_echo",
-            "item_battle_direct_hit",
-            "item_prophecy"
+            "item_mine_mark",
+            "item_mine_safe_ping"
     ));
     private static final List<String> BACK_HILL_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_battle_pebble",
-            "item_battle_airbag"
+            "item_mine_shield",
+            "item_mine_detector",
+            "item_mine_counter"
     ));
     private static final List<String> CREEK_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "item_draw_advance_hint",
@@ -254,23 +269,18 @@ public final class PetProfileService {
             "item_sync_perspective"
     ));
     private static final List<String> CONSTRUCTION_SITE_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_mine_mark",
-            "item_mine_safe_ping"
+            "item_quiz_score_pad",
+            "item_quiz_duel"
     ));
-    private static final List<String> CONSTRUCTION_SITE_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_mine_shield",
-            "item_mine_detector",
-            "item_mine_counter"
-    ));
+    private static final List<String> CONSTRUCTION_SITE_RARE_ITEM_IDS =
+            Collections.unmodifiableList(Collections.singletonList("item_quiz_wrong_option"));
     private static final Set<String> CONSTRUCTION_SITE_LUCKY_BAG_ITEM_IDS =
             Collections.unmodifiableSet(createConstructionSiteLuckyBagItemIds());
     private static final List<String> OLD_LIBRARY_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_quiz_score_pad",
-            "item_quiz_duel",
-            "item_gomoku_prediction"
+            "item_gomoku_prediction",
+            "item_prophecy"
     ));
     private static final List<String> OLD_LIBRARY_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
-            "item_quiz_wrong_option",
             "item_gomoku_guard",
             "item_turtle_probe"
     ));
@@ -459,6 +469,7 @@ public final class PetProfileService {
                 items.add(toDTO(row));
             }
             profile.setItems(items);
+            profile.setDiscoveredItemIds(ledgerMapper.listGainedItemIds(accountId));
             List<PetExploreChestDTO> exploreChests = new ArrayList<>(chestRows.size());
             for (PetExploreChestRecord row : chestRows) {
                 exploreChests.add(toDTO(row));
@@ -474,6 +485,7 @@ public final class PetProfileService {
             profile.setCompanionDogId(activeDogIds.isEmpty() ? null : activeDogIds.get(0));
             profile.setCheckinStatus(new PetCheckinStatusDTO(todayText, todayCheckin != null, cycleDay,
                     totalCheckins, checkinMilestoneRemaining(totalCheckins),
+                    accountCheckinStartDate(session, accountId, assets, todayText),
                     checkedDatesInMonth, lastMilestoneReward));
             int treasureMapFragments = Math.min(HUSKY_TREASURE_MAP_FRAGMENT_LIMIT,
                     findCollectionCount(collectionMapper, accountId, TREASURE_MAP_FRAGMENT_COLLECTION_ID));
@@ -487,10 +499,18 @@ public final class PetProfileService {
                     exploreCompleteCounter(EXPLORE_LOCATION_OLD_LIBRARY));
             int minesweeperWins = findLifetimeCounterValue(dailyCounterMapper, accountId,
                     miniGameWinCounter(Game.MINESWEEPER));
-            int oldLibraryWins = findLifetimeCounterValue(dailyCounterMapper, accountId,
-                    miniGameWinCounter(Game.GOBANG))
-                    + findLifetimeCounterValue(dailyCounterMapper, accountId,
+            int drawGuessWins = findLifetimeCounterValue(dailyCounterMapper, accountId,
+                    miniGameWinCounter(Game.DRAW_GUESS));
+            int tacitQuizWins = findLifetimeCounterValue(dailyCounterMapper, accountId,
+                    miniGameWinCounter(Game.TACIT_QUIZ));
+            int tacitQuizSameAnswers = findTacitQuizSameAnswers(dailyCounterMapper, accountId, tacitQuizWins);
+            int quickQuizWins = findLifetimeCounterValue(dailyCounterMapper, accountId,
+                    miniGameWinCounter(Game.QUICK_QUIZ));
+            int gobangWins = findLifetimeCounterValue(dailyCounterMapper, accountId,
+                    miniGameWinCounter(Game.GOBANG));
+            int turtleSoupWins = findLifetimeCounterValue(dailyCounterMapper, accountId,
                     miniGameWinCounter(Game.TURTLE_SOUP));
+            int oldLibraryWins = gobangWins + turtleSoupWins;
             profile.setExploreStatus(new PetExploreStatusDTO(
                     DAILY_EXPLORE_START_LIMIT,
                     findDailyCounterValue(dailyCounterMapper, accountId, todayText, DAILY_COUNTER_EXPLORE_START),
@@ -503,12 +523,19 @@ public final class PetProfileService {
                     backHillCompletions,
                     creekCompletions,
                     minesweeperWins,
+                    drawGuessWins,
+                    tacitQuizWins,
+                    tacitQuizSameAnswers,
+                    quickQuizWins,
+                    gobangWins,
+                    turtleSoupWins,
                     oldLibraryWins,
                     oldLibraryCompletions,
                     pendingOldTennisBall(dailyCounterMapper, accountId, rows)));
             profile.setInteractionStatus(buildInteractionStatus(dailyCounterMapper, accountId, todayText));
             profile.setDailyCompanionStatus(buildDailyCompanionStatus(dailyCounterMapper, accountId, todayText, rows));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
+            profile.setShopStatus(buildShopStatus(dailyCounterMapper, accountId, now));
             if (energyRefreshed || legacyChestMigrated || exploreSettled || dogStageChanged) {
                 session.commit();
             }
@@ -535,6 +562,43 @@ public final class PetProfileService {
                 definitions,
                 skills,
                 freeLearnAvailable);
+    }
+
+    private static PetShopStatusDTO buildShopStatus(PetDailyCounterMapper mapper, long accountId, long now) {
+        long periodStartAt = currentShopShelfPeriodStartAt(now);
+        int paidRefreshesUsed = findDailyCounterValue(mapper, accountId, shopShelfCounterDate(periodStartAt),
+                COUNTER_SHOP_SHELF_PAID_REFRESH);
+        int normalizedRefreshes = Math.min(SHOP_SHELF_MAX_PAID_REFRESHES, Math.max(0, paidRefreshesUsed));
+        long periodIndex = periodStartAt / SHOP_SHELF_REFRESH_INTERVAL_MILLIS;
+        long seed = accountId * 1_103_515_245L + periodIndex * 10_009L + normalizedRefreshes * 917_647L;
+        List<String> rareItems = new ArrayList<>(LUCKY_BAG_RARE_ITEM_IDS);
+        List<String> normalItems = new ArrayList<>(LUCKY_BAG_NORMAL_ITEM_IDS);
+        Collections.shuffle(rareItems, new Random(seed ^ 0x5DEECE66DL));
+        Collections.shuffle(normalItems, new Random(seed ^ 0x9E3779B97F4A7C15L));
+        Integer nextPaidRefreshCost = normalizedRefreshes < SHOP_SHELF_PAID_REFRESH_COSTS.size()
+                ? SHOP_SHELF_PAID_REFRESH_COSTS.get(normalizedRefreshes)
+                : null;
+        return new PetShopStatusDTO(
+                rareItems.get(0),
+                new ArrayList<>(normalItems.subList(0, Math.min(SHOP_SHELF_NORMAL_ITEM_COUNT, normalItems.size()))),
+                periodStartAt,
+                periodStartAt + SHOP_SHELF_REFRESH_INTERVAL_MILLIS,
+                normalizedRefreshes,
+                SHOP_SHELF_MAX_PAID_REFRESHES,
+                new ArrayList<>(SHOP_SHELF_PAID_REFRESH_COSTS),
+                nextPaidRefreshCost);
+    }
+
+    private static long currentShopShelfPeriodStartAt(long now) {
+        ZoneId zone = ZoneId.systemDefault();
+        ZonedDateTime currentTime = Instant.ofEpochMilli(now).atZone(zone);
+        long dayStartAt = currentTime.toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli();
+        long elapsedToday = Math.max(0L, now - dayStartAt);
+        return dayStartAt + Math.floorDiv(elapsedToday, SHOP_SHELF_REFRESH_INTERVAL_MILLIS) * SHOP_SHELF_REFRESH_INTERVAL_MILLIS;
+    }
+
+    private static String shopShelfCounterDate(long periodStartAt) {
+        return "shop_shelf:" + periodStartAt;
     }
 
     private static PetPendingOldTennisBallDTO pendingOldTennisBall(PetDailyCounterMapper mapper,
@@ -888,6 +952,12 @@ public final class PetProfileService {
     public static PetProfileDTO shopBuy(long accountId, PetShopBuyDTO request) {
         synchronized (accountLock(accountId)) {
             return shopBuyLocked(accountId, request);
+        }
+    }
+
+    public static PetProfileDTO shopRefresh(long accountId) {
+        synchronized (accountLock(accountId)) {
+            return shopRefreshLocked(accountId);
         }
     }
 
@@ -1555,6 +1625,10 @@ public final class PetProfileService {
                 assetsMapper.addBones(accountId, MINI_GAME_COMPLETE_BONES * rewardMultiplier, now);
             }
             if (win) {
+                if (game == Game.TACIT_QUIZ) {
+                    counterMapper.incrementIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
+                            COUNTER_TACIT_QUIZ_SAME_ANSWERS, Integer.MAX_VALUE, now);
+                }
                 counterMapper.incrementIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
                         miniGameWinCounter(game), Integer.MAX_VALUE, now);
                 if (counterMapper.incrementIfUnderLimit(accountId, today, DAILY_COUNTER_MINI_GAME_FIRST_WIN,
@@ -1783,6 +1857,35 @@ public final class PetProfileService {
         throw new IllegalArgumentException("暂不支持该商店商品");
     }
 
+    private static PetProfileDTO shopRefreshLocked(long accountId) {
+        long now = System.currentTimeMillis();
+        long periodStartAt = currentShopShelfPeriodStartAt(now);
+        String counterDate = shopShelfCounterDate(periodStartAt);
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            PetAssetsRecord assets = ensureAssets(session, accountId);
+            int usedRefreshes = findDailyCounterValue(counterMapper, accountId, counterDate,
+                    COUNTER_SHOP_SHELF_PAID_REFRESH);
+            if (usedRefreshes >= SHOP_SHELF_MAX_PAID_REFRESHES) {
+                throw new IllegalArgumentException("本轮商店刷新次数已达上限");
+            }
+            int cost = SHOP_SHELF_PAID_REFRESH_COSTS.get(usedRefreshes);
+            if (assets.getBones() < cost) {
+                throw new IllegalArgumentException("骨头币不足");
+            }
+            if (assetsMapper.decrementBonesIfEnough(accountId, cost, now) <= 0) {
+                throw new IllegalArgumentException("骨头币不足");
+            }
+            if (counterMapper.incrementIfUnderLimit(accountId, counterDate,
+                    COUNTER_SHOP_SHELF_PAID_REFRESH, SHOP_SHELF_MAX_PAID_REFRESHES, now) <= 0) {
+                throw new IllegalArgumentException("本轮商店刷新次数已达上限");
+            }
+            session.commit();
+        }
+        return profileLocked(accountId);
+    }
+
     private static PetProfileDTO sellItemLocked(long accountId, PetSellItemDTO request) {
         String itemId = request == null ? null : StrUtil.trim(request.getItemId());
         int quantity = request == null ? 0 : request.getQuantity();
@@ -1918,6 +2021,10 @@ public final class PetProfileService {
             PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
             PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
             PetAssetsRecord assets = ensureAssets(session, accountId);
+            PetShopStatusDTO shopStatus = buildShopStatus(counterMapper, accountId, now);
+            if (!shopStatus.getNormalItemIds().contains(itemId)) {
+                throw new IllegalArgumentException("当前货架未出售该普通道具");
+            }
             PetItemRecord item = itemMapper.findByAccountIdAndItemId(accountId, itemId);
             int currentCount = item == null ? 0 : item.getCount();
             if ((long) currentCount + quantity > MAX_ITEM_COUNT) {
@@ -1948,9 +2055,6 @@ public final class PetProfileService {
 
     private static PetProfileDTO buyDailyRareItem(long accountId, String itemId, int quantity) {
         LocalDate today = LocalDate.now();
-        if (!dailyRareShopItemId(today).equals(itemId)) {
-            throw new IllegalArgumentException("今日未出售该稀有道具");
-        }
         if (quantity > DAILY_RARE_ITEM_BUY_LIMIT) {
             throw new IllegalArgumentException("今日稀有道具购买次数已达上限");
         }
@@ -1962,6 +2066,10 @@ public final class PetProfileService {
             PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
             PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
             PetAssetsRecord assets = ensureAssets(session, accountId);
+            PetShopStatusDTO shopStatus = buildShopStatus(counterMapper, accountId, now);
+            if (!itemId.equals(shopStatus.getRareItemId())) {
+                throw new IllegalArgumentException("当前货架未出售该稀有道具");
+            }
             PetItemRecord item = itemMapper.findByAccountIdAndItemId(accountId, itemId);
             int currentCount = item == null ? 0 : item.getCount();
             if ((long) currentCount + quantity > MAX_ITEM_COUNT) {
@@ -2368,18 +2476,19 @@ public final class PetProfileService {
     private static void ensureExploreLocationUnlocked(SqlSession session, long accountId, String location) {
         PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
         if (EXPLORE_LOCATION_CREEK.equals(location)) {
-            int backHillCompletions = findLifetimeCounterValue(counterMapper, accountId,
-                    exploreCompleteCounter(EXPLORE_LOCATION_BACK_HILL));
-            if (backHillCompletions < CREEK_UNLOCK_BACK_HILL_COMPLETIONS) {
-                throw new IllegalArgumentException("完成后山探险 3 次后才能进入小溪");
+            int drawGuessWins = findLifetimeCounterValue(counterMapper, accountId, miniGameWinCounter(Game.DRAW_GUESS));
+            int tacitQuizSameAnswers = findTacitQuizSameAnswers(counterMapper, accountId);
+            if (drawGuessWins < CREEK_UNLOCK_DRAW_GUESS_WINS
+                    && tacitQuizSameAnswers < CREEK_UNLOCK_TACIT_QUIZ_SAME_ANSWERS) {
+                throw new IllegalArgumentException("你画我猜胜利 10 次或默契问答答案相同 30 次后才能进入小溪");
             }
             return;
         }
         if (EXPLORE_LOCATION_CONSTRUCTION_SITE.equals(location)) {
-            int minesweeperWins = findLifetimeCounterValue(counterMapper, accountId,
-                    miniGameWinCounter(Game.MINESWEEPER));
-            if (minesweeperWins < CONSTRUCTION_SITE_UNLOCK_MINESWEEPER_WINS) {
-                throw new IllegalArgumentException("扫雷累计胜利 10 局后才能进入废弃工地");
+            int quickQuizWins = findLifetimeCounterValue(counterMapper, accountId,
+                    miniGameWinCounter(Game.QUICK_QUIZ));
+            if (quickQuizWins < CONSTRUCTION_SITE_UNLOCK_QUICK_QUIZ_WINS) {
+                throw new IllegalArgumentException("快问快答累计胜利 10 局后才能进入废弃工地");
             }
             return;
         }
@@ -2387,7 +2496,7 @@ public final class PetProfileService {
             int oldLibraryWins = findLifetimeCounterValue(counterMapper, accountId, miniGameWinCounter(Game.GOBANG))
                     + findLifetimeCounterValue(counterMapper, accountId, miniGameWinCounter(Game.TURTLE_SOUP));
             if (oldLibraryWins < OLD_LIBRARY_UNLOCK_LIBRARY_WINS) {
-                throw new IllegalArgumentException("五子棋和海龟汤累计胜利 10 局后才能进入旧书馆");
+                throw new IllegalArgumentException("五子棋/海龟汤累计胜利 10 局后才能进入旧书馆");
             }
             return;
         }
@@ -2521,6 +2630,16 @@ public final class PetProfileService {
     private static String miniGameWinCounter(Game game) {
         return COUNTER_MINI_GAME_WIN_PREFIX
                 + (game == null ? "unknown" : game.name().toLowerCase(Locale.ROOT));
+    }
+
+    private static int findTacitQuizSameAnswers(PetDailyCounterMapper mapper, long accountId) {
+        int legacyMatchedRounds = findLifetimeCounterValue(mapper, accountId, miniGameWinCounter(Game.TACIT_QUIZ));
+        return findTacitQuizSameAnswers(mapper, accountId, legacyMatchedRounds);
+    }
+
+    private static int findTacitQuizSameAnswers(PetDailyCounterMapper mapper, long accountId, int legacyMatchedRounds) {
+        int sameAnswers = findLifetimeCounterValue(mapper, accountId, COUNTER_TACIT_QUIZ_SAME_ANSWERS);
+        return Math.max(sameAnswers, legacyMatchedRounds);
     }
 
     private static int findLifetimeCounterValue(PetDailyCounterMapper mapper, long accountId, String counter) {
@@ -2879,7 +2998,12 @@ public final class PetProfileService {
             }
 
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
-            ensureAssets(session, accountId);
+            PetAssetsRecord assets = ensureAssets(session, accountId);
+            LocalDate makeupAvailableSince = LocalDate.parse(
+                    accountCheckinStartDate(session, accountId, assets, today.toString()));
+            if (checkinDate.isBefore(makeupAvailableSince)) {
+                throw new IllegalArgumentException("只能补签账号可签到日期之后的漏签日期");
+            }
             if (assetsMapper.decrementMakeupCardsIfEnough(accountId, now) <= 0) {
                 throw new IllegalArgumentException("补签卡不足");
             }
@@ -3107,6 +3231,28 @@ public final class PetProfileService {
                 .build();
         mapper.insert(assets);
         return assets;
+    }
+
+    private static String petAccountStartDate(PetAssetsRecord assets, String fallbackDate) {
+        if (assets == null || assets.getCreatedAt() <= 0) {
+            return fallbackDate;
+        }
+        return Instant.ofEpochMilli(assets.getCreatedAt())
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+                .toString();
+    }
+
+    private static String accountCheckinStartDate(SqlSession session, long accountId, PetAssetsRecord assets,
+                                                  String fallbackDate) {
+        Account account = session.getMapper(AccountMapper.class).findById(accountId);
+        if (account != null && account.getCreatedAt() > 0) {
+            return Instant.ofEpochMilli(account.getCreatedAt())
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate()
+                    .toString();
+        }
+        return petAccountStartDate(assets, fallbackDate);
     }
 
     private static boolean refreshExpiredAccountEnergy(PetAssetsMapper assetsMapper, long accountId, int energyLimit,

@@ -8,14 +8,14 @@ import org.junit.Test;
 public class PetGameItemRulesTest {
 
     @Test
-    public void normalizeKeepsDogBattleItemsInTheirOwnSlots() {
+    public void normalizeClearsTemporarilyDisabledDogBattleItems() {
         GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(
                 Game.DOG_BATTLE,
-                new GamePlayerPetItemsDTO("item_battle_echo", "item_battle_direct_hit")
+                new GamePlayerPetItemsDTO("item_battle_echo", "item_prophecy")
         );
 
-        Assert.assertEquals("item_battle_echo", normalized.getPetPlayItemId());
-        Assert.assertEquals("item_battle_direct_hit", normalized.getPetInteractionItemId());
+        Assert.assertNull(normalized.getPetPlayItemId());
+        Assert.assertNull(normalized.getPetInteractionItemId());
     }
 
     @Test
@@ -60,7 +60,7 @@ public class PetGameItemRulesTest {
                 itemId -> "item_battle_echo".equals(itemId)
         );
 
-        Assert.assertEquals("item_battle_echo", normalized.getPetPlayItemId());
+        Assert.assertNull(normalized.getPetPlayItemId());
         Assert.assertNull(normalized.getPetInteractionItemId());
     }
 
@@ -73,7 +73,7 @@ public class PetGameItemRulesTest {
         );
 
         Assert.assertNull(normalized.getPetPlayItemId());
-        Assert.assertEquals("item_battle_direct_hit", normalized.getPetInteractionItemId());
+        Assert.assertNull(normalized.getPetInteractionItemId());
     }
 
     @Test
@@ -94,7 +94,7 @@ public class PetGameItemRulesTest {
                 itemId -> "item_wild_common".equals(itemId)
         );
 
-        Assert.assertEquals("item_battle_echo", dogBattle.getPetPlayItemId());
+        Assert.assertNull(dogBattle.getPetPlayItemId());
         Assert.assertNull(dogBattle.getPetInteractionItemId());
         Assert.assertEquals("item_quiz_score_pad", quickQuiz.getPetPlayItemId());
         Assert.assertNull(quickQuiz.getPetInteractionItemId());
@@ -115,7 +115,7 @@ public class PetGameItemRulesTest {
                 itemId -> "item_party_equalizer".equals(itemId)
         );
 
-        Assert.assertEquals("item_battle_echo", dogBattle.getPetPlayItemId());
+        Assert.assertNull(dogBattle.getPetPlayItemId());
         Assert.assertNull(dogBattle.getPetInteractionItemId());
         Assert.assertNull(gobang.getPetPlayItemId());
         Assert.assertNull(gobang.getPetInteractionItemId());

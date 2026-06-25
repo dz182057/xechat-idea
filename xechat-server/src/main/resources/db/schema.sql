@@ -88,6 +88,34 @@ CREATE TABLE IF NOT EXISTS login_logs (
     created_at  INTEGER NOT NULL
 );
 
+-- 玩家行为流水(通用入站行为,便于排查和后续开放查询)
+CREATE TABLE IF NOT EXISTS player_behavior_logs (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id         INTEGER,
+    account            TEXT,
+    nickname           TEXT,
+    guest              INTEGER NOT NULL DEFAULT 0,
+    platform           TEXT,
+    client_uuid        TEXT,
+    ip                 TEXT,
+    region             TEXT,
+    action             TEXT NOT NULL,
+    sub_action         TEXT,
+    protocol           TEXT,
+    result_status      TEXT,
+    error_message      TEXT,
+    request_body_json  TEXT,
+    related_type       TEXT,
+    related_id         TEXT,
+    created_at         INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_player_behavior_logs_account_time
+    ON player_behavior_logs(account_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_player_behavior_logs_action_time
+    ON player_behavior_logs(action, sub_action, created_at);
+CREATE INDEX IF NOT EXISTS idx_player_behavior_logs_created
+    ON player_behavior_logs(created_at);
+
 -- 系统单值状态(key-value)
 CREATE TABLE IF NOT EXISTS system_state (
     key   TEXT PRIMARY KEY,

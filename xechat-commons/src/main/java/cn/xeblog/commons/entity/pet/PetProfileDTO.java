@@ -26,6 +26,8 @@ public class PetProfileDTO implements Serializable {
 
     private List<PetInventoryItemDTO> items;
 
+    private List<String> discoveredItemIds;
+
     private List<PetExploreChestDTO> exploreChests;
 
     private List<PetCollectionItemDTO> collections;
@@ -44,6 +46,8 @@ public class PetProfileDTO implements Serializable {
 
     private PetTrainingStatusDTO trainingStatus;
 
+    private PetShopStatusDTO shopStatus;
+
     public static PetProfileDTO empty(long accountId) {
         PetProfileDTO profile = new PetProfileDTO();
         profile.setAccountId(accountId);
@@ -51,17 +55,20 @@ public class PetProfileDTO implements Serializable {
                 java.time.LocalDate.now().toString(), 10));
         profile.setDogs(new ArrayList<>());
         profile.setItems(new ArrayList<>());
+        profile.setDiscoveredItemIds(new ArrayList<>());
         profile.setExploreChests(new ArrayList<>());
         profile.setCollections(new ArrayList<>());
         profile.setActiveDogIds(new ArrayList<>());
         profile.setExploreStatus(new PetExploreStatusDTO(3, 0, 5, 0, 0,
-                false, false, false, 0, 0, 0, 0, 0, null));
+                false, false, false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null));
         profile.setInteractionStatus(new PetInteractionStatusDTO(150, 0, 150, 2,
                 new java.util.HashMap<>(), new java.util.HashMap<>()));
         profile.setDailyCompanionStatus(new PetDailyCompanionStatusDTO(new java.util.HashMap<>()));
         profile.setTrainingStatus(new PetTrainingStatusDTO("pending",
                 java.util.Arrays.asList(100, 150, 300, 500, 800),
                 new ArrayList<>(), new ArrayList<>(), false));
+        profile.setShopStatus(new PetShopStatusDTO(null, new ArrayList<>(), 0L, 0L,
+                0, 3, java.util.Arrays.asList(30, 50, 70), 30));
         return profile;
     }
 

@@ -12,4 +12,12 @@
         )
     </insert>
 
+    <select id="listGainedItemIds" resultType="string">
+        SELECT DISTINCT item_id
+        FROM pet_item_ledger
+        WHERE account_id = #{accountId}
+          AND direction = 'gain'
+        ORDER BY item_id ASC
+    </select>
+
 </mapper>

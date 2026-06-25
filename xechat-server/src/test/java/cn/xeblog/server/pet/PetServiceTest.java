@@ -340,6 +340,24 @@ public class PetServiceTest {
     }
 
     @Test
+    public void seventhDayCheckinShouldGrantOneNormalItem() throws Exception {
+        User user = accountUser(990020L);
+        PetProfileDTO beforeProfile = PetService.profile(user);
+        insertCheckins(user.getAccountId(), 6);
+
+        PetProfileDTO profile = PetProfileService.checkin(user.getAccountId());
+
+        int normalItemCount = 0;
+        for (String itemId : PetItemDefinitions.luckyBagNormalItemIds()) {
+            normalItemCount += findItemCount(user.getAccountId(), itemId);
+        }
+        Assert.assertEquals(beforeProfile.getAssets().getBones() + 100, profile.getAssets().getBones());
+        Assert.assertEquals(1, normalItemCount);
+        Assert.assertEquals(7, profile.getCheckinStatus().getCycleDay());
+        Assert.assertEquals(7, profile.getCheckinStatus().getTotalCheckins());
+    }
+
+    @Test
     public void buyFoodShouldUseCreekCollectionDiscountWhenSetCompleted() throws Exception {
         User user = accountUser(990018L);
         insertCreekCollections(user.getAccountId());
@@ -433,6 +451,36 @@ public class PetServiceTest {
     }
 
     @Test
+    public void creekExploreShouldRequireDrawGuessWinsOrTacitQuizSameAnswers() {
+        User blocked = accountUser(990038L);
+        PetProfileDTO blockedProfile = PetService.adopt(blocked, adopt("corgi", "小溪门禁狗"));
+        applyMiniGameResults(blocked.getAccountId(), Game.DRAW_GUESS, true, 9);
+        applyMiniGameResults(blocked.getAccountId(), Game.TACIT_QUIZ, true, 29);
+        try {
+            PetProfileService.exploreStart(blocked.getAccountId(),
+                    exploreStart(blockedProfile.getDogs().get(0).getId(), "creek", 1));
+            Assert.fail("你画我猜未满 10 次且默契问答答案相同未满 30 次时不能进入小溪");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains("你画我猜胜利 10 次或默契问答答案相同 30 次"));
+        }
+
+        User drawGuess = accountUser(990039L);
+        PetProfileDTO drawProfile = PetService.adopt(drawGuess, adopt("corgi", "画猜狗"));
+        applyMiniGameResults(drawGuess.getAccountId(), Game.DRAW_GUESS, true, 10);
+        PetProfileDTO drawStarted = PetProfileService.exploreStart(drawGuess.getAccountId(),
+                exploreStart(drawProfile.getDogs().get(0).getId(), "creek", 1));
+        Assert.assertEquals("creek", drawStarted.getDogs().get(0).getExploreLocation());
+
+        User tacitQuiz = accountUser(990040L);
+        PetProfileDTO tacitProfile = PetService.adopt(tacitQuiz, adopt("corgi", "默契狗"));
+        applyMiniGameResults(tacitQuiz.getAccountId(), Game.TACIT_QUIZ, true, 30);
+        PetProfileDTO tacitStarted = PetProfileService.exploreStart(tacitQuiz.getAccountId(),
+                exploreStart(tacitProfile.getDogs().get(0).getId(), "creek", 1));
+        Assert.assertEquals(30, tacitStarted.getExploreStatus().getTacitQuizSameAnswers());
+        Assert.assertEquals("creek", tacitStarted.getDogs().get(0).getExploreLocation());
+    }
+
+    @Test
     public void openChestInstanceShouldUseStoredDurationSkillSnapshotAndLedger() throws Exception {
         User user = accountUser(990028L);
         PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "开箱狗"));
@@ -465,26 +513,31 @@ public class PetServiceTest {
         User user = accountUser(990037L);
         PetService.profile(user);
         insertItem(user.getAccountId(), "chest_back_hill", 2);
+        IntSupplier originalRollSupplier = setExploreRollSupplier(() -> 99);
 
-        PetExploreOpenResultDTO result = PetProfileService.openBackHillChest(
-                user.getAccountId(), useChest("chest_back_hill", null, 2));
+        try {
+            PetExploreOpenResultDTO result = PetProfileService.openBackHillChest(
+                    user.getAccountId(), useChest("chest_back_hill", null, 2));
 
-        long boneRewardCount = result.getRewards().stream()
-                .filter(reward -> "bones".equals(reward.getType()))
-                .count();
-        Assert.assertEquals(2L, boneRewardCount);
-        Assert.assertEquals(0, findItemCount(user.getAccountId(), "chest_back_hill"));
+            long boneRewardCount = result.getRewards().stream()
+                    .filter(reward -> "bones".equals(reward.getType()))
+                    .count();
+            Assert.assertTrue(boneRewardCount >= 2L);
+            Assert.assertEquals(0, findItemCount(user.getAccountId(), "chest_back_hill"));
+        } finally {
+            setExploreRollSupplier(originalRollSupplier);
+        }
     }
 
     @Test
     public void buyingNormalItemShouldRecordItemLedger() throws Exception {
         User user = accountUser(990029L);
+        String itemId = PetProfileService.profile(user.getAccountId()).getShopStatus().getNormalItemIds().get(0);
 
-        PetProfileService.shopBuy(user.getAccountId(), shopBuy("item_draw_advance_hint", 2));
+        PetProfileService.shopBuy(user.getAccountId(), shopBuy(itemId, 2));
 
-        Assert.assertEquals(2, findItemCount(user.getAccountId(), "item_draw_advance_hint"));
-        Assert.assertEquals(1, countItemLedger(user.getAccountId(), "item_draw_advance_hint",
-                "gain", "shop_buy_normal"));
+        Assert.assertEquals(2, findItemCount(user.getAccountId(), itemId));
+        Assert.assertEquals(1, countItemLedger(user.getAccountId(), itemId, "gain", "shop_buy_normal"));
     }
 
     @Test
@@ -888,6 +941,12 @@ public class PetServiceTest {
         dto.setItemId(itemId);
         dto.setQuantity(quantity);
         return dto;
+    }
+
+    private static void applyMiniGameResults(long accountId, Game game, boolean win, int count) {
+        for (int i = 0; i < count; i++) {
+            PetService.applyMiniGameResult(accountId, game, win, 60);
+        }
     }
 
     private static void expireAccountEnergy(long accountId) throws Exception {

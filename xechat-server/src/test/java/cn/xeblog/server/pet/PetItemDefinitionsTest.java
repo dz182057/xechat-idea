@@ -22,11 +22,13 @@ public class PetItemDefinitionsTest {
                 "item_quiz_score_pad",
                 "item_quiz_duel",
                 "item_gomoku_prediction",
-                "item_battle_echo",
-                "item_battle_direct_hit",
                 "item_prophecy"
         ), PetItemDefinitions.luckyBagNormalItemIds());
+        Assert.assertFalse(PetItemDefinitions.luckyBagNormalItemIds().contains("item_battle_echo"));
+        Assert.assertFalse(PetItemDefinitions.luckyBagNormalItemIds().contains("item_battle_direct_hit"));
         Assert.assertTrue(PetItemDefinitions.shopNormalItemIds().contains("item_draw_advance_hint"));
+        Assert.assertFalse(PetItemDefinitions.shopNormalItemIds().contains("item_battle_echo"));
+        Assert.assertFalse(PetItemDefinitions.shopNormalItemIds().contains("item_battle_direct_hit"));
         Assert.assertFalse(PetItemDefinitions.shopNormalItemIds().contains("item_turtle_probe"));
         Assert.assertEquals(Arrays.asList(
                 "item_mine_shield",
@@ -36,10 +38,10 @@ public class PetItemDefinitionsTest {
                 "item_sync_perspective",
                 "item_quiz_wrong_option",
                 "item_gomoku_guard",
-                "item_turtle_probe",
-                "item_battle_pebble",
-                "item_battle_airbag"
+                "item_turtle_probe"
         ), PetItemDefinitions.luckyBagRareItemIds());
+        Assert.assertFalse(PetItemDefinitions.luckyBagRareItemIds().contains("item_battle_pebble"));
+        Assert.assertFalse(PetItemDefinitions.luckyBagRareItemIds().contains("item_battle_airbag"));
         Assert.assertTrue(PetItemDefinitions.luckyBagRareItemIds().contains("item_turtle_probe"));
         Assert.assertFalse(PetItemDefinitions.luckyBagRareItemIds().contains("item_race_knee"));
         Assert.assertTrue(PetItemDefinitions.luckyBagEpicItemIds().contains("item_lucky_day"));
@@ -53,7 +55,8 @@ public class PetItemDefinitionsTest {
                 PetItemDefinitions.byId("item_race_knee").getReleaseStage());
 
         Assert.assertEquals(Integer.valueOf(40),
-                PetItemDefinitions.interactionRewardBones().get("item_battle_direct_hit"));
+                PetItemDefinitions.byId("item_battle_direct_hit").getInteractionRewardBones());
+        Assert.assertFalse(PetItemDefinitions.interactionRewardBones().containsKey("item_battle_direct_hit"));
         Assert.assertFalse(PetItemDefinitions.interactionRewardBones().containsKey("item_draw_advance_hint"));
     }
 
@@ -87,12 +90,42 @@ public class PetItemDefinitionsTest {
     }
 
     @Test
+    public void temporarilyDisabledItemsKeepDefinitionsButStayOutOfActiveUse() {
+        List<String> disabledItemIds = Arrays.asList(
+                "item_battle_echo",
+                "item_battle_direct_hit",
+                "item_battle_pebble",
+                "item_battle_airbag",
+                "item_race_knee"
+        );
+
+        for (String itemId : disabledItemIds) {
+            Assert.assertNotNull(itemId + " 应保留道具定义", PetItemDefinitions.byId(itemId));
+            Assert.assertTrue(itemId + " 应保留出售价格", PetItemDefinitions.sellItemPrices().containsKey(itemId));
+            Assert.assertFalse(itemId + " 不应进入普通商店",
+                    PetItemDefinitions.shopNormalItemIds().contains(itemId));
+            Assert.assertFalse(itemId + " 不应进入福袋普通池",
+                    PetItemDefinitions.luckyBagNormalItemIds().contains(itemId));
+            Assert.assertFalse(itemId + " 不应进入福袋稀有池",
+                    PetItemDefinitions.luckyBagRareItemIds().contains(itemId));
+            Assert.assertFalse(itemId + " 不应进入福袋史诗池",
+                    PetItemDefinitions.luckyBagEpicItemIds().contains(itemId));
+            Assert.assertFalse(itemId + " 不应进入福袋总池",
+                    PetItemDefinitions.luckyBagAllItemIds().contains(itemId));
+        }
+        Assert.assertFalse(PetItemDefinitions.interactionRewardBones().containsKey("item_battle_direct_hit"));
+    }
+
+    @Test
     public void definitionsExposeGameSlotsAndModeLimits() {
         Assert.assertTrue(PetItemDefinitions.isPlayItem(Game.MINESWEEPER, "item_mine_shield"));
         Assert.assertTrue(PetItemDefinitions.isInteractionItem(Game.TACIT_QUIZ, "item_sync_prophecy"));
         Assert.assertFalse(PetItemDefinitions.isInteractionItem(Game.TACIT_QUIZ, "item_draw_advance_hint"));
 
-        Assert.assertEquals("item_battle_echo", PetItemDefinitions.firstCommonPlayItem(Game.DOG_BATTLE));
+        Assert.assertFalse(PetItemDefinitions.isPlayItem(Game.DOG_BATTLE, "item_battle_echo"));
+        Assert.assertFalse(PetItemDefinitions.isInteractionItem(Game.DOG_BATTLE, "item_battle_direct_hit"));
+        Assert.assertFalse(PetItemDefinitions.isInteractionItem(Game.DOG_BATTLE, "item_prophecy"));
+        Assert.assertNull(PetItemDefinitions.firstCommonPlayItem(Game.DOG_BATTLE));
         Assert.assertNull(PetItemDefinitions.firstCommonPlayItem(Game.GOBANG));
 
         Assert.assertFalse(PetItemDefinitions.byId("item_draw_advance_hint").isFormalModeAllowed());

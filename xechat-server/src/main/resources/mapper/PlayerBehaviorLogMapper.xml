@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.behavior.PlayerBehaviorLogMapper">
+
+    <insert id="insert" parameterType="cn.xeblog.server.behavior.PlayerBehaviorLog">
+        INSERT INTO player_behavior_logs (
+            account_id, account, nickname, guest, platform, client_uuid,
+            ip, region, action, sub_action, protocol, result_status,
+            error_message, request_body_json, related_type, related_id, created_at
+        ) VALUES (
+            #{accountId}, #{account}, #{nickname}, #{guest}, #{platform}, #{clientUuid},
+            #{ip}, #{region}, #{action}, #{subAction}, #{protocol}, #{resultStatus},
+            #{errorMessage}, #{requestBodyJson}, #{relatedType}, #{relatedId}, #{createdAt}
+        )
+    </insert>
+
+</mapper>

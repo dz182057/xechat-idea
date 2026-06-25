@@ -27,6 +27,8 @@ public class PetCheckinStatusDTO implements Serializable {
 
     private int milestoneRemaining;
 
+    private String makeupAvailableSince;
+
     private List<String> checkedDatesInMonth;
 
     private PetCheckinMilestoneRewardDTO lastMilestoneReward;

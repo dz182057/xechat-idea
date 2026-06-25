@@ -135,6 +135,14 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
                 break;
+            case SHOP_REFRESH:
+                try {
+                    PetProfileDTO shopProfile = PetProfileService.shopRefresh(user.getAccountId());
+                    sendProfileResult(user, petAction, requestId, shopProfile);
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
             case SELL_ITEM:
                 try {
                     PetProfileDTO sellProfile = PetProfileService.sellItem(user.getAccountId(),

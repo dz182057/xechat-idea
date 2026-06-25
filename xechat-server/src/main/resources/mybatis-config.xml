@@ -25,6 +25,7 @@
     <mappers>
         <mapper resource="mapper/AccountMapper.xml"/>
         <mapper resource="mapper/LoginLogMapper.xml"/>
+        <mapper resource="mapper/PlayerBehaviorLogMapper.xml"/>
         <mapper resource="mapper/SessionMapper.xml"/>
         <mapper resource="mapper/InviteCodeMapper.xml"/>
         <mapper resource="mapper/SystemStateMapper.xml"/>

@@ -118,6 +118,28 @@ public class DbInitializerConnectionTest {
         }
     }
 
+    @Test
+    public void initShouldCreatePlayerBehaviorLogTable() throws Exception {
+        Path root = Files.createTempDirectory("xechat-behavior-log-schema-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());
+        GlobalConfig.initDataPath(null);
+        resetFactory();
+
+        DbInitializer.initIfNeeded();
+
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            Connection conn = session.getConnection();
+            assertEquals(1, scalarLong(conn,
+                    "SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='player_behavior_logs'"));
+            assertEquals(1, scalarLong(conn,
+                    "SELECT COUNT(1) FROM pragma_table_info('player_behavior_logs') WHERE name='sub_action'"));
+            assertEquals(1, scalarLong(conn,
+                    "SELECT COUNT(1) FROM pragma_table_info('player_behavior_logs') WHERE name='request_body_json'"));
+            assertEquals(1, scalarLong(conn,
+                    "SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name='idx_player_behavior_logs_account_time'"));
+        }
+    }
+
     private static long countRows(Connection conn, String tableName) throws Exception {
         return scalarLong(conn, "SELECT COUNT(1) FROM " + tableName);
     }
