@@ -32,6 +32,16 @@ public class CreateGameRoomDTO implements Serializable {
     private String gameMode;
 
     /**
+     * 你画我猜局数：每局所有玩家轮流画一次
+     */
+    private int drawGuessRoundCount;
+
+    /**
+     * 你画我猜每题限时秒数
+     */
+    private int drawGuessTimeLimitSeconds;
+
+    /**
      * 快问快答本局答题数
      */
     private int quickQuizQuestionCount;

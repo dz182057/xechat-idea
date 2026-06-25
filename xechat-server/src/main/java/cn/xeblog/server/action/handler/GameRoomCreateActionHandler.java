@@ -41,6 +41,8 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
         gameRoom.setGame(body.getGame());
         gameRoom.setNums(body.getNums());
         gameRoom.setGameMode(body.getGameMode());
+        gameRoom.setDrawGuessRoundCount(resolveDrawGuessRoundCount(body));
+        gameRoom.setDrawGuessTimeLimitSeconds(resolveDrawGuessTimeLimitSeconds(body));
         gameRoom.setQuickQuizQuestionCount(body.getQuickQuizQuestionCount());
         gameRoom.setQuickQuizTimeLimitSeconds(body.getQuickQuizTimeLimitSeconds());
         gameRoom.setQuickQuizEntryFee(body.getQuickQuizEntryFee());
@@ -77,6 +79,16 @@ public class GameRoomCreateActionHandler extends AbstractActionHandler<CreateGam
 
     public static boolean resolveDogBattleAllowSkill(CreateGameRoomDTO body) {
         return body.getDogBattleAllowSkill() == null || body.getDogBattleAllowSkill();
+    }
+
+    public static int resolveDrawGuessRoundCount(CreateGameRoomDTO body) {
+        int roundCount = body.getDrawGuessRoundCount();
+        return roundCount > 0 ? Math.min(roundCount, 10) : 1;
+    }
+
+    public static int resolveDrawGuessTimeLimitSeconds(CreateGameRoomDTO body) {
+        int seconds = body.getDrawGuessTimeLimitSeconds();
+        return seconds == 60 || seconds == 90 || seconds == 120 ? seconds : 90;
     }
 
     public static int resolveTacitQuizQuestionCount(CreateGameRoomDTO body) {

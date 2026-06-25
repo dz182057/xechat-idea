@@ -5,6 +5,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * 你画我猜联机数据。
  */
@@ -24,6 +27,21 @@ public class DrawGuessDTO extends GameDTO {
     private String word;
     private String text;
     private Line line;
+    private Integer roundNo;
+    private Integer totalRounds;
+    private Integer turnIndex;
+    private Integer totalTurns;
+    private Integer timeLimitSeconds;
+    private Long startedAt;
+    private Long deadlineAt;
+    private List<String> answeredPlayerIds;
+    private List<CorrectPlayer> correctPlayers;
+    private Map<String, Integer> scores;
+    private Map<String, String> playerNames;
+    private Integer correctRank;
+    private Integer scoreDelta;
+    private Boolean matchFinished;
+    private String roundEndReason;
     private String petItemId;
     private String petItemNotice;
     private String petItemPattern;
@@ -35,7 +53,8 @@ public class DrawGuessDTO extends GameDTO {
         DRAW,
         CLEAR,
         GUESS,
-        CORRECT
+        CORRECT,
+        ROUND_END
     }
 
     @Data
@@ -48,6 +67,16 @@ public class DrawGuessDTO extends GameDTO {
         private double y2;
         private String color;
         private int size;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CorrectPlayer {
+        private String playerId;
+        private String playerName;
+        private int rank;
+        private int scoreDelta;
     }
 
     public void setEvent(String event) {

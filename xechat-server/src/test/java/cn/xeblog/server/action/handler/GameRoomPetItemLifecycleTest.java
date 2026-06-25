@@ -25,6 +25,7 @@ import cn.xeblog.server.config.GlobalConfig;
 import cn.xeblog.server.game.tacitquiz.TacitQuizService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
 import cn.xeblog.server.game.drawguess.DrawGuessRewardService;
+import cn.xeblog.server.game.drawguess.DrawGuessService;
 import cn.xeblog.server.game.gobang.GobangPetItemService;
 import cn.xeblog.server.game.turtlesoup.TurtleSoupService;
 import cn.xeblog.server.pet.MiniGameRewards;
@@ -61,6 +62,7 @@ public class GameRoomPetItemLifecycleTest {
     public void tearDown() throws Exception {
         QuickQuizService.clearRoom("pet-item-end-room");
         TacitQuizService.clearRoom("pet-item-end-room");
+        DrawGuessService.clearRoom("pet-item-end-room");
         DrawGuessRewardService.clearRoom("pet-item-end-room");
         DrawGuessRewardService.resetMiniGameRewards();
         DrawGuessRewardService.resetNowSupplier();
@@ -135,6 +137,7 @@ public class GameRoomPetItemLifecycleTest {
         body.setEvent(DrawGuessDTO.Event.START_ROUND);
         body.setDrawerId(drawer.getIdentityKey());
         body.setDrawerName(drawer.getUsername());
+        body.setWord("小猫");
         new GameActionHandler().process(drawer, room, body);
 
         Assert.assertEquals(0, countItem(guesser.getAccountId(), "item_draw_advance_hint"));
@@ -154,14 +157,21 @@ public class GameRoomPetItemLifecycleTest {
                 room,
                 new GamePlayerPetItemsDTO("item_draw_advance_hint", null));
 
-        DrawGuessDTO body = new DrawGuessDTO();
-        body.setRoomId(room.getId());
-        body.setGame(Game.DRAW_GUESS);
-        body.setEvent(DrawGuessDTO.Event.CORRECT);
-        body.setGuesserId(guesser.getIdentityKey());
-        body.setGuesserName(guesser.getUsername());
-        body.setWord("小猫");
-        new GameActionHandler().process(drawer, room, body);
+        DrawGuessDTO start = new DrawGuessDTO();
+        start.setRoomId(room.getId());
+        start.setGame(Game.DRAW_GUESS);
+        start.setEvent(DrawGuessDTO.Event.START_ROUND);
+        start.setDrawerId(drawer.getIdentityKey());
+        start.setDrawerName(drawer.getUsername());
+        start.setWord("小猫");
+        new GameActionHandler().process(drawer, room, start);
+
+        DrawGuessDTO guess = new DrawGuessDTO();
+        guess.setRoomId(room.getId());
+        guess.setGame(Game.DRAW_GUESS);
+        guess.setEvent(DrawGuessDTO.Event.GUESS);
+        guess.setText("小猫");
+        new GameActionHandler().process(guesser, room, guess);
 
         Assert.assertEquals(1, countItem(drawer.getAccountId(), "item_draw_advance_hint"));
         Assert.assertNull(room.getUsers().get(drawer.getIdentityKey()).getPetPlayItemId());
@@ -196,15 +206,15 @@ public class GameRoomPetItemLifecycleTest {
         start.setEvent(DrawGuessDTO.Event.START_ROUND);
         start.setDrawerId(drawer.getIdentityKey());
         start.setDrawerName(drawer.getUsername());
+        start.setWord("小猫");
         new GameActionHandler().process(drawer, room, start);
 
-        DrawGuessDTO correct = new DrawGuessDTO();
-        correct.setRoomId(room.getId());
-        correct.setGame(Game.DRAW_GUESS);
-        correct.setEvent(DrawGuessDTO.Event.CORRECT);
-        correct.setGuesserId(guesser.getIdentityKey());
-        correct.setGuesserName(guesser.getUsername());
-        new GameActionHandler().process(guesser, room, correct);
+        DrawGuessDTO guess = new DrawGuessDTO();
+        guess.setRoomId(room.getId());
+        guess.setGame(Game.DRAW_GUESS);
+        guess.setEvent(DrawGuessDTO.Event.GUESS);
+        guess.setText("小猫");
+        new GameActionHandler().process(guesser, room, guess);
 
         Assert.assertEquals(3, miniGameEvents.size());
         Assert.assertTrue(miniGameEvents.contains("2032:DRAW_GUESS:false:61"));

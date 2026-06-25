@@ -20,6 +20,7 @@ import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.game.dogbattle.DogBattleService;
 import cn.xeblog.server.game.dograce.DogRaceService;
+import cn.xeblog.server.game.drawguess.DrawGuessService;
 import cn.xeblog.server.game.gobang.GobangPetItemService;
 import cn.xeblog.server.game.quickquiz.QuickQuizService;
 import cn.xeblog.server.game.tacitquiz.TacitQuizService;
@@ -91,12 +92,15 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             case GAME_OVER:
                 if (gameRoom.isPlayerConnection(user)) {
                     PetGameItemDeclarationService.releaseReservedForRoom(gameRoom);
-                    if (gameRoom.getGame() == Game.GOBANG) {
-                        GobangPetItemService.clearRoom(gameRoom);
-                    }
-                    user.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                if (gameRoom.getGame() == Game.GOBANG) {
+                    GobangPetItemService.clearRoom(gameRoom);
                 }
-                break;
+                if (gameRoom.getGame() == Game.DRAW_GUESS) {
+                    DrawGuessService.clearRoom(gameRoom);
+                }
+                user.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+            }
+            break;
             case PLAYER_GAME_STARTED:
                 if (gameRoom.isPlayerConnection(user)) {
                     if (gameRoom.getGame() == Game.DOG_BATTLE) {
@@ -151,6 +155,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         TurtleSoupService.clearRoom(gameRoom.getId());
         DogRaceService.clearRoom(gameRoom.getId());
         DogBattleService.clearRoom(gameRoom.getId());
+        DrawGuessService.clearRoom(gameRoom);
         GobangPetItemService.clearRoom(gameRoom);
 
         GameRoomMsgDTO msg = new GameRoomMsgDTO();
@@ -267,6 +272,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             TurtleSoupService.clearRoom(gameRoom.getId());
             DogRaceService.clearRoom(gameRoom.getId());
             DogBattleService.clearRoom(gameRoom.getId());
+            DrawGuessService.clearRoom(gameRoom);
             GobangPetItemService.clearRoom(gameRoom);
             Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);
             sendMsg(gameRoom, resp);
