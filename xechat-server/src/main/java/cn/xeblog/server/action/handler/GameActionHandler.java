@@ -62,12 +62,16 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
         if (gameRoom.getGame() == Game.DRAW_GUESS) {
             handleDrawGuessPetItems(gameRoom, body);
         }
+        boolean gobangOpeningColorMessage = false;
         if (gameRoom.getGame() == Game.GOBANG && body instanceof GobangDTO) {
-            GobangPetItemService.handleMove(user, gameRoom, (GobangDTO) body);
+            GobangDTO gobangDTO = (GobangDTO) body;
+            gobangOpeningColorMessage = GobangPetItemService.isOpeningColorMessage(user, gameRoom, gobangDTO);
+            GobangPetItemService.handleMove(user, gameRoom, gobangDTO);
         }
 
+        boolean echoGobangMoveToSender = body instanceof GobangDTO && !gobangOpeningColorMessage;
         gameRoom.getUsers().forEach((k, v) -> {
-            if (v.isConnection(user)) {
+            if (v.isConnection(user) && !echoGobangMoveToSender) {
                 return;
             }
 
@@ -76,9 +80,6 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
                 player.send(ResponseBuilder.build(user, body, MessageType.GAME));
             }
         });
-        if (body instanceof GobangDTO && ((GobangDTO) body).getPetItemNotice() != null) {
-            user.send(ResponseBuilder.build(user, body, MessageType.GAME));
-        }
     }
 
     private void handleDrawGuessPetItems(GameRoom room, GameDTO body) {

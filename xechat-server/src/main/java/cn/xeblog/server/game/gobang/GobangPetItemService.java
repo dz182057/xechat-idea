@@ -84,6 +84,22 @@ public final class GobangPetItemService {
         }
     }
 
+    public static boolean isOpeningColorMessage(User user, GameRoom room, GobangDTO dto) {
+        if (user == null || room == null || dto == null) {
+            return false;
+        }
+        if (!room.isHomeowner(user) || dto.getX() != 0 || dto.getY() != 0) {
+            return false;
+        }
+        RoomState state = STATES.get(room.getId());
+        if (state == null) {
+            return true;
+        }
+        synchronized (state) {
+            return shouldSkipOpeningColorMessage(user, room, dto, state);
+        }
+    }
+
     public static void clearRoom(GameRoom room) {
         if (room != null) {
             clearRoom(room.getId());
