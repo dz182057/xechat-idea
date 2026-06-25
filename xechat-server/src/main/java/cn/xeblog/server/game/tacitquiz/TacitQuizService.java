@@ -155,6 +155,34 @@ public final class TacitQuizService {
         }
     }
 
+    public static boolean activateInteractionItem(User user, GameRoom room, String itemId) {
+        if (user == null || room == null || !room.isPlayerConnection(user) || !isSupportedInteractionItem(itemId)) {
+            return false;
+        }
+        RoomState state = ROOM_STATES.get(room.getId());
+        if (state == null) {
+            return false;
+        }
+        synchronized (state) {
+            if (state.closed || state.currentQuestion == null || state.revealed) {
+                return false;
+            }
+            String key = playerKey(user);
+            if (!state.expectedPlayerKeys.contains(key)) {
+                return false;
+            }
+            if (state.answers.containsKey(key)) {
+                return false;
+            }
+            GameRoom.Player player = room.getUsers().get(key);
+            if (player == null || !itemId.equals(player.getPetInteractionItemId())) {
+                return false;
+            }
+            state.activeInteractionItemIds.put(key, itemId);
+            return true;
+        }
+    }
+
     public static List<TacitQuizRecordDTO> myRecords(User user) {
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
             String currentPlayerKey = playerKey(user);
@@ -278,7 +306,8 @@ public final class TacitQuizService {
             nextPlayers = getRoomUsers(room);
             finished = nextPlayers.size() < 2;
         }
-        List<String> petItemNotices = applyInteractionItemSettlements(room, answers, state.perspectiveGuessChoiceIndexes);
+        List<String> petItemNotices = applyInteractionItemSettlements(
+                room, answers, state.perspectiveGuessChoiceIndexes, state.activeInteractionItemIds);
         TacitQuizAnswerResultDTO result = new TacitQuizAnswerResultDTO(
                 room.getId(), state.currentQuestion, answers, state.roundNo,
                 room.getTacitQuizQuestionCount(), finished, petItemNotices);
@@ -393,7 +422,8 @@ public final class TacitQuizService {
     }
 
     private static List<String> applyInteractionItemSettlements(GameRoom room, List<TacitQuizAnswerViewDTO> answers,
-                                                               Map<String, Integer> perspectiveGuessChoiceIndexes) {
+                                                               Map<String, Integer> perspectiveGuessChoiceIndexes,
+                                                               Map<String, String> activeInteractionItemIds) {
         List<String> notices = new ArrayList<>();
         if (room == null || answers == null || answers.isEmpty()) {
             return notices;
@@ -412,8 +442,7 @@ public final class TacitQuizService {
                 continue;
             }
             String itemId = player.getPetInteractionItemId();
-            boolean supported = ITEM_SYNC_PROPHECY.equals(itemId) || ITEM_SYNC_PERSPECTIVE.equals(itemId);
-            if (!supported) {
+            if (!itemId.equals(activeInteractionItemIds.get(playerKey))) {
                 continue;
             }
             boolean succeeded = ITEM_SYNC_PROPHECY.equals(itemId)
@@ -436,6 +465,10 @@ public final class TacitQuizService {
             player.setPetInteractionItemId(null);
         }
         return notices;
+    }
+
+    private static boolean isSupportedInteractionItem(String itemId) {
+        return ITEM_SYNC_PROPHECY.equals(itemId) || ITEM_SYNC_PERSPECTIVE.equals(itemId);
     }
 
     private static Integer normalizePerspectiveGuessChoiceIndex(TacitQuizSubmitAnswerDTO body, List<String> options) {
@@ -618,6 +651,7 @@ public final class TacitQuizService {
         private final Set<Long> usedQuestionIds = new HashSet<>();
         private final Map<String, TacitQuizAnswerViewDTO> answers = new ConcurrentHashMap<>();
         private final Map<String, Integer> perspectiveGuessChoiceIndexes = new ConcurrentHashMap<>();
+        private final Map<String, String> activeInteractionItemIds = new ConcurrentHashMap<>();
         private final Set<String> expectedPlayerKeys = new HashSet<>();
         private final List<User> players = new ArrayList<>();
         private TacitQuizQuestionDTO currentQuestion;
@@ -637,6 +671,7 @@ public final class TacitQuizService {
             }
             this.answers.clear();
             this.perspectiveGuessChoiceIndexes.clear();
+            this.activeInteractionItemIds.clear();
             this.expectedPlayerKeys.clear();
             this.players.clear();
             this.players.addAll(users);

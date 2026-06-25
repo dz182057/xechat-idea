@@ -127,10 +127,17 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                 });
                 break;
             case MINE_ITEM_USED:
-                if (!gameRoom.isPlayerConnection(user) || gameRoom.getGame() != Game.MINESWEEPER) {
+                if (!gameRoom.isPlayerConnection(user)) {
                     return;
                 }
-                sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                if (gameRoom.getGame() == Game.MINESWEEPER) {
+                    sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                    return;
+                }
+                if (gameRoom.getGame() == Game.TACIT_QUIZ
+                        && TacitQuizService.activateInteractionItem(user, gameRoom, readPetItemId(body))) {
+                    sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                }
                 break;
         }
     }
@@ -284,6 +291,14 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             return (T) raw;
         }
         return JSONUtil.toBean(JSONUtil.toJsonStr(raw), clazz);
+    }
+
+    private String readPetItemId(GameRoomMsgDTO body) {
+        Object raw = body.getContent();
+        if (raw == null) {
+            return null;
+        }
+        return JSONUtil.parseObj(raw).getStr("petItemId");
     }
 
     private void sendMsg(GameRoom gameRoom, Response response) {

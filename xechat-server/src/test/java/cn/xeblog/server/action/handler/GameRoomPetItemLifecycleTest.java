@@ -55,6 +55,7 @@ public class GameRoomPetItemLifecycleTest {
     @After
     public void tearDown() throws Exception {
         QuickQuizService.clearRoom("pet-item-end-room");
+        TacitQuizService.clearRoom("pet-item-end-room");
         DrawGuessRewardService.clearRoom("pet-item-end-room");
         DrawGuessRewardService.resetMiniGameRewards();
         DrawGuessRewardService.resetNowSupplier();
@@ -220,6 +221,7 @@ public class GameRoomPetItemLifecycleTest {
                 new GamePlayerPetItemsDTO(null, "item_sync_prophecy"));
 
         TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
+        Assert.assertTrue(TacitQuizService.activateInteractionItem(alice, room, "item_sync_prophecy"));
         TacitQuizService.submitAnswer(alice, room,
                 new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A"));
         TacitQuizService.submitAnswer(bob, room,
@@ -230,6 +232,51 @@ public class GameRoomPetItemLifecycleTest {
                 "item_sync_prophecy", "interaction", "succeeded"));
         Assert.assertEquals(20, maxRewardBones(room.getId(), alice.getAccountId(),
                 "item_sync_prophecy", "interaction", "succeeded"));
+    }
+
+    @Test
+    public void tacitQuizProphecyShouldNotSettleBeforeActivation() {
+        User alice = user(2042L);
+        User bob = user(2043L);
+        GameRoom room = room(Game.TACIT_QUIZ, alice, bob);
+        room.setTacitQuizQuestionCount(1);
+        insertTacitQuizQuestion("必须点击使用");
+        insertPetItem(alice.getAccountId(), "item_sync_prophecy", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO(null, "item_sync_prophecy"));
+
+        TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
+        TacitQuizService.submitAnswer(alice, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A"));
+        TacitQuizService.submitAnswer(bob, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A"));
+
+        Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_prophecy", "interaction", "succeeded"));
+        Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_prophecy", "interaction", "failed"));
+    }
+
+    @Test
+    public void tacitQuizProphecyShouldNotActivateAfterOwnAnswer() {
+        User alice = user(2044L);
+        User bob = user(2045L);
+        GameRoom room = room(Game.TACIT_QUIZ, alice, bob);
+        room.setTacitQuizQuestionCount(1);
+        insertTacitQuizQuestion("答题后不能使用");
+        insertPetItem(alice.getAccountId(), "item_sync_prophecy", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO(null, "item_sync_prophecy"));
+
+        TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
+        TacitQuizService.submitAnswer(alice, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A"));
+
+        Assert.assertFalse(TacitQuizService.activateInteractionItem(alice, room, "item_sync_prophecy"));
     }
 
     @Test
@@ -246,6 +293,7 @@ public class GameRoomPetItemLifecycleTest {
                 new GamePlayerPetItemsDTO(null, "item_sync_perspective"));
 
         TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
+        Assert.assertTrue(TacitQuizService.activateInteractionItem(alice, room, "item_sync_perspective"));
         TacitQuizService.submitAnswer(alice, room,
                 new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A", 0, "A"));
         TacitQuizService.submitAnswer(bob, room,
@@ -270,6 +318,7 @@ public class GameRoomPetItemLifecycleTest {
                 new GamePlayerPetItemsDTO(null, "item_sync_perspective"));
 
         TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
+        Assert.assertTrue(TacitQuizService.activateInteractionItem(alice, room, "item_sync_perspective"));
         TacitQuizService.submitAnswer(alice, room,
                 new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A", 1, "B"));
         TacitQuizService.submitAnswer(bob, room,
