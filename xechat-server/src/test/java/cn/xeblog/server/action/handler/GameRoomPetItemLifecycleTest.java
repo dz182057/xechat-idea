@@ -428,6 +428,72 @@ public class GameRoomPetItemLifecycleTest {
     }
 
     @Test
+    public void tacitQuizPerspectiveShouldBeReusableAfterHitAndConsumedAfterLaterMiss() {
+        User alice = user(2058L);
+        User bob = user(2059L);
+        GameRoom room = room(Game.TACIT_QUIZ, alice, bob);
+        room.setTacitQuizQuestionCount(2);
+        insertTacitQuizQuestion("第一题猜中返还");
+        insertTacitQuizQuestion("第二题猜错消耗");
+        setDogSlots(alice.getAccountId(), 2);
+        insertPetItem(alice.getAccountId(), "item_sync_prophecy", 1);
+        insertPetItem(alice.getAccountId(), "item_sync_perspective", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO("item_sync_prophecy", "item_sync_perspective"));
+
+        TacitQuizQuestionDTO firstQuestion = TacitQuizService.nextQuestion(alice, room);
+        drainOutbound(alice);
+        drainOutbound(bob);
+        useTacitItemThroughRoomMessage(alice, room, "item_sync_perspective", 1);
+        Assert.assertEquals(MessageType.GAME_ROOM, readResponse(alice).getType());
+        Assert.assertNotNull(readResponse(bob));
+        TacitQuizService.submitAnswer(alice, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), firstQuestion.getId(), 0, "A", 1, "B"));
+        TacitQuizService.submitAnswer(bob, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), firstQuestion.getId(), 1, "B"));
+        TacitQuizAnswerResultDTO firstResult = readTacitAnswerResult(alice);
+        readTacitAnswerResult(bob);
+        Response<?> nextQuestionResponse = readResponse(alice);
+        Assert.assertNotNull(nextQuestionResponse);
+        Assert.assertEquals(MessageType.TACIT_QUIZ_QUESTION, nextQuestionResponse.getType());
+        TacitQuizQuestionDTO secondQuestion = (TacitQuizQuestionDTO) nextQuestionResponse.getBody();
+        Assert.assertNotNull(readResponse(bob));
+
+        Assert.assertTrue(firstResult.getPetItemNotices().get(0).contains("猜中了"));
+        Assert.assertEquals(1, countItem(alice.getAccountId(), "item_sync_perspective"));
+        Assert.assertEquals("item_sync_perspective",
+                room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "succeeded"));
+        Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "reserved"));
+
+        useTacitItemThroughRoomMessage(alice, room, "item_sync_perspective", 1);
+        Assert.assertEquals(MessageType.GAME_ROOM, readResponse(alice).getType());
+        Assert.assertNotNull(readResponse(bob));
+        Assert.assertEquals(0, countItem(alice.getAccountId(), "item_sync_perspective"));
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "reserved"));
+        TacitQuizService.submitAnswer(alice, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), secondQuestion.getId(), 0, "A", 0, "A"));
+        TacitQuizService.submitAnswer(bob, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), secondQuestion.getId(), 1, "B"));
+        TacitQuizAnswerResultDTO secondResult = readTacitAnswerResult(alice);
+
+        Assert.assertEquals(0, countItem(alice.getAccountId(), "item_sync_perspective"));
+        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "succeeded"));
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "failed"));
+        Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "reserved"));
+        Assert.assertTrue(secondResult.getPetItemNotices().get(0).contains("猜错了，道具已消耗"));
+    }
+
+    @Test
     public void quickQuizScorePadShouldConsumeWhenWrongAnswerIsProtected() {
         User alice = user(2060L);
         User bob = user(2061L);

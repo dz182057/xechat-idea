@@ -187,6 +187,9 @@ public final class TacitQuizService {
             if (slot == null) {
                 return false;
             }
+            if (!PetGameItemDeclarationService.ensureReservedForUse(room, key, itemId, slot)) {
+                return false;
+            }
             state.activeInteractionItemIds.put(key, itemId);
             state.activeInteractionItemSlots.put(key, slot);
             return true;
@@ -318,7 +321,7 @@ public final class TacitQuizService {
         }
         Map<String, List<String>> petItemNoticesByPlayer = applyInteractionItemSettlements(
                 room, state.currentQuestion, answers, state.perspectiveGuessChoiceIndexes,
-                state.activeInteractionItemIds, state.activeInteractionItemSlots);
+                state.activeInteractionItemIds, state.activeInteractionItemSlots, !finished);
         TacitQuizAnswerResultDTO result = new TacitQuizAnswerResultDTO(
                 room.getId(), state.currentQuestion, answers, state.roundNo,
                 room.getTacitQuizQuestionCount(), finished, Collections.emptyList());
@@ -437,7 +440,8 @@ public final class TacitQuizService {
                                                                             List<TacitQuizAnswerViewDTO> answers,
                                                                             Map<String, Integer> perspectiveGuessChoiceIndexes,
                                                                             Map<String, String> activeInteractionItemIds,
-                                                                            Map<String, String> activeInteractionItemSlots) {
+                                                                            Map<String, String> activeInteractionItemSlots,
+                                                                            boolean reusableAfterSuccess) {
         Map<String, List<String>> noticesByPlayer = new HashMap<>();
         if (room == null || answers == null || answers.isEmpty()) {
             return noticesByPlayer;
@@ -473,12 +477,15 @@ public final class TacitQuizService {
                         room, playerKey, itemId, slot, rewardBones);
                 addInteractionItemNotices(noticesByPlayer, room, playerKey, player.getUsername(), itemName,
                         actionText, true, acceptedReward);
+                if (!reusableAfterSuccess) {
+                    clearCarriedInteractionItem(player, slot);
+                }
             } else {
                 PetGameItemDeclarationService.settleFailed(room, playerKey, itemId, slot);
                 addInteractionItemNotices(noticesByPlayer, room, playerKey, player.getUsername(), itemName,
                         actionText, false, 0);
+                clearCarriedInteractionItem(player, slot);
             }
-            clearCarriedInteractionItem(player, slot);
         }
         return noticesByPlayer;
     }

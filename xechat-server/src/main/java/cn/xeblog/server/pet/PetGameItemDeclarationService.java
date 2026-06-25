@@ -117,6 +117,26 @@ public final class PetGameItemDeclarationService {
         settleReservedItem(room, playerKey, itemId, slot, STATUS_REFUNDED, 0, true);
     }
 
+    public static boolean ensureReservedForUse(GameRoom room, String playerKey, String itemId, String slot) {
+        if (room == null || playerKey == null || itemId == null || slot == null) {
+            return false;
+        }
+        GameRoom.Player player = room.getUsers().get(playerKey);
+        if (player == null || player.getAccountId() <= 0L) {
+            return false;
+        }
+        synchronized (accountLock(player.getAccountId())) {
+            try (SqlSession session = DbInitializer.factory().openSession(true)) {
+                PetGameItemUseRecord record = session.getMapper(PetGameItemUseMapper.class).findLatestReserved(
+                        room.getId(), player.getAccountId(), itemId, slot);
+                if (record != null) {
+                    return true;
+                }
+            }
+        }
+        return reserveItem(room, player, itemId, itemId, slot);
+    }
+
     private static void releaseReservedForPlayer(GameRoom room, GameRoom.Player player) {
         if (player == null || player.getAccountId() <= 0L) {
             return;
