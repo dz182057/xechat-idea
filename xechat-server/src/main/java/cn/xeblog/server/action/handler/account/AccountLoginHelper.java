@@ -5,6 +5,9 @@ import cn.xeblog.commons.entity.LoginResultDTO;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.UserStateMsgDTO;
+import cn.xeblog.commons.entity.game.GameRoom;
+import cn.xeblog.commons.entity.game.gobang.GobangDTO;
+import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.commons.enums.Permissions;
 import cn.xeblog.commons.enums.Platform;
@@ -13,10 +16,12 @@ import cn.xeblog.server.account.entity.Account;
 import cn.xeblog.server.account.LoginLogService;
 import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.builder.ResponseBuilder;
+import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.config.GlobalConfig;
 import cn.xeblog.server.e2ee.E2EEKeyService;
 import cn.xeblog.server.friend.FriendService;
+import cn.xeblog.server.game.gobang.GobangPetItemService;
 import cn.xeblog.server.util.IpUtil;
 import io.netty.channel.ChannelHandlerContext;
 
@@ -104,6 +109,7 @@ public final class AccountLoginHelper {
         List<User> replacedUsers = UserCache.addReplacingAccountClient(user);
         ChannelAction.add(user.getChannel());
         kickReplacedUsers(replacedUsers, user.getId());
+        GameRoom reconnectedRoom = GameRoomCache.reconnectRoom(user);
 
         Long accountId = user.getAccountId() > 0 ? user.getAccountId() : null;
         LoginLogService.record(accountId, user.getIp(), user.getPlatform(), true, null);
@@ -115,6 +121,7 @@ public final class AccountLoginHelper {
         dto.setIdentityPrivKeyEnvelope(identityPrivKeyEnvelope);
         Response loginResult = ResponseBuilder.build(null, dto, MessageType.LOGIN_RESULT);
         user.send(loginResult);
+        sendReconnectedRoomSnapshot(user, reconnectedRoom);
 
         // 2) 给自己发当前在线列表
         ChannelAction.sendOnlineUsers(user);
@@ -129,6 +136,20 @@ public final class AccountLoginHelper {
             FriendService.pushFriendListRefreshForAccount(user.getAccountId());
         }
         return true;
+    }
+
+    private static void sendReconnectedRoomSnapshot(User user, GameRoom room) {
+        if (user == null || room == null) {
+            return;
+        }
+
+        user.send(ResponseBuilder.build(null, room, MessageType.GAME_ROOM_CREATED));
+        if (room.getGame() != Game.GOBANG) {
+            return;
+        }
+        for (GobangDTO move : GobangPetItemService.snapshotForUser(room, user)) {
+            user.send(ResponseBuilder.build(null, move, MessageType.GAME));
+        }
     }
 
     static boolean shouldNotifyOnlineState(User user, boolean samePlatformAlreadyOnline) {

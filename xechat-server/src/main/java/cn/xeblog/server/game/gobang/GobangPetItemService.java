@@ -40,6 +40,7 @@ public final class GobangPetItemService {
         synchronized (state) {
             if (shouldSkipOpeningColorMessage(user, room, dto, state)) {
                 state.started = true;
+                recordOpeningTypes(user, room, dto, state);
                 return;
             }
             String playerKey = user.getIdentityKey();
@@ -59,6 +60,27 @@ public final class GobangPetItemService {
                 settleProphecies(room, playerKey, dto);
                 applyMiniGameRewards(room, playerKey, state);
             }
+            state.moveHistory.add(copyMove(room, dto));
+        }
+    }
+
+    public static List<GobangDTO> snapshotForUser(GameRoom room, User user) {
+        if (room == null || user == null) {
+            return new ArrayList<>();
+        }
+        RoomState state = STATES.get(room.getId());
+        if (state == null) {
+            return new ArrayList<>();
+        }
+
+        synchronized (state) {
+            List<GobangDTO> snapshot = new ArrayList<>();
+            Integer myType = state.playerTypes.get(user.getIdentityKey());
+            if (myType != null) {
+                snapshot.add(copyMove(room, new GobangDTO(0, 0, myType)));
+            }
+            state.moveHistory.forEach(move -> snapshot.add(copyMove(room, move)));
+            return snapshot;
         }
     }
 
@@ -96,6 +118,28 @@ public final class GobangPetItemService {
                 && dto.getX() == 0
                 && dto.getY() == 0
                 && room.isHomeowner(user);
+    }
+
+    private static void recordOpeningTypes(User user, GameRoom room, GobangDTO dto, RoomState state) {
+        if (dto.getType() != 1 && dto.getType() != 2) {
+            return;
+        }
+        String homeownerKey = user.getIdentityKey();
+        state.playerTypes.put(homeownerKey, 3 - dto.getType());
+        String opponentKey = firstOtherPlayerKey(room, homeownerKey);
+        if (opponentKey != null) {
+            state.playerTypes.put(opponentKey, dto.getType());
+        }
+    }
+
+    private static GobangDTO copyMove(GameRoom room, GobangDTO source) {
+        GobangDTO dto = new GobangDTO(source.getX(), source.getY(), source.getType());
+        dto.setRoomId(room.getId());
+        dto.setGame(Game.GOBANG);
+        dto.setPetItemNotice(source.getPetItemNotice());
+        dto.setPetItemGuardX(source.getPetItemGuardX());
+        dto.setPetItemGuardY(source.getPetItemGuardY());
+        return dto;
     }
 
     private static void settlePredictionForMove(GameRoom room, String playerKey, GobangDTO dto, RoomState state) {
@@ -362,6 +406,7 @@ public final class GobangPetItemService {
         private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
         private final Map<String, PendingPrediction> pendingByTarget = new ConcurrentHashMap<>();
         private final Map<String, Integer> playerTypes = new ConcurrentHashMap<>();
+        private final List<GobangDTO> moveHistory = new ArrayList<>();
         private final long startedAt;
         private boolean started;
         private boolean miniGameRewardsApplied;

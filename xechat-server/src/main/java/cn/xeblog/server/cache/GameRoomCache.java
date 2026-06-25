@@ -153,13 +153,55 @@ public class GameRoomCache {
             user.setStatus(UserStatus.FISHING);
             user.setCurrentGame(null);
             ChannelAction.updateUserStatus(user);
-            if (gameRoom.getCurrentNums() == 0 || gameRoom.isHomeowner(user)) {
+            if (gameRoom.getCurrentNums() == 0 || gameRoom.getActiveNums() == 0 || gameRoom.isHomeowner(user)) {
                 removeRoom(gameRoom.getId());
             }
             return true;
         }
 
         return false;
+    }
+
+    /**
+     * 玩家连接断开时仅释放连接路由，不释放身份席位。
+     *
+     * @return true 表示房间已无在线玩家并被移除
+     */
+    public static boolean disconnectRoomConnection(String roomId, User user) {
+        GameRoom gameRoom = GAME_ROOM_MAP.get(roomId);
+        if (gameRoom == null) {
+            return false;
+        }
+
+        if (!gameRoom.disconnectUser(user)) {
+            return false;
+        }
+
+        if (user.getId() != null) {
+            CONNECTION_ROOM_MAP.remove(user.getId());
+        }
+        if (gameRoom.getActiveNums() == 0) {
+            removeRoom(gameRoom.getId());
+            return true;
+        }
+        return false;
+    }
+
+    public static GameRoom reconnectRoom(User user) {
+        if (user == null || user.getId() == null) {
+            return null;
+        }
+
+        GameRoom gameRoom = USER_ROOM_MAP.get(user.getIdentityKey());
+        if (gameRoom == null || !gameRoom.reconnectUser(user)) {
+            return null;
+        }
+
+        CONNECTION_ROOM_MAP.put(user.getId(), gameRoom);
+        user.setStatus(UserStatus.PLAYING);
+        user.setCurrentGame(gameRoom.getGame());
+        ChannelAction.updateUserStatus(user);
+        return gameRoom;
     }
 
     public static GameRoom getGameRoom(String roomId) {

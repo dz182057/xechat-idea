@@ -124,17 +124,12 @@ public class ChannelAction {
 
         GameRoom gameRoom = GameRoomCache.getGameRoomByConnectionId(user.getId());
         if (gameRoom != null) {
-            boolean homeowner = gameRoom.isHomeowner(user);
             GameRoomMsgDTO msg = new GameRoomMsgDTO(
                     gameRoom.getId(),
                     gameRoom.getGame(),
-                    homeowner ? GameRoomMsgDTO.MsgType.ROOM_CLOSE : GameRoomMsgDTO.MsgType.PLAYER_LEFT,
+                    GameRoomMsgDTO.MsgType.PLAYER_LEFT,
                     null);
             Response response = ResponseBuilder.build(user, msg, MessageType.GAME_ROOM);
-            if (homeowner) {
-                gameRoom.getInviteUsers()
-                        .forEach(playerKey -> UserCache.getByIdentityKey(playerKey).forEach(player -> player.send(response)));
-            }
             gameRoom.getUsers().forEach((k, v) -> {
                 if (v.isConnection(user)) {
                     return;
@@ -145,13 +140,11 @@ public class ChannelAction {
                     player.send(response);
                 }
             });
-            if (homeowner) {
+            boolean removed = GameRoomCache.disconnectRoomConnection(gameRoom.getId(), user);
+            if (removed) {
                 PetGameItemDeclarationService.releaseReservedForRoom(gameRoom);
-            } else {
-                PetGameItemDeclarationService.releaseReservedForPlayer(gameRoom, user);
+                clearGameRoomState(gameRoom);
             }
-            clearGameRoomState(gameRoom);
-            GameRoomCache.leftRoom(gameRoom.getId(), user);
         }
 
         UserCache.remove(id);

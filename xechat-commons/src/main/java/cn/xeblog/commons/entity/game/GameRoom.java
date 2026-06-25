@@ -194,6 +194,38 @@ public class GameRoom implements Serializable {
         }
     }
 
+    public boolean disconnectUser(User user) {
+        synchronized (users) {
+            Player player = users.get(user.getIdentityKey());
+            if (player == null || !player.isConnection(user)) {
+                return false;
+            }
+
+            player.setChannelId(null);
+            return true;
+        }
+    }
+
+    public boolean reconnectUser(User user) {
+        synchronized (users) {
+            Player player = users.get(user.getIdentityKey());
+            if (player == null || player.getChannelId() != null) {
+                return false;
+            }
+
+            player.setChannelId(user.getId());
+            player.setUsername(user.getUsername());
+            player.setAccountId(user.getAccountId());
+            player.setAccount(user.getAccount());
+            player.setUuid(user.getUuid());
+            player.setNickname(user.getNickname());
+            if (homeowner != null && homeowner.getIdentityKey().equals(user.getIdentityKey())) {
+                homeowner = user;
+            }
+            return true;
+        }
+    }
+
     public boolean existUser(User user) {
         return users.get(user.getIdentityKey()) != null;
     }
@@ -211,6 +243,18 @@ public class GameRoom implements Serializable {
 
     public int getCurrentNums() {
         return users.size();
+    }
+
+    public int getActiveNums() {
+        int count = 0;
+        synchronized (users) {
+            for (Player player : users.values()) {
+                if (player.getChannelId() != null) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 
     public void addInviteUser(User user) {

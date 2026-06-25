@@ -2,12 +2,16 @@ package cn.xeblog.server.cache;
 
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameRoom;
+import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.UserStatus;
+import cn.xeblog.server.game.gobang.GobangPetItemService;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.util.List;
 
 public class GameRoomCacheStatusTest {
 
@@ -15,12 +19,14 @@ public class GameRoomCacheStatusTest {
     public void setUp() {
         GameRoomCache.clear();
         UserCache.clear();
+        GobangPetItemService.clearRoom("room-gobang-snapshot");
     }
 
     @After
     public void tearDown() {
         GameRoomCache.clear();
         UserCache.clear();
+        GobangPetItemService.clearRoom("room-gobang-snapshot");
     }
 
     @Test
@@ -51,6 +57,68 @@ public class GameRoomCacheStatusTest {
         Assert.assertNull(homeowner.getCurrentGame());
         Assert.assertEquals(UserStatus.FISHING, opponent.getStatus());
         Assert.assertNull(opponent.getCurrentGame());
+    }
+
+    @Test
+    public void disconnectKeepsSeatWhenAnotherPlayerStillActiveThenReconnects() {
+        User homeowner = user("channel-owner", 1004L, "房主");
+        User opponent = user("channel-opponent", 1005L, "对手");
+        GameRoom room = room("room-reconnect", Game.GOBANG, 2);
+        room.setHomeowner(homeowner);
+
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), homeowner));
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), opponent));
+
+        Assert.assertFalse(GameRoomCache.disconnectRoomConnection(room.getId(), homeowner));
+        Assert.assertSame(room, GameRoomCache.getGameRoom(room.getId()));
+        Assert.assertNull(GameRoomCache.getGameRoomByConnectionId(homeowner.getId()));
+        Assert.assertSame(room, GameRoomCache.getGameRoomByUserId(homeowner.getIdentityKey()));
+
+        User reconnected = user("channel-owner-new", homeowner.getAccountId(), "房主");
+        Assert.assertSame(room, GameRoomCache.reconnectRoom(reconnected));
+        Assert.assertSame(room, GameRoomCache.getGameRoomByConnectionId(reconnected.getId()));
+        Assert.assertEquals(UserStatus.PLAYING, reconnected.getStatus());
+        Assert.assertEquals(Game.GOBANG, reconnected.getCurrentGame());
+        Assert.assertTrue(room.isHomeowner(reconnected));
+    }
+
+    @Test
+    public void disconnectRemovesRoomWhenNoActivePlayerRemains() {
+        User homeowner = user("channel-last", 1006L, "房主");
+        GameRoom room = room("room-empty", Game.GOBANG, 2);
+
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), homeowner));
+
+        Assert.assertTrue(GameRoomCache.disconnectRoomConnection(room.getId(), homeowner));
+        Assert.assertNull(GameRoomCache.getGameRoom(room.getId()));
+        Assert.assertNull(GameRoomCache.getGameRoomByUserId(homeowner.getIdentityKey()));
+    }
+
+    @Test
+    public void gobangSnapshotUsesReconnectingPlayersOwnTypeAndMoves() {
+        User homeowner = user("channel-gobang-owner", 1007L, "房主");
+        User opponent = user("channel-gobang-opponent", 1008L, "对手");
+        GameRoom room = room("room-gobang-snapshot", Game.GOBANG, 2);
+        room.setHomeowner(homeowner);
+
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), homeowner));
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), opponent));
+
+        GobangPetItemService.handleMove(homeowner, room, new GobangDTO(0, 0, 2));
+        GobangPetItemService.handleMove(homeowner, room, new GobangDTO(7, 7, 1));
+        GobangPetItemService.handleMove(opponent, room, new GobangDTO(8, 7, 2));
+
+        List<GobangDTO> homeownerSnapshot = GobangPetItemService.snapshotForUser(room, homeowner);
+        List<GobangDTO> opponentSnapshot = GobangPetItemService.snapshotForUser(room, opponent);
+
+        Assert.assertEquals(3, homeownerSnapshot.size());
+        Assert.assertEquals(1, homeownerSnapshot.get(0).getType());
+        Assert.assertEquals(7, homeownerSnapshot.get(1).getX());
+        Assert.assertEquals(8, homeownerSnapshot.get(2).getX());
+        Assert.assertEquals(3, opponentSnapshot.size());
+        Assert.assertEquals(2, opponentSnapshot.get(0).getType());
+        Assert.assertEquals(Game.GOBANG, opponentSnapshot.get(0).getGame());
+        Assert.assertEquals(room.getId(), opponentSnapshot.get(0).getRoomId());
     }
 
     private static GameRoom room(String roomId, Game game, int nums) {
