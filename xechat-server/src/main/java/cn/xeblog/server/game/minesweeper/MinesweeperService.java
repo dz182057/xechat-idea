@@ -65,6 +65,12 @@ public final class MinesweeperService {
             case SERVER_ACTION_REQUEST:
                 handleRoomAction(user, room, dto);
                 return true;
+            case ITEM_USE_REQUEST:
+                handleRoomItemUse(user, room, dto);
+                return true;
+            case SHARED_MARK:
+                handleSharedMark(user, room, dto);
+                return true;
             case RESTART_RESPONSE:
                 if (Boolean.TRUE.equals(dto.getRestartApproved())) {
                     STATES.remove(roomKey(room.getId()));
@@ -82,6 +88,10 @@ public final class MinesweeperService {
         if (dto.getEvent() == MinesweeperDTO.Event.SERVER_START_REQUEST) {
             STATES.remove(singleKey(user));
             user.send(ResponseBuilder.build(null, startResponse(dto, singleKey(user), null), MessageType.GAME));
+            return;
+        }
+        if (dto.getEvent() == MinesweeperDTO.Event.ITEM_USE_REQUEST) {
+            handleSingleItemUse(user, dto);
             return;
         }
         if (dto.getEvent() != MinesweeperDTO.Event.SERVER_ACTION_REQUEST) {
@@ -137,23 +147,20 @@ public final class MinesweeperService {
         if (state.nextTurnPlayerKey != null && !state.nextTurnPlayerKey.equals(actorKey)) {
             return;
         }
-        OpenResult result = applyAction(state, dto, hasUnusedMineShield(room, state, actorKey));
+        ItemUse mineShield = findUsableItem(room, state, actorKey, ITEM_MINE_SHIELD,
+                state.usedMineShieldPlayerKeys, state.settledMineShieldPlayerKeys);
+        OpenResult result = applyAction(state, dto, mineShield != null);
         if (result.shieldedMine) {
-            state.usedMineShieldPlayerKeys.add(actorKey);
-            state.settledMineShieldPlayerKeys.add(actorKey);
-            gameItemSettler.settle(room, actorKey, ITEM_MINE_SHIELD, "gameplay", "consumed");
-        }
-        if (applyMineAutoMarkIfAvailable(room, state, actorKey, result, ITEM_MINE_MARK,
-                state.usedMineMarkPlayerKeys, 1)) {
-            state.usedMineMarkPlayerKeys.add(actorKey);
-            state.settledMineMarkPlayerKeys.add(actorKey);
-            gameItemSettler.settle(room, actorKey, ITEM_MINE_MARK, "gameplay", "consumed");
-        }
-        if (applyMineAutoMarkIfAvailable(room, state, actorKey, result, ITEM_MINE_DETECTOR,
-                state.usedMineDetectorPlayerKeys, 2)) {
-            state.usedMineDetectorPlayerKeys.add(actorKey);
-            state.settledMineDetectorPlayerKeys.add(actorKey);
-            gameItemSettler.settle(room, actorKey, ITEM_MINE_DETECTOR, "gameplay", "consumed");
+            state.assisted = true;
+            result.petItemId = ITEM_MINE_SHIELD;
+            result.petItemName = mineItemName(ITEM_MINE_SHIELD);
+            result.petItemDescription = mineItemDescription(ITEM_MINE_SHIELD);
+            result.petItemTriggerLabel = "被动触发";
+            result.petItemNotice = "排雷护盾挡下了本次踩雷，并把该雷格标记为共享旗。";
+            if (mineShield != null) {
+                markUsedAndSettled(mineShield, state.usedMineShieldPlayerKeys, state.settledMineShieldPlayerKeys);
+                gameItemSettler.settle(room, actorKey, ITEM_MINE_SHIELD, mineShield.slot, "consumed");
+            }
         }
         settleGameplayItemsIfGameOver(room, state);
         applyMiniGameRewardsIfGameOver(room, state);
@@ -161,6 +168,128 @@ public final class MinesweeperService {
             state.nextTurnPlayerKey = otherPlayerKey(room, actorKey);
         }
         sendToRoom(room, ResponseBuilder.build(user, stateEvent(state, result, false, actorKey, dto.getX(), dto.getY()), MessageType.GAME));
+    }
+
+    private static void handleSharedMark(User user, GameRoom room, MinesweeperDTO dto) {
+        RoomState state = STATES.get(roomKey(room.getId()));
+        if (state == null || state.phase != MinesweeperDTO.Phase.playing || dto.getCells() == null) {
+            return;
+        }
+        for (MinesweeperCellDTO cell : dto.getCells()) {
+            if (cell == null || !inBounds(state, cell.getX(), cell.getY())) {
+                continue;
+            }
+            if (!state.opened[cell.getY()][cell.getX()]) {
+                state.sharedMarked[cell.getY()][cell.getX()] = Boolean.TRUE.equals(cell.getSharedMarked());
+            }
+        }
+        String actorKey = dto.getActorKey() == null ? user.getIdentityKey() : dto.getActorKey();
+        MinesweeperDTO response = stateEvent(state, new OpenResult(), false, actorKey, dto.getX(), dto.getY());
+        response.setEvent(MinesweeperDTO.Event.SHARED_MARK);
+        sendToRoom(room, ResponseBuilder.build(user, response, MessageType.GAME));
+    }
+
+    private static void handleRoomItemUse(User user, GameRoom room, MinesweeperDTO dto) {
+        String actorKey = dto.getActorKey() == null ? user.getIdentityKey() : dto.getActorKey();
+        String itemId = trimToNull(dto.getPetItemId());
+        RoomState state = STATES.get(roomKey(room.getId()));
+        if (state == null || state.phase != MinesweeperDTO.Phase.playing) {
+            sendToRoom(room, ResponseBuilder.build(user, itemEffectEvent(null, dto, false, actorKey,
+                    failedEffect(itemId, "先翻开一格后再使用扫雷道具")), MessageType.GAME));
+            return;
+        }
+        ItemUse itemUse = findUsableActiveItem(room, state, actorKey, itemId);
+        if (itemUse == null) {
+            sendToRoom(room, ResponseBuilder.build(user, itemEffectEvent(state, dto, false, actorKey,
+                    failedEffect(itemId, "该道具未携带或本局已经使用过")), MessageType.GAME));
+            return;
+        }
+        ItemEffect effect = applyActiveItem(state, dto, itemUse.itemId);
+        if (effect.consumed) {
+            state.assisted = true;
+            markUsedAndSettled(itemUse, usedSetForItem(state, itemUse.itemId), settledSetForItem(state, itemUse.itemId));
+            gameItemSettler.settle(room, actorKey, itemUse.itemId, itemUse.slot, "consumed");
+        }
+        sendToRoom(room, ResponseBuilder.build(user, itemEffectEvent(state, dto, false, actorKey, effect), MessageType.GAME));
+    }
+
+    private static void handleSingleItemUse(User user, MinesweeperDTO dto) {
+        String actorKey = dto.getActorKey() == null ? user.getIdentityKey() : dto.getActorKey();
+        String itemId = trimToNull(dto.getPetItemId());
+        RoomState state = STATES.get(singleKey(user));
+        if (state == null || state.phase != MinesweeperDTO.Phase.playing) {
+            user.send(ResponseBuilder.build(null, itemEffectEvent(null, dto, true, actorKey,
+                    failedEffect(itemId, "先翻开一格后再使用扫雷道具")), MessageType.GAME));
+            return;
+        }
+        if (!isActiveMineItem(itemId)) {
+            user.send(ResponseBuilder.build(null, itemEffectEvent(state, dto, true, actorKey,
+                    failedEffect(itemId, "该道具无需主动使用")), MessageType.GAME));
+            return;
+        }
+        Set<String> usedKeys = usedSetForItem(state, itemId);
+        String singleUseKey = usageKey(actorKey, "single", itemId);
+        if (usedKeys.contains(singleUseKey)) {
+            user.send(ResponseBuilder.build(null, itemEffectEvent(state, dto, true, actorKey,
+                    failedEffect(itemId, "该道具本局已经使用过")), MessageType.GAME));
+            return;
+        }
+        ItemEffect effect = applyActiveItem(state, dto, itemId);
+        if (effect.consumed) {
+            state.assisted = true;
+            usedKeys.add(singleUseKey);
+        }
+        user.send(ResponseBuilder.build(null, itemEffectEvent(state, dto, true, actorKey, effect), MessageType.GAME));
+    }
+
+    private static ItemEffect applyActiveItem(RoomState state, MinesweeperDTO dto, String itemId) {
+        ItemEffect effect = new ItemEffect();
+        effect.itemId = itemId;
+        if (ITEM_MINE_MARK.equals(itemId)) {
+            List<NoGuessMinesweeper.Point> marked = markUnmarkedMines(state, 1);
+            effect.consumed = !marked.isEmpty();
+            effect.notice = effect.consumed
+                    ? "探雷骨头标记了 1 个未标记的真实雷格。"
+                    : "当前没有可标记的雷格";
+            if (!marked.isEmpty()) {
+                effect.target = marked.get(0);
+            }
+            return effect;
+        }
+        if (ITEM_MINE_DETECTOR.equals(itemId)) {
+            List<NoGuessMinesweeper.Point> marked = markUnmarkedMines(state, 2);
+            effect.consumed = !marked.isEmpty();
+            effect.notice = effect.consumed
+                    ? "探雷器标记了 " + marked.size() + " 个未标记的真实雷格。"
+                    : "当前没有可标记的雷格";
+            if (!marked.isEmpty()) {
+                effect.target = marked.get(0);
+            }
+            return effect;
+        }
+        if (ITEM_MINE_SAFE_PING.equals(itemId)) {
+            NoGuessMinesweeper.Point target = findSafePingTarget(state);
+            effect.consumed = target != null;
+            effect.target = target;
+            effect.expiresAt = nowSupplier.getAsLong() + 3000L;
+            effect.notice = target == null
+                    ? "当前没有可提示的安全格"
+                    : "安全提示指出了 1 个可安全尝试的未打开格子。";
+            return effect;
+        }
+        if (ITEM_MINE_COUNTER.equals(itemId)) {
+            if (dto.getX() == null || dto.getY() == null || !isCounterCenter(state, dto.getX(), dto.getY())) {
+                effect.notice = "请选择完整 3x3 区域的中心格";
+                return effect;
+            }
+            effect.consumed = true;
+            effect.target = new NoGuessMinesweeper.Point(dto.getX(), dto.getY());
+            effect.counterMines = countMinesInCounterArea(state, dto.getX(), dto.getY());
+            effect.notice = "九宫格计数显示目标 3x3 区域共有 " + effect.counterMines + " 颗雷。";
+            return effect;
+        }
+        effect.notice = "该道具无需主动使用";
+        return effect;
     }
 
     private static void settleGameItem(GameRoom room, String playerKey, String itemId, String slot, String status) {
@@ -339,6 +468,14 @@ public final class MinesweeperService {
         dto.setWon(result.won);
         dto.setNextTurnPlayerKey(single ? null : state.nextTurnPlayerKey);
         dto.setCells(toCells(state, state.phase != MinesweeperDTO.Phase.playing));
+        dto.setAssisted(state.assisted);
+        if (result.petItemId != null) {
+            dto.setPetItemId(result.petItemId);
+            dto.setPetItemName(result.petItemName);
+            dto.setPetItemDescription(result.petItemDescription);
+            dto.setPetItemTriggerLabel(result.petItemTriggerLabel);
+            dto.setPetItemNotice(result.petItemNotice);
+        }
         return dto;
     }
 
@@ -408,47 +545,157 @@ public final class MinesweeperService {
         return actorKey;
     }
 
-    private static boolean hasUnusedMineShield(GameRoom room, RoomState state, String actorKey) {
-        if (room == null || state == null || actorKey == null || state.usedMineShieldPlayerKeys.contains(actorKey)) {
-            return false;
+    private static MinesweeperDTO itemEffectEvent(RoomState state, MinesweeperDTO request, boolean single,
+                                                  String actorKey, ItemEffect effect) {
+        MinesweeperDTO dto = state == null
+                ? new MinesweeperDTO(request.getRoomId())
+                : stateEvent(state, new OpenResult(), single, actorKey, request.getX(), request.getY());
+        dto.setEvent(MinesweeperDTO.Event.ITEM_EFFECT);
+        dto.setActorKey(actorKey);
+        dto.setActorName(request.getActorName());
+        dto.setPetItemId(effect.itemId != null ? effect.itemId : request.getPetItemId());
+        dto.setPetItemName(firstNonBlank(request.getPetItemName(), mineItemName(dto.getPetItemId())));
+        dto.setPetItemDescription(firstNonBlank(request.getPetItemDescription(), mineItemDescription(dto.getPetItemId())));
+        dto.setPetItemIconSrc(request.getPetItemIconSrc());
+        dto.setPetItemTriggerLabel(firstNonBlank(request.getPetItemTriggerLabel(), "主动使用"));
+        dto.setPetItemNotice(effect.notice);
+        dto.setAssisted(state != null && state.assisted);
+        if (effect.target != null) {
+            dto.setPetItemTargetX(effect.target.getX());
+            dto.setPetItemTargetY(effect.target.getY());
+        }
+        dto.setPetItemCounterMines(effect.counterMines);
+        dto.setPetItemExpiresAt(effect.expiresAt);
+        return dto;
+    }
+
+    private static ItemEffect failedEffect(String itemId, String notice) {
+        ItemEffect effect = new ItemEffect();
+        effect.itemId = itemId;
+        effect.notice = notice;
+        return effect;
+    }
+
+    private static ItemUse findUsableActiveItem(GameRoom room, RoomState state, String actorKey, String itemId) {
+        if (!isActiveMineItem(itemId)) {
+            return null;
+        }
+        return findUsableItem(room, state, actorKey, itemId, usedSetForItem(state, itemId), settledSetForItem(state, itemId));
+    }
+
+    private static ItemUse findUsableItem(GameRoom room, RoomState state, String actorKey, String itemId,
+                                          Set<String> usedKeys, Set<String> settledKeys) {
+        if (room == null || state == null || actorKey == null || itemId == null) {
+            return null;
         }
         GameRoom.Player player = room.getUsers().get(actorKey);
-        return player != null && ITEM_MINE_SHIELD.equals(player.getPetPlayItemId());
-    }
-
-    private static boolean applyMineAutoMarkIfAvailable(GameRoom room, RoomState state, String actorKey,
-                                                        OpenResult result, String itemId,
-                                                        Set<String> usedPlayerKeys, int maxMarks) {
-        if (!hasUnusedGameplayItem(room, actorKey, itemId, usedPlayerKeys) || result.openedCount <= 0
-                || state.phase != MinesweeperDTO.Phase.playing) {
-            return false;
+        if (player == null) {
+            return null;
         }
-        return markUnmarkedMines(state, maxMarks) > 0;
-    }
-
-    private static boolean hasUnusedGameplayItem(GameRoom room, String actorKey, String itemId,
-                                                 Set<String> usedPlayerKeys) {
-        if (room == null || actorKey == null || usedPlayerKeys.contains(actorKey)) {
-            return false;
+        ItemUse gameplay = carriedItemUse(actorKey, player.getPetPlayItemId(), itemId, "gameplay", usedKeys, settledKeys);
+        if (gameplay != null) {
+            return gameplay;
         }
-        GameRoom.Player player = room.getUsers().get(actorKey);
-        return player != null && itemId.equals(player.getPetPlayItemId());
+        return carriedItemUse(actorKey, player.getPetInteractionItemId(), itemId, "interaction", usedKeys, settledKeys);
     }
 
-    private static int markUnmarkedMines(RoomState state, int maxMarks) {
-        int marked = 0;
+    private static ItemUse carriedItemUse(String playerKey, String carriedItemId, String itemId, String slot,
+                                          Set<String> usedKeys, Set<String> settledKeys) {
+        if (!itemId.equals(carriedItemId)) {
+            return null;
+        }
+        String key = usageKey(playerKey, slot, itemId);
+        return usedKeys.contains(key) || settledKeys.contains(key) ? null : new ItemUse(playerKey, itemId, slot);
+    }
+
+    private static void markUsedAndSettled(ItemUse itemUse, Set<String> usedKeys, Set<String> settledKeys) {
+        String key = usageKey(itemUse.playerKey, itemUse.slot, itemUse.itemId);
+        usedKeys.add(key);
+        settledKeys.add(key);
+    }
+
+    private static String usageKey(String playerKey, String slot, String itemId) {
+        return playerKey + "|" + slot + "|" + itemId;
+    }
+
+    private static Set<String> usedSetForItem(RoomState state, String itemId) {
+        if (ITEM_MINE_MARK.equals(itemId)) {
+            return state.usedMineMarkPlayerKeys;
+        }
+        if (ITEM_MINE_SAFE_PING.equals(itemId)) {
+            return state.usedMineSafePingPlayerKeys;
+        }
+        if (ITEM_MINE_COUNTER.equals(itemId)) {
+            return state.usedMineCounterPlayerKeys;
+        }
+        if (ITEM_MINE_DETECTOR.equals(itemId)) {
+            return state.usedMineDetectorPlayerKeys;
+        }
+        return state.usedMineShieldPlayerKeys;
+    }
+
+    private static Set<String> settledSetForItem(RoomState state, String itemId) {
+        if (ITEM_MINE_MARK.equals(itemId)) {
+            return state.settledMineMarkPlayerKeys;
+        }
+        if (ITEM_MINE_SAFE_PING.equals(itemId)) {
+            return state.settledMineSafePingPlayerKeys;
+        }
+        if (ITEM_MINE_COUNTER.equals(itemId)) {
+            return state.settledMineCounterPlayerKeys;
+        }
+        if (ITEM_MINE_DETECTOR.equals(itemId)) {
+            return state.settledMineDetectorPlayerKeys;
+        }
+        return state.settledMineShieldPlayerKeys;
+    }
+
+    private static List<NoGuessMinesweeper.Point> markUnmarkedMines(RoomState state, int maxMarks) {
+        List<NoGuessMinesweeper.Point> marked = new ArrayList<>();
         for (int y = 0; y < state.rows; y++) {
             for (int x = 0; x < state.cols; x++) {
                 if (state.board.cell(x, y).isMine() && !state.opened[y][x] && !state.sharedMarked[y][x]) {
                     state.sharedMarked[y][x] = true;
-                    marked++;
-                    if (marked >= maxMarks) {
+                    marked.add(new NoGuessMinesweeper.Point(x, y));
+                    if (marked.size() >= maxMarks) {
                         return marked;
                     }
                 }
             }
         }
         return marked;
+    }
+
+    private static NoGuessMinesweeper.Point findSafePingTarget(RoomState state) {
+        List<NoGuessMinesweeper.Point> candidates = new ArrayList<>();
+        for (int y = 0; y < state.rows; y++) {
+            for (int x = 0; x < state.cols; x++) {
+                NoGuessMinesweeper.Cell cell = state.board.cell(x, y);
+                if (!cell.isMine() && !state.opened[y][x] && !state.sharedMarked[y][x]) {
+                    candidates.add(new NoGuessMinesweeper.Point(x, y));
+                }
+            }
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.get(new Random().nextInt(candidates.size()));
+    }
+
+    private static boolean isCounterCenter(RoomState state, int x, int y) {
+        return x > 0 && y > 0 && x < state.cols - 1 && y < state.rows - 1;
+    }
+
+    private static int countMinesInCounterArea(RoomState state, int x, int y) {
+        int count = 0;
+        for (int row = y - 1; row <= y + 1; row++) {
+            for (int col = x - 1; col <= x + 1; col++) {
+                if (state.board.cell(col, row).isMine()) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 
     private static void settleGameplayItemsIfGameOver(GameRoom room, RoomState state) {
@@ -465,13 +712,20 @@ public final class MinesweeperService {
     private static void settleGameplayItemsIfGameOver(GameRoom room, RoomState state, String itemId,
                                                       Set<String> settledPlayerKeys) {
         for (GameRoom.Player player : room.getUsers().values()) {
-            String playerKey = player.getId();
-            if (!itemId.equals(player.getPetPlayItemId()) || settledPlayerKeys.contains(playerKey)) {
-                continue;
-            }
-            settledPlayerKeys.add(playerKey);
-            gameItemSettler.settle(room, playerKey, itemId, "gameplay", "refunded");
+            settleGameplaySlotIfGameOver(room, player, itemId, "gameplay", player.getPetPlayItemId(), settledPlayerKeys);
+            settleGameplaySlotIfGameOver(room, player, itemId, "interaction", player.getPetInteractionItemId(), settledPlayerKeys);
         }
+    }
+
+    private static void settleGameplaySlotIfGameOver(GameRoom room, GameRoom.Player player, String itemId,
+                                                     String slot, String carriedItemId, Set<String> settledKeys) {
+        String playerKey = player.getId();
+        String key = usageKey(playerKey, slot, itemId);
+        if (!itemId.equals(carriedItemId) || settledKeys.contains(key)) {
+            return;
+        }
+        settledKeys.add(key);
+        gameItemSettler.settle(room, playerKey, itemId, slot, "refunded");
     }
 
     private static void applyMiniGameRewardsIfGameOver(GameRoom room, RoomState state) {
@@ -529,6 +783,64 @@ public final class MinesweeperService {
         return Math.max(min, Math.min(max, value));
     }
 
+    private static boolean isActiveMineItem(String itemId) {
+        return ITEM_MINE_MARK.equals(itemId)
+                || ITEM_MINE_SAFE_PING.equals(itemId)
+                || ITEM_MINE_COUNTER.equals(itemId)
+                || ITEM_MINE_DETECTOR.equals(itemId);
+    }
+
+    private static String mineItemName(String itemId) {
+        if (ITEM_MINE_MARK.equals(itemId)) {
+            return "探雷骨头";
+        }
+        if (ITEM_MINE_SAFE_PING.equals(itemId)) {
+            return "安全提示";
+        }
+        if (ITEM_MINE_SHIELD.equals(itemId)) {
+            return "排雷护盾";
+        }
+        if (ITEM_MINE_DETECTOR.equals(itemId)) {
+            return "探雷器";
+        }
+        if (ITEM_MINE_COUNTER.equals(itemId)) {
+            return "九宫格计数";
+        }
+        return "扫雷道具";
+    }
+
+    private static String mineItemDescription(String itemId) {
+        if (ITEM_MINE_MARK.equals(itemId)) {
+            return "随机选择 1 个仍未标记的真实雷格，并正确插上共享旗。";
+        }
+        if (ITEM_MINE_SAFE_PING.equals(itemId)) {
+            return "随机指出 1 个安全的未打开格子，提示会短暂高亮。";
+        }
+        if (ITEM_MINE_SHIELD.equals(itemId)) {
+            return "本局首次踩雷时自动挡下，并把该雷格标为共享旗。";
+        }
+        if (ITEM_MINE_DETECTOR.equals(itemId)) {
+            return "随机标记最多 2 个仍未标记的真实雷格。";
+        }
+        if (ITEM_MINE_COUNTER.equals(itemId)) {
+            return "选择一个完整 3x3 区域的中心格，显示该区域雷数。";
+        }
+        return "扫雷小游戏道具。";
+    }
+
+    private static String firstNonBlank(String value, String fallback) {
+        String trimmed = trimToNull(value);
+        return trimmed == null ? fallback : trimmed;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private static class RoomState {
         private String roomId;
         private int rows;
@@ -542,7 +854,9 @@ public final class MinesweeperService {
         private final Set<String> settledMineShieldPlayerKeys = new HashSet<>();
         private final Set<String> usedMineMarkPlayerKeys = new HashSet<>();
         private final Set<String> settledMineMarkPlayerKeys = new HashSet<>();
+        private final Set<String> usedMineSafePingPlayerKeys = new HashSet<>();
         private final Set<String> settledMineSafePingPlayerKeys = new HashSet<>();
+        private final Set<String> usedMineCounterPlayerKeys = new HashSet<>();
         private final Set<String> settledMineCounterPlayerKeys = new HashSet<>();
         private final Set<String> usedMineDetectorPlayerKeys = new HashSet<>();
         private final Set<String> settledMineDetectorPlayerKeys = new HashSet<>();
@@ -550,6 +864,7 @@ public final class MinesweeperService {
         private MinesweeperDTO.Phase phase;
         private long startedAt;
         private boolean miniGameRewardsApplied;
+        private boolean assisted;
     }
 
     private static class OpenResult {
@@ -558,6 +873,32 @@ public final class MinesweeperService {
         private boolean shieldedMine;
         private boolean won;
         private MinesweeperDTO.Phase phase = MinesweeperDTO.Phase.playing;
+        private String petItemId;
+        private String petItemName;
+        private String petItemDescription;
+        private String petItemTriggerLabel;
+        private String petItemNotice;
+    }
+
+    private static class ItemUse {
+        private final String playerKey;
+        private final String itemId;
+        private final String slot;
+
+        private ItemUse(String playerKey, String itemId, String slot) {
+            this.playerKey = playerKey;
+            this.itemId = itemId;
+            this.slot = slot;
+        }
+    }
+
+    private static class ItemEffect {
+        private String itemId;
+        private boolean consumed;
+        private String notice;
+        private NoGuessMinesweeper.Point target;
+        private Integer counterMines;
+        private Long expiresAt;
     }
 
     interface GameItemSettler {

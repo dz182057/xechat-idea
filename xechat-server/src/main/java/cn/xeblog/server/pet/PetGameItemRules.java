@@ -87,6 +87,9 @@ public final class PetGameItemRules {
         if (game == null || normalizedItemId == null) {
             return false;
         }
+        if (!playSlot && game == Game.MINESWEEPER && PetItemDefinitions.isPlayItem(game, normalizedItemId)) {
+            return true;
+        }
         return playSlot
                 ? PetItemDefinitions.isPlayItem(game, normalizedItemId)
                 : PetItemDefinitions.isInteractionItem(game, normalizedItemId);

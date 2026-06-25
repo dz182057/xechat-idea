@@ -248,9 +248,16 @@ public class MinesweeperServiceTest {
             MinesweeperDTO safeOpen = actionRequest(room.getId(), 5, 5, 1, 0, 0);
             safeOpen.setActorKey(homeowner.getIdentityKey());
             MinesweeperService.handleRoom(homeowner, room, safeOpen);
+            drain(homeowner);
+            drain(opponent);
+
+            MinesweeperDTO itemUse = itemUseRequest(room.getId(), "item_mine_mark");
+            itemUse.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, itemUse);
             MinesweeperDTO response = gameBody(readResponse(opponent));
 
             Assert.assertEquals(MinesweeperDTO.Phase.playing, response.getPhase());
+            Assert.assertEquals(MinesweeperDTO.Event.ITEM_EFFECT, response.getEvent());
             Assert.assertEquals(1, itemSettleCalls[0]);
             Assert.assertTrue(response.getCells().stream().anyMatch(cell ->
                     cell.getX() == 1 && cell.getY() == 0 && Boolean.TRUE.equals(cell.getSharedMarked())));
@@ -334,6 +341,100 @@ public class MinesweeperServiceTest {
     }
 
     @Test
+    public void roomSafePingPlayItemShouldReturnSafeTargetAndConsume() {
+        User homeowner = user("home-channel-safe-ping", 9741L, "home-safe-ping");
+        User opponent = user("opponent-channel-safe-ping", 9742L, "opponent-safe-ping");
+        UserCache.add(homeowner.getId(), homeowner);
+        UserCache.add(opponent.getId(), opponent);
+        GameRoom room = room("minesweeper-room-safe-ping-test", homeowner, opponent);
+        room.getUsers().get(homeowner.getIdentityKey()).setPetPlayItemId("item_mine_safe_ping");
+        MinesweeperService.clearRoom(room.getId());
+        final int[] itemSettleCalls = {0};
+        MinesweeperService.setBoardGeneratorForTest((rows, cols, mines, firstClick) ->
+                NoGuessMinesweeper.Board.fromMines(rows, cols,
+                        Collections.singletonList(new NoGuessMinesweeper.Point(1, 0))));
+        MinesweeperService.setGameItemSettlerForTest((targetRoom, playerKey, itemId, slot, status) -> {
+            itemSettleCalls[0]++;
+            Assert.assertEquals(room.getId(), targetRoom.getId());
+            Assert.assertEquals(homeowner.getIdentityKey(), playerKey);
+            Assert.assertEquals("item_mine_safe_ping", itemId);
+            Assert.assertEquals("gameplay", slot);
+            Assert.assertEquals("consumed", status);
+        });
+        try {
+            MinesweeperDTO safeOpen = actionRequest(room.getId(), 5, 5, 1, 0, 0);
+            safeOpen.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, safeOpen);
+            drain(homeowner);
+            drain(opponent);
+
+            MinesweeperDTO itemUse = itemUseRequest(room.getId(), "item_mine_safe_ping");
+            itemUse.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, itemUse);
+            MinesweeperDTO response = gameBody(readResponse(opponent));
+
+            Assert.assertEquals(MinesweeperDTO.Event.ITEM_EFFECT, response.getEvent());
+            Assert.assertNotNull(response.getPetItemExpiresAt());
+            Assert.assertTrue(response.getPetItemExpiresAt() > 0);
+            Assert.assertFalse(response.getPetItemTargetX() == 1 && response.getPetItemTargetY() == 0);
+            Assert.assertEquals(1, itemSettleCalls[0]);
+        } finally {
+            MinesweeperService.clearRoom(room.getId());
+            UserCache.remove(homeowner.getId());
+            UserCache.remove(opponent.getId());
+        }
+    }
+
+    @Test
+    public void roomMineCounterPlayItemShouldCountTargetAreaAndConsume() {
+        User homeowner = user("home-channel-counter", 9751L, "home-counter");
+        User opponent = user("opponent-channel-counter", 9752L, "opponent-counter");
+        UserCache.add(homeowner.getId(), homeowner);
+        UserCache.add(opponent.getId(), opponent);
+        GameRoom room = room("minesweeper-room-counter-test", homeowner, opponent);
+        room.getUsers().get(homeowner.getIdentityKey()).setPetPlayItemId("item_mine_counter");
+        MinesweeperService.clearRoom(room.getId());
+        final int[] itemSettleCalls = {0};
+        MinesweeperService.setBoardGeneratorForTest((rows, cols, mines, firstClick) ->
+                NoGuessMinesweeper.Board.fromMines(rows, cols, java.util.Arrays.asList(
+                        new NoGuessMinesweeper.Point(0, 0),
+                        new NoGuessMinesweeper.Point(2, 2),
+                        new NoGuessMinesweeper.Point(4, 0))));
+        MinesweeperService.setGameItemSettlerForTest((targetRoom, playerKey, itemId, slot, status) -> {
+            itemSettleCalls[0]++;
+            Assert.assertEquals(room.getId(), targetRoom.getId());
+            Assert.assertEquals(homeowner.getIdentityKey(), playerKey);
+            Assert.assertEquals("item_mine_counter", itemId);
+            Assert.assertEquals("gameplay", slot);
+            Assert.assertEquals("consumed", status);
+        });
+        try {
+            MinesweeperDTO safeOpen = actionRequest(room.getId(), 5, 5, 3, 4, 4);
+            safeOpen.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, safeOpen);
+            drain(homeowner);
+            drain(opponent);
+
+            MinesweeperDTO itemUse = itemUseRequest(room.getId(), "item_mine_counter");
+            itemUse.setActorKey(homeowner.getIdentityKey());
+            itemUse.setX(1);
+            itemUse.setY(1);
+            MinesweeperService.handleRoom(homeowner, room, itemUse);
+            MinesweeperDTO response = gameBody(readResponse(opponent));
+
+            Assert.assertEquals(MinesweeperDTO.Event.ITEM_EFFECT, response.getEvent());
+            Assert.assertEquals(Integer.valueOf(2), response.getPetItemCounterMines());
+            Assert.assertEquals(Integer.valueOf(1), response.getPetItemTargetX());
+            Assert.assertEquals(Integer.valueOf(1), response.getPetItemTargetY());
+            Assert.assertEquals(1, itemSettleCalls[0]);
+        } finally {
+            MinesweeperService.clearRoom(room.getId());
+            UserCache.remove(homeowner.getId());
+            UserCache.remove(opponent.getId());
+        }
+    }
+
+    @Test
     public void roomMetalDetectorPlayItemShouldConsumeAndMarkTwoRealMines() {
         User homeowner = user("home-channel-metal-detector", 9801L, "home-metal-detector");
         User opponent = user("opponent-channel-metal-detector", 9802L, "opponent-metal-detector");
@@ -360,9 +461,16 @@ public class MinesweeperServiceTest {
             MinesweeperDTO safeOpen = actionRequest(room.getId(), 5, 5, 3, 0, 0);
             safeOpen.setActorKey(homeowner.getIdentityKey());
             MinesweeperService.handleRoom(homeowner, room, safeOpen);
+            drain(homeowner);
+            drain(opponent);
+
+            MinesweeperDTO itemUse = itemUseRequest(room.getId(), "item_mine_detector");
+            itemUse.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, itemUse);
             MinesweeperDTO response = gameBody(readResponse(opponent));
 
             Assert.assertEquals(MinesweeperDTO.Phase.playing, response.getPhase());
+            Assert.assertEquals(MinesweeperDTO.Event.ITEM_EFFECT, response.getEvent());
             Assert.assertEquals(1, itemSettleCalls[0]);
             long markedMines = response.getCells().stream()
                     .filter(cell -> Boolean.TRUE.equals(cell.getSharedMarked()))
@@ -372,6 +480,49 @@ public class MinesweeperServiceTest {
                     cell.getX() == 1 && cell.getY() == 0 && Boolean.TRUE.equals(cell.getSharedMarked())));
             Assert.assertTrue(response.getCells().stream().anyMatch(cell ->
                     cell.getX() == 2 && cell.getY() == 0 && Boolean.TRUE.equals(cell.getSharedMarked())));
+        } finally {
+            MinesweeperService.clearRoom(room.getId());
+            UserCache.remove(homeowner.getId());
+            UserCache.remove(opponent.getId());
+        }
+    }
+
+    @Test
+    public void roomSecondCarrySlotPlayItemShouldConsumeInteractionSlot() {
+        User homeowner = user("home-channel-second-slot", 9821L, "home-second-slot");
+        User opponent = user("opponent-channel-second-slot", 9822L, "opponent-second-slot");
+        UserCache.add(homeowner.getId(), homeowner);
+        UserCache.add(opponent.getId(), opponent);
+        GameRoom room = room("minesweeper-room-second-slot-test", homeowner, opponent);
+        room.getUsers().get(homeowner.getIdentityKey()).setPetInteractionItemId("item_mine_detector");
+        MinesweeperService.clearRoom(room.getId());
+        final int[] itemSettleCalls = {0};
+        MinesweeperService.setBoardGeneratorForTest((rows, cols, mines, firstClick) ->
+                NoGuessMinesweeper.Board.fromMines(rows, cols, java.util.Arrays.asList(
+                        new NoGuessMinesweeper.Point(1, 0),
+                        new NoGuessMinesweeper.Point(2, 0))));
+        MinesweeperService.setGameItemSettlerForTest((targetRoom, playerKey, itemId, slot, status) -> {
+            itemSettleCalls[0]++;
+            Assert.assertEquals(room.getId(), targetRoom.getId());
+            Assert.assertEquals(homeowner.getIdentityKey(), playerKey);
+            Assert.assertEquals("item_mine_detector", itemId);
+            Assert.assertEquals("interaction", slot);
+            Assert.assertEquals("consumed", status);
+        });
+        try {
+            MinesweeperDTO safeOpen = actionRequest(room.getId(), 5, 5, 2, 0, 0);
+            safeOpen.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, safeOpen);
+            drain(homeowner);
+            drain(opponent);
+
+            MinesweeperDTO itemUse = itemUseRequest(room.getId(), "item_mine_detector");
+            itemUse.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, itemUse);
+            MinesweeperDTO response = gameBody(readResponse(opponent));
+
+            Assert.assertEquals(MinesweeperDTO.Event.ITEM_EFFECT, response.getEvent());
+            Assert.assertEquals(1, itemSettleCalls[0]);
         } finally {
             MinesweeperService.clearRoom(room.getId());
             UserCache.remove(homeowner.getId());
@@ -472,6 +623,16 @@ public class MinesweeperServiceTest {
         dto.setMines(mines);
         dto.setX(x);
         dto.setY(y);
+        return dto;
+    }
+
+    private static MinesweeperDTO itemUseRequest(String roomId, String itemId) {
+        MinesweeperDTO dto = new MinesweeperDTO(roomId);
+        dto.setEvent(MinesweeperDTO.Event.ITEM_USE_REQUEST);
+        dto.setPetItemId(itemId);
+        dto.setRows(5);
+        dto.setCols(5);
+        dto.setMines(1);
         return dto;
     }
 

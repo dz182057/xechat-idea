@@ -53,6 +53,17 @@ public class PetGameItemRulesTest {
     }
 
     @Test
+    public void normalizeAllowsSecondMinesweeperCarrySlotToUsePlayItem() {
+        GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(
+                Game.MINESWEEPER,
+                new GamePlayerPetItemsDTO("item_mine_mark", "item_mine_detector")
+        );
+
+        Assert.assertEquals("item_mine_mark", normalized.getPetPlayItemId());
+        Assert.assertEquals("item_mine_detector", normalized.getPetInteractionItemId());
+    }
+
+    @Test
     public void normalizeClearsLegalItemsWhenPlayerDoesNotOwnThem() {
         GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(
                 Game.DOG_BATTLE,

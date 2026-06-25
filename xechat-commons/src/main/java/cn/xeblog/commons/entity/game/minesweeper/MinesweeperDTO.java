@@ -50,6 +50,28 @@ public class MinesweeperDTO extends GameDTO {
 
     private Boolean restartApproved;
 
+    private String petItemId;
+
+    private String petItemName;
+
+    private String petItemDescription;
+
+    private String petItemIconSrc;
+
+    private String petItemTriggerLabel;
+
+    private String petItemNotice;
+
+    private Integer petItemTargetX;
+
+    private Integer petItemTargetY;
+
+    private Integer petItemCounterMines;
+
+    private Long petItemExpiresAt;
+
+    private Boolean assisted;
+
     public MinesweeperDTO(String roomId) {
         super(roomId, Game.MINESWEEPER);
     }
@@ -67,6 +89,8 @@ public class MinesweeperDTO extends GameDTO {
         SERVER_START_REQUEST,
         SERVER_START_RESPONSE,
         SERVER_ACTION_REQUEST,
+        ITEM_USE_REQUEST,
+        ITEM_EFFECT,
         SERVER_ERROR
     }
 
