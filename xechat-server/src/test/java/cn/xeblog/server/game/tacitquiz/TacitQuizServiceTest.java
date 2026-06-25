@@ -101,6 +101,76 @@ public class TacitQuizServiceTest {
     }
 
     @Test
+    public void matchedRoundsShouldRecordSameAnswerProgressEveryRound() throws Exception {
+        String roomId = "tacit-quiz-same-answer-progress-" + System.nanoTime();
+        GameRoom room = new GameRoom();
+        room.setId(roomId);
+        room.setTacitQuizQuestionCount(2);
+        List<User> players = Arrays.asList(
+                user("channel-alice-same-progress", 1L, "Alice"),
+                user("channel-bob-same-progress", 2L, "Bob")
+        );
+        room.getUsers().put(players.get(0).getIdentityKey(), new GameRoom.Player(players.get(0)));
+        room.getUsers().put(players.get(1).getIdentityKey(), new GameRoom.Player(players.get(1)));
+        UserCache.add(players.get(0).getId(), players.get(0));
+        UserCache.add(players.get(1).getId(), players.get(1));
+        miniGameEvents.clear();
+        TacitQuizService.setMiniGameRewardsForTest(new MiniGameRewards() {
+            @Override
+            public void apply(long accountId, Game game, boolean win, long durationSeconds) {
+                miniGameEvents.add("reward:" + accountId + ":" + game + ":" + win + ":" + durationSeconds);
+            }
+
+            @Override
+            public void recordTacitQuizSameAnswer(long accountId) {
+                miniGameEvents.add("same:" + accountId);
+            }
+        });
+
+        try {
+            TacitQuizQuestionDTO first = TacitQuizService.nextQuestion(
+                    room, players, (playerAKey, playerBKey, usedQuestionIds) -> question(701L, "第一题"));
+            TacitQuizService.QuestionPicker picker = (playerAKey, playerBKey, usedQuestionIds) ->
+                    question(702L, "第二题");
+
+            nowSeconds.addAndGet(10);
+            TacitQuizService.submitAnswer(players.get(0), room,
+                    new TacitQuizSubmitAnswerDTO(roomId, first.getId(), 0, "A"),
+                    picker,
+                    (targetRoom, targetQuestion, answers) -> {
+                    });
+            TacitQuizService.submitAnswer(players.get(1), room,
+                    new TacitQuizSubmitAnswerDTO(roomId, first.getId(), 0, "A"),
+                    picker,
+                    (targetRoom, targetQuestion, answers) -> {
+                    });
+
+            TacitQuizQuestionDTO second = currentQuestion(roomId);
+            nowSeconds.addAndGet(10);
+            TacitQuizService.submitAnswer(players.get(0), room,
+                    new TacitQuizSubmitAnswerDTO(roomId, second.getId(), 1, "B"),
+                    picker,
+                    (targetRoom, targetQuestion, answers) -> {
+                    });
+            TacitQuizService.submitAnswer(players.get(1), room,
+                    new TacitQuizSubmitAnswerDTO(roomId, second.getId(), 1, "B"),
+                    picker,
+                    (targetRoom, targetQuestion, answers) -> {
+                    });
+
+            assertEquals(Arrays.asList(
+                    "same:1",
+                    "same:2",
+                    "same:1",
+                    "same:2",
+                    "reward:1:" + Game.TACIT_QUIZ + ":true:20",
+                    "reward:2:" + Game.TACIT_QUIZ + ":true:20"), miniGameEvents);
+        } finally {
+            TacitQuizService.clearRoom(roomId);
+        }
+    }
+
+    @Test
     public void staleSubmitShouldNotWriteOldAnswerIntoAutoStartedNextQuestion() throws Exception {
         String roomId = "quick-quiz-stale-submit-" + System.nanoTime();
         GameRoom room = new GameRoom();

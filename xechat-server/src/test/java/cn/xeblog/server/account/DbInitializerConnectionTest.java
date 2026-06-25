@@ -119,6 +119,65 @@ public class DbInitializerConnectionTest {
     }
 
     @Test
+    public void initShouldBackfillTacitQuizSameAnswerCountersFromRecords() throws Exception {
+        Path root = Files.createTempDirectory("xechat-db-backfill-tacit-same-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());
+        GlobalConfig.initDataPath(null);
+        Files.createDirectories(Paths.get(GlobalConfig.DATA_DIR));
+        resetFactory();
+
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + GlobalConfig.DB_PATH);
+             Statement st = conn.createStatement()) {
+            st.execute("CREATE TABLE tacit_quiz_records (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "room_id TEXT NOT NULL," +
+                    "question_id INTEGER NOT NULL," +
+                    "player_key TEXT NOT NULL," +
+                    "username TEXT NOT NULL," +
+                    "choice_index INTEGER NOT NULL," +
+                    "choice_text TEXT NOT NULL," +
+                    "created_at INTEGER NOT NULL" +
+                    ")");
+            st.execute("CREATE TABLE pet_daily_counters (" +
+                    "account_id INTEGER NOT NULL," +
+                    "counter_date TEXT NOT NULL," +
+                    "counter TEXT NOT NULL," +
+                    "value INTEGER NOT NULL DEFAULT 0," +
+                    "updated_at INTEGER NOT NULL," +
+                    "PRIMARY KEY (account_id, counter_date, counter)" +
+                    ")");
+            st.execute("INSERT INTO pet_daily_counters " +
+                    "(account_id, counter_date, counter, value, updated_at) " +
+                    "VALUES (11, 'lifetime', 'mini_game_tacit_quiz_same_answers', 5, 100)");
+            st.execute("INSERT INTO tacit_quiz_records " +
+                    "(room_id, question_id, player_key, username, choice_index, choice_text, created_at) VALUES " +
+                    "('room-1', 1, 'account:11', 'Alice', 0, 'A', 1000)," +
+                    "('room-1', 1, 'account:22', 'Bob', 0, 'A', 1100)," +
+                    "('room-1', 2, 'account:11', 'Alice', 1, 'B', 1200)," +
+                    "('room-1', 2, 'account:22', 'Bob', 0, 'A', 1300)," +
+                    "('room-2', 3, 'account:11', 'Alice', 1, 'B', 1400)," +
+                    "('room-2', 3, 'account:22', 'Bob', 1, 'B', 1500)," +
+                    "('room-3', 4, 'account:11', 'Alice', 0, 'A', 1600)");
+        }
+
+        DbInitializer.initIfNeeded();
+
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            Connection conn = session.getConnection();
+            assertEquals(5, scalarLong(conn,
+                    "SELECT value FROM pet_daily_counters " +
+                            "WHERE account_id = 11 AND counter_date = 'lifetime' " +
+                            "AND counter = 'mini_game_tacit_quiz_same_answers'"));
+            assertEquals(2, scalarLong(conn,
+                    "SELECT value FROM pet_daily_counters " +
+                            "WHERE account_id = 22 AND counter_date = 'lifetime' " +
+                            "AND counter = 'mini_game_tacit_quiz_same_answers'"));
+            assertEquals(1, scalarLong(conn,
+                    "SELECT COUNT(1) FROM db_migrations WHERE id = 'tacit_quiz_same_answers_backfill_20260625'"));
+        }
+    }
+
+    @Test
     public void initShouldCreatePlayerBehaviorLogTable() throws Exception {
         Path root = Files.createTempDirectory("xechat-behavior-log-schema-test");
         System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());

@@ -1056,6 +1056,12 @@ public final class PetProfileService {
         Collections.sort(lockIds);
         runWithAccountLocks(lockIds, 0, () -> applyMiniGameRoomBonusLocked(normalizedAccountIds));
     }
+    public static void recordTacitQuizSameAnswer(long accountId) {
+        synchronized (accountLock(accountId)) {
+            recordTacitQuizSameAnswerLocked(accountId);
+        }
+    }
+
 
     public static PetProfileDTO applyInteractionItemReward(long accountId, String itemId, int requestedBones) {
         synchronized (accountLock(accountId)) {
@@ -1625,10 +1631,6 @@ public final class PetProfileService {
                 assetsMapper.addBones(accountId, MINI_GAME_COMPLETE_BONES * rewardMultiplier, now);
             }
             if (win) {
-                if (game == Game.TACIT_QUIZ) {
-                    counterMapper.incrementIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
-                            COUNTER_TACIT_QUIZ_SAME_ANSWERS, Integer.MAX_VALUE, now);
-                }
                 counterMapper.incrementIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
                         miniGameWinCounter(game), Integer.MAX_VALUE, now);
                 if (counterMapper.incrementIfUnderLimit(accountId, today, DAILY_COUNTER_MINI_GAME_FIRST_WIN,
@@ -1644,6 +1646,16 @@ public final class PetProfileService {
             session.commit();
         }
         return profile(accountId);
+    }
+
+    private static void recordTacitQuizSameAnswerLocked(long accountId) {
+        long now = System.currentTimeMillis();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            counterMapper.incrementIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
+                    COUNTER_TACIT_QUIZ_SAME_ANSWERS, Integer.MAX_VALUE, now);
+            session.commit();
+        }
     }
 
     private static void applyMiniGameRoomBonusLocked(List<Long> accountIds) {

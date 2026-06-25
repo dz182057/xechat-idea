@@ -481,6 +481,25 @@ public class PetServiceTest {
     }
 
     @Test
+    public void tacitQuizSameAnswerProgressShouldUnlockCreekWithoutMiniGameRewards() {
+        User user = accountUser(990041L);
+        PetProfileDTO before = PetService.adopt(user, adopt("corgi", "默契进度狗"));
+        String dogId = before.getDogs().get(0).getId();
+
+        for (int i = 0; i < 30; i++) {
+            PetService.recordTacitQuizSameAnswer(user.getAccountId());
+        }
+
+        PetProfileDTO profile = PetService.profile(user);
+        Assert.assertEquals(30, profile.getExploreStatus().getTacitQuizSameAnswers());
+        Assert.assertEquals(before.getAssets().getBones(), profile.getAssets().getBones());
+        Assert.assertEquals(before.getAssets().getMakeupCards(), profile.getAssets().getMakeupCards());
+
+        PetProfileDTO started = PetProfileService.exploreStart(user.getAccountId(), exploreStart(dogId, "creek", 1));
+        Assert.assertEquals("creek", started.getDogs().get(0).getExploreLocation());
+    }
+
+    @Test
     public void openChestInstanceShouldUseStoredDurationSkillSnapshotAndLedger() throws Exception {
         User user = accountUser(990028L);
         PetProfileDTO adopted = PetService.adopt(user, adopt("corgi", "开箱狗"));

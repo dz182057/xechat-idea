@@ -309,6 +309,7 @@ public final class TacitQuizService {
         answerRecorder.save(room, state.currentQuestion, answers);
 
         state.revealed = true;
+        recordTacitQuizSameAnswers(state, answers);
         if (shouldExcludeAnswers(answers)) {
             state.usedQuestionIds.add(state.currentQuestion.getId());
         }
@@ -410,6 +411,30 @@ public final class TacitQuizService {
             }
         }
         return answeredPlayerKeys.size() >= 2;
+    }
+
+    private static void recordTacitQuizSameAnswers(RoomState state, List<TacitQuizAnswerViewDTO> answers) {
+        if (!isMatchedRound(answers)) {
+            return;
+        }
+        Set<String> matchedPlayerKeys = new HashSet<>();
+        for (TacitQuizAnswerViewDTO answer : answers) {
+            if (answer != null && answer.getChoiceIndex() >= 0 && answer.getPlayerKey() != null) {
+                matchedPlayerKeys.add(answer.getPlayerKey());
+            }
+        }
+        for (User player : state.players) {
+            String playerKey = playerKey(player);
+            long accountId = player.getAccountId();
+            if (accountId <= 0L || !matchedPlayerKeys.contains(playerKey)) {
+                continue;
+            }
+            try {
+                miniGameRewards.recordTacitQuizSameAnswer(accountId);
+            } catch (RuntimeException e) {
+                log.error("默契问答同选进度记录失败 -> accountId: {}", accountId, e);
+            }
+        }
     }
 
     private static void applyMiniGameRewards(RoomState state, List<TacitQuizAnswerViewDTO> answers, long now) {

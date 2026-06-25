@@ -34,6 +34,7 @@ import java.util.Properties;
 public final class DbInitializer {
 
     private static final String QUICK_QUIZ_TO_TACIT_QUIZ_MIGRATION = "quick_quiz_to_tacit_quiz_20260618";
+    private static final String TACIT_QUIZ_SAME_ANSWERS_BACKFILL = "tacit_quiz_same_answers_backfill_20260625";
 
     private static volatile SqlSessionFactory FACTORY;
 
@@ -85,6 +86,7 @@ public final class DbInitializer {
             ensureQuickQuizTables();
             ensureTurtleSoupTables();
             ensurePetTables();
+            backfillTacitQuizSameAnswers();
             ensurePushSubscriptionTable();
             ensurePetTables();
 
@@ -374,6 +376,52 @@ public final class DbInitializer {
         }
         markMigrationApplied(conn, QUICK_QUIZ_TO_TACIT_QUIZ_MIGRATION);
         log.info("数据库迁移: 已迁移旧快问快答数据到默契问答表，并清空快问快答表");
+    }
+
+    private static void backfillTacitQuizSameAnswers() throws Exception {
+        try (SqlSession session = FACTORY.openSession(false)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                if (migrationApplied(conn, TACIT_QUIZ_SAME_ANSWERS_BACKFILL)
+                        || !tableExists(conn, "tacit_quiz_records")
+                        || !tableExists(conn, "pet_daily_counters")) {
+                    return;
+                }
+                st.execute("INSERT INTO pet_daily_counters (" +
+                        "account_id, counter_date, counter, value, updated_at) " +
+                        "SELECT account_id, 'lifetime', 'mini_game_tacit_quiz_same_answers', same_count, " +
+                        "strftime('%s','now') * 1000 " +
+                        "FROM (" +
+                        "  SELECT CAST(substr(mine.player_key, 9) AS INTEGER) AS account_id, " +
+                        "         COUNT(1) AS same_count " +
+                        "  FROM tacit_quiz_records mine " +
+                        "  JOIN (" +
+                        "    SELECT room_id, question_id " +
+                        "    FROM tacit_quiz_records " +
+                        "    WHERE choice_index >= 0 " +
+                        "    GROUP BY room_id, question_id " +
+                        "    HAVING COUNT(1) >= 2 AND COUNT(DISTINCT choice_index) = 1" +
+                        "  ) matched ON matched.room_id = mine.room_id " +
+                        "      AND matched.question_id = mine.question_id " +
+                        "  WHERE mine.choice_index >= 0 " +
+                        "    AND mine.player_key GLOB 'account:[0-9]*' " +
+                        "  GROUP BY mine.player_key" +
+                        ") counts " +
+                        "WHERE same_count > 0 " +
+                        "ON CONFLICT(account_id, counter_date, counter) DO UPDATE " +
+                        "SET value = CASE " +
+                        "        WHEN pet_daily_counters.value < excluded.value THEN excluded.value " +
+                        "        ELSE pet_daily_counters.value " +
+                        "    END, " +
+                        "    updated_at = CASE " +
+                        "        WHEN pet_daily_counters.value < excluded.value THEN excluded.updated_at " +
+                        "        ELSE pet_daily_counters.updated_at " +
+                        "    END");
+                markMigrationApplied(conn, TACIT_QUIZ_SAME_ANSWERS_BACKFILL);
+                log.info("数据库迁移: 已从默契问答历史记录回填同选解锁计数");
+            }
+            session.commit();
+        }
     }
 
     private static boolean migrationApplied(Connection conn, String migrationId) throws Exception {

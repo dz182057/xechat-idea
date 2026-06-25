@@ -62,6 +62,11 @@ public final class PetService {
         PetProfileService.applyMiniGameRoomBonus(game, accountIds, durationSeconds);
     }
 
+    public static void recordTacitQuizSameAnswer(long accountId) {
+        ensureAccountId(accountId);
+        PetProfileService.recordTacitQuizSameAnswer(accountId);
+    }
+
     public static PetProfileDTO applyInteractionItemReward(long accountId, String itemId, int requestedBones) {
         ensureAccountId(accountId);
         return PetProfileService.applyInteractionItemReward(accountId, itemId, requestedBones);

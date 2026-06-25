@@ -15,6 +15,9 @@ public interface MiniGameRewards {
     default void applyRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
     }
 
+    default void recordTacitQuizSameAnswer(long accountId) {
+    }
+
     static MiniGameRewards petService() {
         return new MiniGameRewards() {
             @Override
@@ -25,6 +28,11 @@ public interface MiniGameRewards {
             @Override
             public void applyRoomBonus(Game game, List<Long> accountIds, long durationSeconds) {
                 PetService.applyMiniGameRoomBonus(game, accountIds, durationSeconds);
+            }
+
+            @Override
+            public void recordTacitQuizSameAnswer(long accountId) {
+                PetService.recordTacitQuizSameAnswer(accountId);
             }
         };
     }
