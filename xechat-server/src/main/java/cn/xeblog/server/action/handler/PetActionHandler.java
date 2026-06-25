@@ -3,7 +3,6 @@ package cn.xeblog.server.action.handler;
 import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
-import cn.xeblog.commons.entity.pet.PetDailySayingReadDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenResultDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStartDTO;
@@ -27,7 +26,6 @@ import cn.xeblog.commons.enums.PetAction;
 import cn.xeblog.server.annotation.DoAction;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
-import cn.xeblog.server.pet.PetDailySayingService;
 import cn.xeblog.server.pet.PetProfileService;
 
 import java.util.Objects;
@@ -56,19 +54,6 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
             case PET_PROFILE:
                 PetProfileDTO profile = PetProfileService.profile(user.getAccountId());
                 send(user, PetResponseDTO.ok(petAction, requestId, profile));
-                break;
-            case DAILY_SAYING_GET:
-                PetProfileDTO sayingProfile = PetDailySayingService.get(user.getAccountId());
-                sendProfileResult(user, petAction, requestId, sayingProfile);
-                break;
-            case DAILY_SAYING_READ:
-                try {
-                    PetProfileDTO readSayingProfile = PetDailySayingService.read(user.getAccountId(),
-                            toBean(body.getContent(), PetDailySayingReadDTO.class));
-                    sendProfileResult(user, petAction, requestId, readSayingProfile);
-                } catch (IllegalArgumentException e) {
-                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
-                }
                 break;
             case ADOPT:
                 try {

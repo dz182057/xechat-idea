@@ -26,7 +26,5 @@ public enum PetAction {
     TRAINING_EQUIP,
     USE_ITEM,
     RACE_RESULT,
-    DAILY_SAYING_GET,
-    DAILY_SAYING_READ,
     PET_PROFILE
 }
