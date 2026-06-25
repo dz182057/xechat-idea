@@ -455,13 +455,13 @@ public class PetServiceTest {
         User blocked = accountUser(990038L);
         PetProfileDTO blockedProfile = PetService.adopt(blocked, adopt("corgi", "小溪门禁狗"));
         applyMiniGameResults(blocked.getAccountId(), Game.DRAW_GUESS, true, 9);
-        applyMiniGameResults(blocked.getAccountId(), Game.TACIT_QUIZ, true, 29);
+        recordTacitQuizSameAnswers(blocked.getAccountId(), 49);
         try {
             PetProfileService.exploreStart(blocked.getAccountId(),
                     exploreStart(blockedProfile.getDogs().get(0).getId(), "creek", 1));
-            Assert.fail("你画我猜未满 10 次且默契问答答案相同未满 30 次时不能进入小溪");
+            Assert.fail("你画我猜未满 10 次且默契问答答案相同未满 50 次时不能进入小溪");
         } catch (IllegalArgumentException e) {
-            Assert.assertTrue(e.getMessage().contains("你画我猜胜利 10 次或默契问答答案相同 30 次"));
+            Assert.assertTrue(e.getMessage().contains("你画我猜胜利 10 次或默契问答答案相同 50 次"));
         }
 
         User drawGuess = accountUser(990039L);
@@ -473,10 +473,10 @@ public class PetServiceTest {
 
         User tacitQuiz = accountUser(990040L);
         PetProfileDTO tacitProfile = PetService.adopt(tacitQuiz, adopt("corgi", "默契狗"));
-        applyMiniGameResults(tacitQuiz.getAccountId(), Game.TACIT_QUIZ, true, 30);
+        recordTacitQuizSameAnswers(tacitQuiz.getAccountId(), 50);
         PetProfileDTO tacitStarted = PetProfileService.exploreStart(tacitQuiz.getAccountId(),
                 exploreStart(tacitProfile.getDogs().get(0).getId(), "creek", 1));
-        Assert.assertEquals(30, tacitStarted.getExploreStatus().getTacitQuizSameAnswers());
+        Assert.assertEquals(50, tacitStarted.getExploreStatus().getTacitQuizSameAnswers());
         Assert.assertEquals("creek", tacitStarted.getDogs().get(0).getExploreLocation());
     }
 
@@ -486,12 +486,10 @@ public class PetServiceTest {
         PetProfileDTO before = PetService.adopt(user, adopt("corgi", "默契进度狗"));
         String dogId = before.getDogs().get(0).getId();
 
-        for (int i = 0; i < 30; i++) {
-            PetService.recordTacitQuizSameAnswer(user.getAccountId());
-        }
+        recordTacitQuizSameAnswers(user.getAccountId(), 50);
 
         PetProfileDTO profile = PetService.profile(user);
-        Assert.assertEquals(30, profile.getExploreStatus().getTacitQuizSameAnswers());
+        Assert.assertEquals(50, profile.getExploreStatus().getTacitQuizSameAnswers());
         Assert.assertEquals(before.getAssets().getBones(), profile.getAssets().getBones());
         Assert.assertEquals(before.getAssets().getMakeupCards(), profile.getAssets().getMakeupCards());
 
@@ -965,6 +963,12 @@ public class PetServiceTest {
     private static void applyMiniGameResults(long accountId, Game game, boolean win, int count) {
         for (int i = 0; i < count; i++) {
             PetService.applyMiniGameResult(accountId, game, win, 60);
+        }
+    }
+
+    private static void recordTacitQuizSameAnswers(long accountId, int count) {
+        for (int i = 0; i < count; i++) {
+            PetService.recordTacitQuizSameAnswer(accountId);
         }
     }
 

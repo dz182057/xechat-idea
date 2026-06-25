@@ -174,7 +174,7 @@ public final class PetProfileService {
     private static final String COUNTER_MINI_GAME_WIN_PREFIX = "mini_game_win_";
     private static final String COUNTER_TACIT_QUIZ_SAME_ANSWERS = "mini_game_tacit_quiz_same_answers";
     private static final int CREEK_UNLOCK_DRAW_GUESS_WINS = 10;
-    private static final int CREEK_UNLOCK_TACIT_QUIZ_SAME_ANSWERS = 30;
+    private static final int CREEK_UNLOCK_TACIT_QUIZ_SAME_ANSWERS = 50;
     private static final int CONSTRUCTION_SITE_UNLOCK_QUICK_QUIZ_WINS = 10;
     private static final int OLD_LIBRARY_UNLOCK_LIBRARY_WINS = 10;
     private static final int SNOW_MOUNTAIN_UNLOCK_OLD_LIBRARY_COMPLETIONS = 3;
@@ -2494,7 +2494,7 @@ public final class PetProfileService {
             int tacitQuizSameAnswers = findTacitQuizSameAnswers(counterMapper, accountId);
             if (drawGuessWins < CREEK_UNLOCK_DRAW_GUESS_WINS
                     && tacitQuizSameAnswers < CREEK_UNLOCK_TACIT_QUIZ_SAME_ANSWERS) {
-                throw new IllegalArgumentException("你画我猜胜利 10 次或默契问答答案相同 30 次后才能进入小溪");
+                throw new IllegalArgumentException("你画我猜胜利 10 次或默契问答答案相同 50 次后才能进入小溪");
             }
             return;
         }

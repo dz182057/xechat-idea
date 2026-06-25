@@ -3459,12 +3459,12 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void exploreStartRejectsCreekBeforeDrawGuessOrTacitQuizWins() {
+    public void exploreStartRejectsCreekBeforeDrawGuessWinsOrTacitQuizSameAnswers() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setAccountEnergy(user.getAccountId(), 5, LocalDate.now().toString());
         insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_draw_guess", 9);
-        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_tacit_quiz_same_answers", 29);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_tacit_quiz_same_answers", 49);
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "creek", 1, 97043L));
 
@@ -3472,7 +3472,7 @@ public class PetActionHandlerTest {
         Assert.assertFalse(body.isSuccess());
         Assert.assertEquals(PetAction.EXPLORE_START, body.getPetAction());
         Assert.assertEquals(Long.valueOf(97043L), body.getRequestId());
-        Assert.assertEquals("你画我猜胜利 10 次或默契问答答案相同 30 次后才能进入小溪", body.getError());
+        Assert.assertEquals("你画我猜胜利 10 次或默契问答答案相同 50 次后才能进入小溪", body.getError());
         PetProfileDTO persistedProfile = requestProfile(user);
         PetDogDTO persistedDog = findDog(persistedProfile, dog.getId());
         Assert.assertEquals("idle", persistedDog.getStatus());
