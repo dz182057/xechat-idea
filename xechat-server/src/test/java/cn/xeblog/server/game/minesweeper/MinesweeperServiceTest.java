@@ -61,12 +61,14 @@ public class MinesweeperServiceTest {
         MinesweeperDTO openMine = actionRequest(5, 5, 1, 1, 0);
         openMine.setPetItemId("item_mine_shield");
         openMine.setPetItemSlotIndex(1);
+        openMine.setActorName("扫雷测试");
         MinesweeperService.handleSingle(user, openMine);
         MinesweeperDTO response = gameBody(readResponse(user));
 
         Assert.assertEquals(MinesweeperDTO.Phase.playing, response.getPhase());
         Assert.assertEquals(Boolean.FALSE, response.getHitMine());
         Assert.assertEquals("item_mine_shield", response.getPetItemId());
+        Assert.assertEquals("扫雷测试", response.getActorName());
         Assert.assertEquals(Integer.valueOf(1), response.getPetItemSlotIndex());
         Assert.assertEquals(Boolean.TRUE, response.getPetItemConsumed());
         Assert.assertTrue(Boolean.TRUE.equals(cell(response, 1, 0).getSharedMarked()));

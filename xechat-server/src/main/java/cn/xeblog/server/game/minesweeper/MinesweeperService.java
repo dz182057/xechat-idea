@@ -115,7 +115,9 @@ public final class MinesweeperService {
                 state.usedMineShieldPlayerKeys.add(usageKey(mineShield.playerKey, mineShield.slot, mineShield.itemId));
             }
         }
-        user.send(ResponseBuilder.build(null, stateEvent(state, result, true, actorKey, dto.getX(), dto.getY()), MessageType.GAME));
+        MinesweeperDTO response = stateEvent(state, result, true, actorKey, dto.getX(), dto.getY());
+        response.setActorName(firstNonBlank(dto.getActorName(), userDisplayName(user)));
+        user.send(ResponseBuilder.build(null, response, MessageType.GAME));
     }
 
     public static void clearRoom(String roomId) {
@@ -184,7 +186,9 @@ public final class MinesweeperService {
         if (result.openedCount > 0 && state.phase == MinesweeperDTO.Phase.playing) {
             state.nextTurnPlayerKey = otherPlayerKey(room, actorKey);
         }
-        sendToRoom(room, ResponseBuilder.build(user, stateEvent(state, result, false, actorKey, dto.getX(), dto.getY()), MessageType.GAME));
+        MinesweeperDTO response = stateEvent(state, result, false, actorKey, dto.getX(), dto.getY());
+        response.setActorName(firstNonBlank(dto.getActorName(), userDisplayName(user)));
+        sendToRoom(room, ResponseBuilder.build(user, response, MessageType.GAME));
     }
 
     private static void handleSharedMark(User user, GameRoom room, MinesweeperDTO dto) {
@@ -888,6 +892,13 @@ public final class MinesweeperService {
     private static String firstNonBlank(String value, String fallback) {
         String trimmed = trimToNull(value);
         return trimmed == null ? fallback : trimmed;
+    }
+
+    private static String userDisplayName(User user) {
+        if (user == null) {
+            return null;
+        }
+        return firstNonBlank(user.getNickname(), user.getUsername());
     }
 
     private static String trimToNull(String value) {
