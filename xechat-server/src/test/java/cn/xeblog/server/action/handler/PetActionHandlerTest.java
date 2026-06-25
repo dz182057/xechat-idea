@@ -342,29 +342,45 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void petProfilePromotesPuppyToAdultWhenBondAndRaceCountReachThreshold() {
+    public void petProfilePromotesPuppyToAdultWhenBondAndMiniGameWinsReachThreshold() {
         User user = user(9013L, "adult_stage_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy", 40, 3, 0);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy", 40, 0, 0);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_minesweeper", 3);
 
         PetProfileDTO profile = requestProfile(user);
 
         PetDogDTO profileDog = findDog(profile, dog.getId());
         Assert.assertEquals("adult", profileDog.getStage());
-        Assert.assertEquals(3, profileDog.getRaceCount());
+        Assert.assertEquals(0, profileDog.getRaceCount());
         Assert.assertEquals(0, profileDog.getRaceFirstCount());
     }
 
     @Test
-    public void petProfilePromotesDogToChampionWhenBondAndRaceFirstReachThreshold() {
+    public void petProfilePromotesDogToChampionWhenBondAndTacitAnswersReachThreshold() {
         User user = user(9014L, "champion_stage_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult", 80, 3, 1);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult", 80, 0, 0);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_tacit_quiz_same_answers", 5);
 
         PetProfileDTO profile = requestProfile(user);
 
         PetDogDTO profileDog = findDog(profile, dog.getId());
         Assert.assertEquals("champion", profileDog.getStage());
+        Assert.assertEquals(0, profileDog.getRaceCount());
+        Assert.assertEquals(0, profileDog.getRaceFirstCount());
+    }
+
+    @Test
+    public void petProfileDoesNotPromotePuppyWhenOnlyOldRaceCountReachesThreshold() {
+        User user = user(90141L, "race_no_stage_user");
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy", 40, 3, 1);
+
+        PetProfileDTO profile = requestProfile(user);
+
+        PetDogDTO profileDog = findDog(profile, dog.getId());
+        Assert.assertEquals("puppy", profileDog.getStage());
         Assert.assertEquals(3, profileDog.getRaceCount());
         Assert.assertEquals(1, profileDog.getRaceFirstCount());
     }
@@ -392,7 +408,7 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void raceResultRecordsParticipationAndPromotesQualifiedDogToAdult() {
+    public void raceResultRecordsParticipationWithoutPromotingDogToAdult() {
         User user = user(9017L, "race_result_adult_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy", 40, 2, 0);
@@ -404,14 +420,14 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.RACE_RESULT, body.getPetAction());
         Assert.assertEquals(Long.valueOf(98001L), body.getRequestId());
         PetDogDTO racedDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
-        Assert.assertEquals("adult", racedDog.getStage());
+        Assert.assertEquals("puppy", racedDog.getStage());
         Assert.assertEquals(3, racedDog.getRaceCount());
         Assert.assertEquals(0, racedDog.getRaceFirstCount());
         assertDogRaceProgress(user.getAccountId(), dog.getId(), 3, 0);
     }
 
     @Test
-    public void raceResultRecordsFirstPlaceAndPromotesQualifiedDogToChampion() {
+    public void raceResultRecordsFirstPlaceWithoutPromotingDogToChampion() {
         User user = user(9018L, "race_result_champion_user");
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
         setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult", 80, 3, 0);
@@ -423,7 +439,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals(PetAction.RACE_RESULT, body.getPetAction());
         Assert.assertEquals(Long.valueOf(98002L), body.getRequestId());
         PetDogDTO racedDog = findDog((PetProfileDTO) body.getContent(), dog.getId());
-        Assert.assertEquals("champion", racedDog.getStage());
+        Assert.assertEquals("adult", racedDog.getStage());
         Assert.assertEquals(4, racedDog.getRaceCount());
         Assert.assertEquals(1, racedDog.getRaceFirstCount());
         assertDogRaceProgress(user.getAccountId(), dog.getId(), 4, 1);
@@ -3649,7 +3665,8 @@ public class PetActionHandlerTest {
     public void exploreStartPromotesQualifiedPuppyBeforeCheckingEightHourUnlock() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy", 40, 3, 0);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "puppy", 40, 0, 0);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_win_draw_guess", 3);
         setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 8, 97025L));
@@ -3669,7 +3686,8 @@ public class PetActionHandlerTest {
     public void exploreStartPromotesQualifiedAdultBeforeCheckingTwelveHourUnlock() {
         User user = user();
         PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
-        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult", 80, 3, 1);
+        setDogGrowthProgress(user.getAccountId(), dog.getId(), "adult", 80, 0, 0);
+        insertDailyCounter(user.getAccountId(), "lifetime", "mini_game_tacit_quiz_same_answers", 5);
         setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
 
         new PetActionHandler().process(user, exploreStartRequest(dog.getId(), "back_hill", 12, 97026L));

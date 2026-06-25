@@ -85,9 +85,10 @@ public final class PetProfileService {
     private static final int DOG_STAT_MIN = 0;
     private static final int DOG_STAT_MAX = 100;
     private static final int DOG_ADULT_BOND_THRESHOLD = 40;
-    private static final int DOG_ADULT_RACE_COUNT_THRESHOLD = 3;
+    private static final int DOG_ADULT_GAME_WIN_THRESHOLD = 3;
     private static final int DOG_CHAMPION_BOND_THRESHOLD = 80;
-    private static final int DOG_CHAMPION_RACE_FIRST_COUNT_THRESHOLD = 1;
+    private static final int DOG_CHAMPION_GAME_WIN_THRESHOLD = 1;
+    private static final int TACIT_QUIZ_SAME_ANSWERS_PER_GROWTH_WIN = 5;
     private static final int MINI_GAME_MIN_REWARD_SECONDS = 60;
     private static final int MINI_GAME_COMPLETE_BONES = 10;
     private static final int DAILY_MINI_GAME_COMPLETE_REWARD_LIMIT = 5;
@@ -445,7 +446,7 @@ public final class PetProfileService {
             if (exploreSettled) {
                 rows = dogMapper.listByOwner(accountId);
             }
-            boolean dogStageChanged = updateDogGrowthStages(dogMapper, accountId, rows, now);
+            boolean dogStageChanged = updateDogGrowthStages(dogMapper, dailyCounterMapper, accountId, rows, now);
             List<PetItemRecord> itemRows = itemMapper.listPositiveByAccountId(accountId);
             List<PetExploreChestRecord> chestRows = chestMapper.listAvailableByAccountId(accountId);
             List<PetCollectionRecord> collectionRows = collectionMapper.listByAccountId(accountId);
@@ -1124,6 +1125,7 @@ public final class PetProfileService {
             PetAssetsRecord assets = ensureAssets(session, accountId);
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
             PetDogMapper dogMapper = session.getMapper(PetDogMapper.class);
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
             int energyLimit = effectiveEnergyLimit(session, accountId, assets.getEnergyLimit());
             if (refreshExpiredAccountEnergy(assetsMapper, accountId, energyLimit, today, now)) {
                 assets = assetsMapper.findByAccountId(accountId);
@@ -1132,7 +1134,7 @@ public final class PetProfileService {
             if (dog == null) {
                 throw new IllegalArgumentException("只能派遣自己的狗狗探险");
             }
-            updateDogGrowthStage(dogMapper, accountId, dog, now);
+            updateDogGrowthStage(dogMapper, counterMapper, accountId, dog, now);
             if (!"idle".equals(dog.getStatus())) {
                 throw new IllegalArgumentException("只有空闲狗狗可以去探险");
             }
@@ -1153,8 +1155,8 @@ public final class PetProfileService {
                     throw new IllegalArgumentException(exploreChestFullError(location));
                 }
             }
-            if (session.getMapper(PetDailyCounterMapper.class).incrementIfUnderLimit(accountId,
-                    today, DAILY_COUNTER_EXPLORE_START, DAILY_EXPLORE_START_LIMIT, now) <= 0) {
+            if (counterMapper.incrementIfUnderLimit(accountId, today, DAILY_COUNTER_EXPLORE_START,
+                    DAILY_EXPLORE_START_LIMIT, now) <= 0) {
                 throw new IllegalArgumentException("今日探险派遣次数已达上限");
             }
             if (assetsMapper.decrementEnergyIfEnough(accountId, energyCost, now) <= 0) {
@@ -3427,18 +3429,20 @@ public final class PetProfileService {
                 row.getRaceCount(), row.getRaceFirstCount(), row.getWeeklyPoints());
     }
 
-    private static boolean updateDogGrowthStages(PetDogMapper dogMapper, long accountId,
+    private static boolean updateDogGrowthStages(PetDogMapper dogMapper, PetDailyCounterMapper counterMapper,
+                                                 long accountId,
                                                  List<PetDogRecord> dogs, long now) {
         boolean changed = false;
+        int gameWinCredits = growthGameWinCredits(counterMapper, accountId);
         for (PetDogRecord dog : dogs) {
-            changed = updateDogGrowthStage(dogMapper, accountId, dog, now) || changed;
+            changed = updateDogGrowthStage(dogMapper, accountId, dog, gameWinCredits, now) || changed;
         }
         return changed;
     }
 
     private static boolean updateDogGrowthStage(PetDogMapper dogMapper, long accountId,
-                                                PetDogRecord dog, long now) {
-        String nextStage = resolveDogGrowthStage(dog);
+                                                PetDogRecord dog, int gameWinCredits, long now) {
+        String nextStage = resolveDogGrowthStage(dog, gameWinCredits);
         if (nextStage.equals(dog.getStage())) {
             return false;
         }
@@ -3447,19 +3451,38 @@ public final class PetProfileService {
         return true;
     }
 
-    private static String resolveDogGrowthStage(PetDogRecord dog) {
+    private static boolean updateDogGrowthStage(PetDogMapper dogMapper, PetDailyCounterMapper counterMapper,
+                                                long accountId,
+                                                PetDogRecord dog, long now) {
+        return updateDogGrowthStage(dogMapper, accountId, dog, growthGameWinCredits(counterMapper, accountId), now);
+    }
+
+    private static String resolveDogGrowthStage(PetDogRecord dog, int gameWinCredits) {
         String currentStage = StrUtil.blankToDefault(dog.getStage(), DOG_STAGE_PUPPY);
         if (DOG_STAGE_CHAMPION.equals(currentStage)
                 || (clampDogStat(dog.getBond()) >= DOG_CHAMPION_BOND_THRESHOLD
-                && dog.getRaceFirstCount() >= DOG_CHAMPION_RACE_FIRST_COUNT_THRESHOLD)) {
+                && gameWinCredits >= DOG_CHAMPION_GAME_WIN_THRESHOLD)) {
             return DOG_STAGE_CHAMPION;
         }
         if (DOG_STAGE_ADULT.equals(currentStage)
                 || (clampDogStat(dog.getBond()) >= DOG_ADULT_BOND_THRESHOLD
-                && dog.getRaceCount() >= DOG_ADULT_RACE_COUNT_THRESHOLD)) {
+                && gameWinCredits >= DOG_ADULT_GAME_WIN_THRESHOLD)) {
             return DOG_STAGE_ADULT;
         }
         return currentStage;
+    }
+
+    private static int growthGameWinCredits(PetDailyCounterMapper mapper, long accountId) {
+        int gameWins = 0;
+        for (Game game : Game.values()) {
+            if (game == Game.TACIT_QUIZ) {
+                continue;
+            }
+            gameWins += findLifetimeCounterValue(mapper, accountId, miniGameWinCounter(game));
+        }
+        int tacitAnswerCredits = findTacitQuizSameAnswers(mapper, accountId)
+                / TACIT_QUIZ_SAME_ANSWERS_PER_GROWTH_WIN;
+        return gameWins + tacitAnswerCredits;
     }
 
     private static int clampDogStat(int value) {
