@@ -90,6 +90,9 @@ public final class PetGameItemRules {
         if (!playSlot && game == Game.MINESWEEPER && PetItemDefinitions.isPlayItem(game, normalizedItemId)) {
             return true;
         }
+        if (playSlot && game == Game.TACIT_QUIZ && PetItemDefinitions.isInteractionItem(game, normalizedItemId)) {
+            return true;
+        }
         return playSlot
                 ? PetItemDefinitions.isPlayItem(game, normalizedItemId)
                 : PetItemDefinitions.isInteractionItem(game, normalizedItemId);

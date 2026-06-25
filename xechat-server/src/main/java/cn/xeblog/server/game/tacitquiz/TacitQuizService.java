@@ -27,6 +27,7 @@ import java.util.function.LongSupplier;
 public final class TacitQuizService {
 
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
+    private static final String SLOT_GAMEPLAY = "gameplay";
     private static final String SLOT_INTERACTION = "interaction";
     private static final String ITEM_SYNC_PROPHECY = "item_sync_prophecy";
     private static final String ITEM_SYNC_PERSPECTIVE = "item_sync_perspective";
@@ -156,6 +157,10 @@ public final class TacitQuizService {
     }
 
     public static boolean activateInteractionItem(User user, GameRoom room, String itemId) {
+        return activateInteractionItem(user, room, itemId, null);
+    }
+
+    public static boolean activateInteractionItem(User user, GameRoom room, String itemId, Integer slotIndex) {
         if (user == null || room == null || !room.isPlayerConnection(user) || !isSupportedInteractionItem(itemId)) {
             return false;
         }
@@ -178,10 +183,12 @@ public final class TacitQuizService {
                 return false;
             }
             GameRoom.Player player = room.getUsers().get(key);
-            if (player == null || !itemId.equals(player.getPetInteractionItemId())) {
+            String slot = carriedInteractionItemSlot(player, itemId, slotIndex);
+            if (slot == null) {
                 return false;
             }
             state.activeInteractionItemIds.put(key, itemId);
+            state.activeInteractionItemSlots.put(key, slot);
             return true;
         }
     }
@@ -310,7 +317,8 @@ public final class TacitQuizService {
             finished = nextPlayers.size() < 2;
         }
         Map<String, List<String>> petItemNoticesByPlayer = applyInteractionItemSettlements(
-                room, state.currentQuestion, answers, state.perspectiveGuessChoiceIndexes, state.activeInteractionItemIds);
+                room, state.currentQuestion, answers, state.perspectiveGuessChoiceIndexes,
+                state.activeInteractionItemIds, state.activeInteractionItemSlots);
         TacitQuizAnswerResultDTO result = new TacitQuizAnswerResultDTO(
                 room.getId(), state.currentQuestion, answers, state.roundNo,
                 room.getTacitQuizQuestionCount(), finished, Collections.emptyList());
@@ -428,7 +436,8 @@ public final class TacitQuizService {
                                                                             TacitQuizQuestionDTO question,
                                                                             List<TacitQuizAnswerViewDTO> answers,
                                                                             Map<String, Integer> perspectiveGuessChoiceIndexes,
-                                                                            Map<String, String> activeInteractionItemIds) {
+                                                                            Map<String, String> activeInteractionItemIds,
+                                                                            Map<String, String> activeInteractionItemSlots) {
         Map<String, List<String>> noticesByPlayer = new HashMap<>();
         if (room == null || answers == null || answers.isEmpty()) {
             return noticesByPlayer;
@@ -443,11 +452,12 @@ public final class TacitQuizService {
         for (Map.Entry<String, GameRoom.Player> entry : room.getUsers().entrySet()) {
             String playerKey = entry.getKey();
             GameRoom.Player player = entry.getValue();
-            if (player == null || player.getPetInteractionItemId() == null) {
+            String itemId = activeInteractionItemIds.get(playerKey);
+            if (player == null || itemId == null) {
                 continue;
             }
-            String itemId = player.getPetInteractionItemId();
-            if (!itemId.equals(activeInteractionItemIds.get(playerKey))) {
+            String slot = activeInteractionItemSlots.getOrDefault(playerKey, carriedInteractionItemSlot(player, itemId, null));
+            if (slot == null) {
                 continue;
             }
             boolean succeeded = ITEM_SYNC_PROPHECY.equals(itemId)
@@ -460,17 +470,49 @@ public final class TacitQuizService {
             String actionText = itemActionText(itemId, playerKey, question, answersByPlayer, perspectiveGuessChoiceIndexes);
             if (succeeded) {
                 int acceptedReward = PetGameItemDeclarationService.settleSucceededWithInteractionReward(
-                        room, playerKey, itemId, SLOT_INTERACTION, rewardBones);
+                        room, playerKey, itemId, slot, rewardBones);
                 addInteractionItemNotices(noticesByPlayer, room, playerKey, player.getUsername(), itemName,
                         actionText, true, acceptedReward);
             } else {
-                PetGameItemDeclarationService.settleFailed(room, playerKey, itemId, SLOT_INTERACTION);
+                PetGameItemDeclarationService.settleFailed(room, playerKey, itemId, slot);
                 addInteractionItemNotices(noticesByPlayer, room, playerKey, player.getUsername(), itemName,
                         actionText, false, 0);
             }
-            player.setPetInteractionItemId(null);
+            clearCarriedInteractionItem(player, slot);
         }
         return noticesByPlayer;
+    }
+
+    private static String carriedInteractionItemSlot(GameRoom.Player player, String itemId, Integer slotIndex) {
+        if (player == null || itemId == null) {
+            return null;
+        }
+        if (slotIndex != null) {
+            if (slotIndex <= 0 && itemId.equals(player.getPetPlayItemId())) {
+                return SLOT_GAMEPLAY;
+            }
+            if (slotIndex == 1 && itemId.equals(player.getPetInteractionItemId())) {
+                return SLOT_INTERACTION;
+            }
+        }
+        if (itemId.equals(player.getPetInteractionItemId())) {
+            return SLOT_INTERACTION;
+        }
+        if (itemId.equals(player.getPetPlayItemId())) {
+            return SLOT_GAMEPLAY;
+        }
+        return null;
+    }
+
+    private static void clearCarriedInteractionItem(GameRoom.Player player, String slot) {
+        if (player == null) {
+            return;
+        }
+        if (SLOT_GAMEPLAY.equals(slot)) {
+            player.setPetPlayItemId(null);
+        } else if (SLOT_INTERACTION.equals(slot)) {
+            player.setPetInteractionItemId(null);
+        }
     }
 
     private static void addInteractionItemNotices(Map<String, List<String>> noticesByPlayer, GameRoom room,
@@ -727,6 +769,7 @@ public final class TacitQuizService {
         private final Map<String, TacitQuizAnswerViewDTO> answers = new ConcurrentHashMap<>();
         private final Map<String, Integer> perspectiveGuessChoiceIndexes = new ConcurrentHashMap<>();
         private final Map<String, String> activeInteractionItemIds = new ConcurrentHashMap<>();
+        private final Map<String, String> activeInteractionItemSlots = new ConcurrentHashMap<>();
         private final Set<String> expectedPlayerKeys = new HashSet<>();
         private final List<User> players = new ArrayList<>();
         private TacitQuizQuestionDTO currentQuestion;
@@ -747,6 +790,7 @@ public final class TacitQuizService {
             this.answers.clear();
             this.perspectiveGuessChoiceIndexes.clear();
             this.activeInteractionItemIds.clear();
+            this.activeInteractionItemSlots.clear();
             this.expectedPlayerKeys.clear();
             this.players.clear();
             this.players.addAll(users);

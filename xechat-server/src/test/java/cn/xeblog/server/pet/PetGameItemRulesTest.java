@@ -64,6 +64,17 @@ public class PetGameItemRulesTest {
     }
 
     @Test
+    public void normalizeAllowsTacitQuizInteractionItemsInBothCarrySlots() {
+        GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(
+                Game.TACIT_QUIZ,
+                new GamePlayerPetItemsDTO("item_sync_prophecy", "item_sync_perspective")
+        );
+
+        Assert.assertEquals("item_sync_prophecy", normalized.getPetPlayItemId());
+        Assert.assertEquals("item_sync_perspective", normalized.getPetInteractionItemId());
+    }
+
+    @Test
     public void normalizeClearsLegalItemsWhenPlayerDoesNotOwnThem() {
         GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(
                 Game.DOG_BATTLE,

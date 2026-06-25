@@ -226,17 +226,23 @@ public class GameRoomPetItemLifecycleTest {
                 new GamePlayerPetItemsDTO(null, "item_sync_prophecy"));
 
         TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
+        drainOutbound(alice);
+        drainOutbound(bob);
         Assert.assertTrue(TacitQuizService.activateInteractionItem(alice, room, "item_sync_prophecy"));
         TacitQuizService.submitAnswer(alice, room,
                 new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A"));
         TacitQuizService.submitAnswer(bob, room,
                 new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A"));
+        TacitQuizAnswerResultDTO aliceResult = readTacitAnswerResult(alice);
+        TacitQuizAnswerResultDTO bobResult = readTacitAnswerResult(bob);
 
         Assert.assertEquals(1, countItem(alice.getAccountId(), "item_sync_prophecy"));
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
                 "item_sync_prophecy", "interaction", "succeeded"));
         Assert.assertEquals(20, maxRewardBones(room.getId(), alice.getAccountId(),
                 "item_sync_prophecy", "interaction", "succeeded"));
+        Assert.assertTrue(aliceResult.getPetItemNotices().get(0).contains("你使用了默契预言"));
+        Assert.assertTrue(bobResult.getPetItemNotices().get(0).contains("玩家2040 使用了默契预言"));
     }
 
     @Test
@@ -307,6 +313,74 @@ public class GameRoomPetItemLifecycleTest {
         Assert.assertEquals(0, countItem(alice.getAccountId(), "item_sync_perspective"));
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
                 "item_sync_perspective", "interaction", "failed"));
+    }
+
+    @Test
+    public void tacitQuizFirstCarrySlotShouldConsumeWhenPerspectiveGuessMisses() {
+        User alice = user(2054L);
+        User bob = user(2055L);
+        GameRoom room = room(Game.TACIT_QUIZ, alice, bob);
+        room.setTacitQuizQuestionCount(1);
+        insertTacitQuizQuestion("第一槽也要结算");
+        insertPetItem(alice.getAccountId(), "item_sync_perspective", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO("item_sync_perspective", null));
+
+        TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
+        drainOutbound(alice);
+        drainOutbound(bob);
+        useTacitItemThroughRoomMessage(alice, room, "item_sync_perspective", 0);
+        drainOutbound(alice);
+        drainOutbound(bob);
+        TacitQuizService.submitAnswer(alice, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A", 0, "A"));
+        TacitQuizService.submitAnswer(bob, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 1, "B"));
+        TacitQuizAnswerResultDTO aliceResult = readTacitAnswerResult(alice);
+
+        Assert.assertEquals(0, countItem(alice.getAccountId(), "item_sync_perspective"));
+        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetPlayItemId());
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "gameplay", "failed"));
+        Assert.assertTrue(aliceResult.getPetItemNotices().get(0).contains("猜错了，道具已消耗"));
+    }
+
+    @Test
+    public void tacitQuizSecondCarrySlotShouldConsumeWhenPerspectiveGuessMisses() {
+        User alice = user(2056L);
+        User bob = user(2057L);
+        GameRoom room = room(Game.TACIT_QUIZ, alice, bob);
+        room.setTacitQuizQuestionCount(1);
+        insertTacitQuizQuestion("第二槽也要结算");
+        setDogSlots(alice.getAccountId(), 2);
+        insertPetItem(alice.getAccountId(), "item_sync_prophecy", 1);
+        insertPetItem(alice.getAccountId(), "item_sync_perspective", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO("item_sync_prophecy", "item_sync_perspective"));
+
+        TacitQuizQuestionDTO question = TacitQuizService.nextQuestion(alice, room);
+        drainOutbound(alice);
+        drainOutbound(bob);
+        useTacitItemThroughRoomMessage(alice, room, "item_sync_perspective", 1);
+        drainOutbound(alice);
+        drainOutbound(bob);
+        TacitQuizService.submitAnswer(alice, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "A", 0, "A"));
+        TacitQuizService.submitAnswer(bob, room,
+                new TacitQuizSubmitAnswerDTO(room.getId(), question.getId(), 1, "B"));
+        TacitQuizAnswerResultDTO aliceResult = readTacitAnswerResult(alice);
+
+        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "failed"));
+        Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
+                "item_sync_perspective", "interaction", "reserved"));
+        Assert.assertTrue(aliceResult.getPetItemNotices().get(0).contains("你使用了换位骨牌"));
+        Assert.assertTrue(aliceResult.getPetItemNotices().get(0).contains("猜错了，道具已消耗"));
     }
 
     @Test
@@ -748,6 +822,28 @@ public class GameRoomPetItemLifecycleTest {
         }
     }
 
+    private static void setDogSlots(long accountId, int dogSlots) {
+        try (SqlSession session = DbInitializer.factory().openSession(true);
+             java.sql.PreparedStatement insert = session.getConnection().prepareStatement(
+                     "INSERT OR IGNORE INTO pet_assets " +
+                             "(account_id, bones, food, makeup_cards, dog_slots, energy, energy_date, energy_limit, companion_dog_id, created_at, updated_at) " +
+                             "VALUES (?, 0, 0, 0, 1, 10, ?, 10, NULL, ?, ?)");
+             java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
+                     "UPDATE pet_assets SET dog_slots = ? WHERE account_id = ?")) {
+            long now = System.currentTimeMillis();
+            insert.setLong(1, accountId);
+            insert.setString(2, java.time.LocalDate.now().toString());
+            insert.setLong(3, now);
+            insert.setLong(4, now);
+            insert.executeUpdate();
+            statement.setInt(1, dogSlots);
+            statement.setLong(2, accountId);
+            statement.executeUpdate();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static void insertTacitQuizQuestion(String question) {
         try (SqlSession session = DbInitializer.factory().openSession(true);
              java.sql.PreparedStatement statement = session.getConnection().prepareStatement(
@@ -801,8 +897,15 @@ public class GameRoomPetItemLifecycleTest {
     }
 
     private static void useTacitItemThroughRoomMessage(User user, GameRoom room, String itemId) {
+        useTacitItemThroughRoomMessage(user, room, itemId, null);
+    }
+
+    private static void useTacitItemThroughRoomMessage(User user, GameRoom room, String itemId, Integer slotIndex) {
         Map<String, Object> content = new HashMap<>();
         content.put("itemId", itemId);
+        if (slotIndex != null) {
+            content.put("slotIndex", slotIndex);
+        }
         new GameRoomActionHandler().process(user, room, new GameRoomMsgDTO(
                 room.getId(), Game.TACIT_QUIZ, GameRoomMsgDTO.MsgType.MINE_ITEM_USED, content));
     }

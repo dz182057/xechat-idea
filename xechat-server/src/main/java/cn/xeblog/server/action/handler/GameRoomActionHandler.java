@@ -135,7 +135,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                     return;
                 }
                 if (gameRoom.getGame() == Game.TACIT_QUIZ
-                        && TacitQuizService.activateInteractionItem(user, gameRoom, readPetItemId(body))) {
+                        && TacitQuizService.activateInteractionItem(user, gameRoom, readPetItemId(body), readPetItemSlotIndex(body))) {
                     sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 }
                 break;
@@ -301,6 +301,14 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
         cn.hutool.json.JSONObject content = JSONUtil.parseObj(raw);
         String itemId = content.getStr("itemId");
         return itemId == null ? content.getStr("petItemId") : itemId;
+    }
+
+    private Integer readPetItemSlotIndex(GameRoomMsgDTO body) {
+        Object raw = body.getContent();
+        if (raw == null) {
+            return null;
+        }
+        return JSONUtil.parseObj(raw).getInt("slotIndex");
     }
 
     private void sendMsg(GameRoom gameRoom, Response response) {
