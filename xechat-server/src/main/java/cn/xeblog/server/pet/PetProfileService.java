@@ -836,30 +836,27 @@ public final class PetProfileService {
             PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
             String outingCounter = DAILY_COUNTER_OUTING_BOND_PREFIX + dog.getId();
             if (findDailyCounterValue(counterMapper, accountId, today, outingCounter) > 0) {
-                session.commit();
-                return profile(accountId);
+                throw new IllegalArgumentException("这只狗狗今天已经散步过了");
             }
             if (assets.getEnergy() <= 0) {
                 throw new IllegalArgumentException("狗狗活力不足");
             }
 
-            String totalCounter = DAILY_COUNTER_DOG_BOND_TOTAL_PREFIX + dog.getId();
-            if (findDailyCounterValue(counterMapper, accountId, today, totalCounter) >= DAILY_DOG_BOND_LIMIT) {
-                session.commit();
-                return profile(accountId);
-            }
-            if (counterMapper.incrementIfUnderLimit(accountId, today, outingCounter, 1, now) <= 0
-                    || counterMapper.incrementIfUnderLimit(accountId, today,
-                    totalCounter, DAILY_DOG_BOND_LIMIT, now) <= 0) {
-                session.commit();
-                return profile(accountId);
-            }
-            int bond = clampDogStat(dog.getBond() + 1);
             if (assetsMapper.decrementEnergyIfEnough(accountId, 1, now) <= 0) {
                 throw new IllegalArgumentException("狗狗活力不足");
             }
-            if (dogMapper.updateCareStats(dog.getId(), accountId, bond, now) <= 0) {
-                throw new IllegalArgumentException("狗狗散步失败，请刷新后重试");
+            if (counterMapper.incrementIfUnderLimit(accountId, today, outingCounter, 1, now) <= 0) {
+                throw new IllegalArgumentException("这只狗狗今天已经散步过了");
+            }
+
+            String totalCounter = DAILY_COUNTER_DOG_BOND_TOTAL_PREFIX + dog.getId();
+            if (findDailyCounterValue(counterMapper, accountId, today, totalCounter) < DAILY_DOG_BOND_LIMIT
+                    && counterMapper.incrementIfUnderLimit(accountId, today,
+                    totalCounter, DAILY_DOG_BOND_LIMIT, now) > 0) {
+                int bond = clampDogStat(dog.getBond() + 1);
+                if (dogMapper.updateCareStats(dog.getId(), accountId, bond, now) <= 0) {
+                    throw new IllegalArgumentException("狗狗散步失败，请刷新后重试");
+                }
             }
             session.commit();
         }

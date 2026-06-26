@@ -19,6 +19,7 @@ import cn.xeblog.commons.entity.pet.PetResponseDTO;
 import cn.xeblog.commons.entity.pet.PetShopStatusDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDefinitionDTO;
+import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
@@ -383,6 +384,47 @@ public class PetActionHandlerTest {
         Assert.assertEquals("puppy", profileDog.getStage());
         Assert.assertEquals(3, profileDog.getRaceCount());
         Assert.assertEquals(1, profileDog.getRaceFirstCount());
+    }
+
+    @Test
+    public void walkDogConsumesEnergyAndCompletesOutingOncePerDogPerDay() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
+
+        new PetActionHandler().process(user, walkDogRequest(dog.getId(), 93001L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertTrue(body.isSuccess());
+        Assert.assertEquals(PetAction.WALK_DOG, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(93001L), body.getRequestId());
+        PetProfileDTO profile = (PetProfileDTO) body.getContent();
+        PetDogDTO walkedDog = findDog(profile, dog.getId());
+        Assert.assertEquals(9, profile.getAssets().getEnergy());
+        Assert.assertEquals(dog.getBond() + 1, walkedDog.getBond());
+        Assert.assertTrue(profile.getDailyCompanionStatus().getDogs().get(dog.getId()).isOutingCompleted());
+        Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "bond_outing:" + dog.getId()));
+    }
+
+    @Test
+    public void walkDogRejectsRepeatedWalkWithoutSecondEnergyCost() {
+        User user = user();
+        PetDogDTO dog = adoptDog(user, "corgi", "小短腿");
+        setAccountEnergy(user.getAccountId(), 10, LocalDate.now().toString());
+        new PetActionHandler().process(user, walkDogRequest(dog.getId(), 93002L));
+        Assert.assertTrue(readPetBody(user).isSuccess());
+
+        new PetActionHandler().process(user, walkDogRequest(dog.getId(), 93003L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertFalse(body.isSuccess());
+        Assert.assertEquals(PetAction.WALK_DOG, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(93003L), body.getRequestId());
+        Assert.assertEquals("这只狗狗今天已经散步过了", body.getError());
+        PetProfileDTO profile = requestProfile(user);
+        Assert.assertEquals(9, profile.getAssets().getEnergy());
+        Assert.assertEquals(dog.getBond() + 1, findDog(profile, dog.getId()).getBond());
+        Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "bond_outing:" + dog.getId()));
     }
 
     @Test
@@ -4350,6 +4392,14 @@ public class PetActionHandlerTest {
         PetRequestDTO request = new PetRequestDTO();
         request.setPetAction(PetAction.FEED);
         request.setContent(new PetFeedDTO(dogId));
+        return request;
+    }
+
+    private static PetRequestDTO walkDogRequest(String dogId, long requestId) {
+        PetRequestDTO request = new PetRequestDTO();
+        request.setPetAction(PetAction.WALK_DOG);
+        request.setRequestId(requestId);
+        request.setContent(new PetWalkDogDTO(dogId));
         return request;
     }
 
