@@ -93,9 +93,8 @@ public class PetServiceTest {
     }
 
     @Test
-    public void dailySayingShouldNotReuseSameMessageAcrossPlayersOnSameDay() throws Exception {
-        upsertDailySayingContent("same-message-a", "今天也想陪{dog_name}慢慢走。");
-        upsertDailySayingContent("same-message-b", "今天也想陪{dog_name}慢慢走。");
+    public void dailySayingShouldAllowSameMessageAcrossPlayersWhenPoolIsSmall() throws Exception {
+        upsertDailySayingContent("shared-message", "今天也想陪{dog_name}慢慢走。");
         User first = accountUser(990101L);
         User second = accountUser(990102L);
         PetService.adopt(first, adopt("corgi", "小一"));
@@ -105,7 +104,24 @@ public class PetServiceTest {
         PetDailySayingDTO secondSaying = PetDailySayingService.dailySaying(second.getAccountId()).getDailySaying();
 
         Assert.assertEquals("UNREAD", firstSaying.getState());
-        Assert.assertEquals("NONE", secondSaying.getState());
+        Assert.assertEquals("UNREAD", secondSaying.getState());
+        Assert.assertEquals("shared-message", firstSaying.getContent().getContentId());
+        Assert.assertEquals("shared-message", secondSaying.getContent().getContentId());
+    }
+
+    @Test
+    public void dailySayingShouldNotReuseSameMessageForSamePlayerAcrossDays() throws Exception {
+        upsertDailySayingContent("same-message-a", "今天也想陪{dog_name}慢慢走。");
+        upsertDailySayingContent("same-message-b", "今天也想陪{dog_name}慢慢走。");
+        User user = accountUser(990103L);
+        PetProfileDTO profile = PetService.adopt(user, adopt("corgi", "小三"));
+        PetDogDTO dog = profile.getDogs().get(0);
+        insertDailySayingAssignment(user.getAccountId(), dog.getId(), dog.getName(), dog.getBreed(),
+                "same-message-a", LocalDate.now().minusDays(1).toString());
+
+        PetDailySayingDTO saying = PetDailySayingService.dailySaying(user.getAccountId()).getDailySaying();
+
+        Assert.assertEquals("NONE", saying.getState());
     }
 
     @Test
@@ -1187,6 +1203,30 @@ public class PetServiceTest {
             statement.setString(2, primaryText);
             statement.setLong(3, now);
             statement.setLong(4, now);
+            statement.executeUpdate();
+        }
+    }
+
+    private static void insertDailySayingAssignment(long accountId, String dogId, String dogName, String dogBreed,
+                                                    String contentId, String assignedDate) throws Exception {
+        long now = System.currentTimeMillis();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "INSERT INTO pet_daily_saying_assignments " +
+                             "(assignment_id, account_id, dog_id, dog_name_snapshot, dog_avatar_snapshot, " +
+                             "content_id, assigned_server_date, status, assigned_at, read_at, read_server_date, " +
+                             "greeting_reward_applied, greeting_intimacy_delta, content_version) " +
+                             "VALUES (?, ?, ?, ?, ?, ?, ?, 'READ', ?, ?, ?, 0, 0, 'test-version')")) {
+            statement.setString(1, "history-" + accountId + "-" + contentId);
+            statement.setLong(2, accountId);
+            statement.setString(3, dogId);
+            statement.setString(4, dogName);
+            statement.setString(5, dogBreed);
+            statement.setString(6, contentId);
+            statement.setString(7, assignedDate);
+            statement.setLong(8, now - TimeUnit.DAYS.toMillis(1));
+            statement.setLong(9, now - TimeUnit.DAYS.toMillis(1));
+            statement.setString(10, assignedDate);
             statement.executeUpdate();
         }
     }

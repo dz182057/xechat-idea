@@ -32,9 +32,7 @@ public interface PetDailySayingAssignmentMapper {
     List<String> listRecentAssignedContentIds(@Param("accountId") long accountId,
                                               @Param("limit") int limit);
 
-    List<String> listAssignedContentIdsOnDate(@Param("assignedServerDate") String assignedServerDate);
-
-    List<String> listAssignedPrimaryTextsOnDate(@Param("assignedServerDate") String assignedServerDate);
+    List<String> listAssignedPrimaryTextsByAccount(@Param("accountId") long accountId);
 
     List<String> listRecentReadCategories(@Param("accountId") long accountId,
                                           @Param("limit") int limit);
