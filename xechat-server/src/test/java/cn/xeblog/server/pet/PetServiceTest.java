@@ -1,10 +1,15 @@
 package cn.xeblog.server.pet;
 
 import cn.xeblog.commons.entity.User;
+import cn.xeblog.commons.entity.pet.AdminListPetDailySayingAssignmentsDTO;
+import cn.xeblog.commons.entity.pet.AdminPetDailySayingAssignmentDTO;
+import cn.xeblog.commons.entity.pet.AdminPetDailySayingAssignmentListDTO;
+import cn.xeblog.commons.entity.pet.AdminReassignPetDailySayingDTO;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
 import cn.xeblog.commons.entity.pet.PetDailyCompanionDogStatusDTO;
 import cn.xeblog.commons.entity.pet.PetDailySayingDTO;
+import cn.xeblog.commons.entity.pet.PetDailySayingReadDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetExploreChestDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
@@ -122,6 +127,58 @@ public class PetServiceTest {
         PetDailySayingDTO saying = PetDailySayingService.dailySaying(user.getAccountId()).getDailySaying();
 
         Assert.assertEquals("NONE", saying.getState());
+    }
+
+    @Test
+    public void adminListDailySayingAssignmentsShouldExposeReadStatus() throws Exception {
+        upsertDailySayingContent("admin-list-message", "今天也想陪{dog_name}晒太阳。");
+        User user = accountUser(990104L);
+        insertAccount(user);
+        PetService.adopt(user, adopt("corgi", "问候狗"));
+
+        PetDailySayingDTO unread = PetDailySayingService.dailySaying(user.getAccountId()).getDailySaying();
+        AdminPetDailySayingAssignmentListDTO unreadList = PetDailySayingService.adminListAssignments(
+                new AdminListPetDailySayingAssignmentsDTO(LocalDate.now().toString(), null, null, 1, 10));
+
+        Assert.assertEquals(1, unreadList.getTotal());
+        Assert.assertEquals("UNREAD", unreadList.getItems().get(0).getStatus());
+        Assert.assertEquals(unread.getAssignmentId(), unreadList.getItems().get(0).getAssignmentId());
+
+        PetDailySayingReadDTO readRequest = new PetDailySayingReadDTO();
+        readRequest.setAssignmentId(unread.getAssignmentId());
+        PetDailySayingService.readDailySaying(user.getAccountId(), readRequest);
+
+        AdminPetDailySayingAssignmentListDTO readList = PetDailySayingService.adminListAssignments(
+                new AdminListPetDailySayingAssignmentsDTO(LocalDate.now().toString(), null, "READ", 1, 10));
+        AdminPetDailySayingAssignmentDTO read = readList.getItems().get(0);
+        Assert.assertEquals("READ", read.getStatus());
+        Assert.assertNotNull(read.getReadAt());
+        Assert.assertEquals(LocalDate.now().toString(), read.getReadServerDate());
+    }
+
+    @Test
+    public void adminReassignDailySayingShouldClearReadStateAndReplaceContent() throws Exception {
+        upsertDailySayingContent("replace-message-a", "今天也想陪{dog_name}看云。");
+        upsertDailySayingContent("replace-message-b", "今天也想陪{dog_name}吹风。");
+        User user = accountUser(990105L);
+        insertAccount(user);
+        PetService.adopt(user, adopt("corgi", "换句狗"));
+        PetDailySayingDTO original = PetDailySayingService.dailySaying(user.getAccountId()).getDailySaying();
+        PetDailySayingReadDTO readRequest = new PetDailySayingReadDTO();
+        readRequest.setAssignmentId(original.getAssignmentId());
+        PetDailySayingService.readDailySaying(user.getAccountId(), readRequest);
+
+        AdminPetDailySayingAssignmentListDTO reassigned = PetDailySayingService.adminReassign(
+                new AdminReassignPetDailySayingDTO(original.getAssignmentId()));
+        AdminPetDailySayingAssignmentDTO item = reassigned.getItems().get(0);
+
+        Assert.assertEquals(original.getAssignmentId(), item.getAssignmentId());
+        Assert.assertEquals("UNREAD", item.getStatus());
+        Assert.assertNull(item.getReadAt());
+        Assert.assertNull(item.getReadServerDate());
+        Assert.assertNull(item.getGreetingRewardApplied());
+        Assert.assertNull(item.getGreetingIntimacyDelta());
+        Assert.assertNotEquals(original.getContent().getContentId(), item.getContentId());
     }
 
     @Test
@@ -1186,6 +1243,22 @@ public class PetServiceTest {
             statement.setInt(1, bones);
             statement.setLong(2, accountId);
             Assert.assertEquals(1, statement.executeUpdate());
+        }
+    }
+
+    private static void insertAccount(User user) throws Exception {
+        long now = System.currentTimeMillis();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "INSERT INTO accounts " +
+                             "(account_id, account, nickname, password_hash, avatar_version, role, permit, " +
+                             "stealth, status, created_at, created_ip) " +
+                             "VALUES (?, ?, ?, 'test-hash', 0, 'USER', 0, 0, 'ACTIVE', ?, '127.0.0.1')")) {
+            statement.setLong(1, user.getAccountId());
+            statement.setString(2, user.getAccount());
+            statement.setString(3, user.getNickname() + user.getAccountId());
+            statement.setLong(4, now);
+            statement.executeUpdate();
         }
     }
 

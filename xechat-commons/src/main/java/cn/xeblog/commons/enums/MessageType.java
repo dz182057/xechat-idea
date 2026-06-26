@@ -148,6 +148,10 @@ public enum MessageType {
      */
     PET_DAILY_SAYING_CONTENT_LIST,
     /**
+     * 狗狗每日问候分配记录响应
+     */
+    PET_DAILY_SAYING_ASSIGNMENT_LIST,
+    /**
      * 对端身份公钥(GET_PEER_KEY 响应)
      */
     PEER_KEY,

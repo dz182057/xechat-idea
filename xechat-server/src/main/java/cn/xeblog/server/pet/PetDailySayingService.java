@@ -1,8 +1,12 @@
 package cn.xeblog.server.pet;
 
 import cn.hutool.core.util.StrUtil;
+import cn.xeblog.commons.entity.pet.AdminListPetDailySayingAssignmentsDTO;
 import cn.xeblog.commons.entity.pet.AdminListPetDailySayingsDTO;
+import cn.xeblog.commons.entity.pet.AdminPetDailySayingAssignmentDTO;
+import cn.xeblog.commons.entity.pet.AdminPetDailySayingAssignmentListDTO;
 import cn.xeblog.commons.entity.pet.AdminPetDailySayingContentListDTO;
+import cn.xeblog.commons.entity.pet.AdminReassignPetDailySayingDTO;
 import cn.xeblog.commons.entity.pet.AdminSavePetDailySayingDTO;
 import cn.xeblog.commons.entity.pet.AdminDeletePetDailySayingDTO;
 import cn.xeblog.commons.entity.pet.PetDailySayingContentDTO;
@@ -28,6 +32,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 狗狗首页每日问候服务。
@@ -150,6 +155,85 @@ public final class PetDailySayingService {
         return adminList(new AdminListPetDailySayingsDTO(contentId, null, null, null, 1, 10));
     }
 
+    public static AdminPetDailySayingAssignmentListDTO adminListAssignments(
+            AdminListPetDailySayingAssignmentsDTO request) {
+        String assignedDate = normalizeDate(request == null ? null : request.getAssignedServerDate());
+        String keyword = normalizeFilter(request == null ? null : request.getKeyword());
+        String status = normalizeAssignmentStatus(request == null ? null : request.getStatus());
+        int pageSize = normalizePageSize(request == null ? null : request.getPageSize());
+        int page = normalizePage(request == null ? null : request.getPage());
+        int offset = (page - 1) * pageSize;
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            PetDailySayingAssignmentMapper mapper = session.getMapper(PetDailySayingAssignmentMapper.class);
+            int total = mapper.countAdminByDate(assignedDate, keyword, status);
+            return new AdminPetDailySayingAssignmentListDTO(
+                    mapper.listAdminByDate(assignedDate, keyword, status, offset, pageSize),
+                    total,
+                    page,
+                    pageSize,
+                    assignedDate);
+        }
+    }
+
+    public static AdminPetDailySayingAssignmentListDTO adminReassign(AdminReassignPetDailySayingDTO request) {
+        String assignmentId = request == null ? null : StrUtil.trim(request.getAssignmentId());
+        if (StrUtil.isBlank(assignmentId)) {
+            throw new IllegalArgumentException("缺少要重新分配的狗狗问候");
+        }
+
+        PetDailySayingAssignmentRecord target;
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            target = session.getMapper(PetDailySayingAssignmentMapper.class).findByAssignmentId(assignmentId);
+        }
+        if (target == null) {
+            throw new IllegalArgumentException("这条狗狗问候不存在");
+        }
+
+        synchronized (PetProfileService.accountLock(target.getAccountId())) {
+            return adminReassignLocked(assignmentId);
+        }
+    }
+
+    private static AdminPetDailySayingAssignmentListDTO adminReassignLocked(String assignmentId) {
+        long now = System.currentTimeMillis();
+        String today = LocalDate.now().toString();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            PetDailySayingAssignmentMapper assignmentMapper =
+                    session.getMapper(PetDailySayingAssignmentMapper.class);
+            PetDailySayingAssignmentRecord assignment = assignmentMapper.findByAssignmentId(assignmentId);
+            if (assignment == null) {
+                throw new IllegalArgumentException("这条狗狗问候不存在");
+            }
+            if (!today.equals(assignment.getAssignedServerDate())) {
+                throw new IllegalArgumentException("只能重新分配今天的狗狗问候");
+            }
+            PetDogRecord dog = resolveActiveDog(session, assignment.getAccountId());
+            if (dog == null) {
+                throw new IllegalArgumentException("目标用户当前没有可用狗狗");
+            }
+            PetDailySayingContentRecord content =
+                    pickReplacementContent(session, assignment.getAccountId(), assignment.getContentId());
+            if (content == null) {
+                throw new IllegalArgumentException("暂无可替换的可发布狗狗问候");
+            }
+            if (assignmentMapper.reassign(
+                    assignmentId,
+                    assignment.getAccountId(),
+                    dog.getId(),
+                    dog.getName(),
+                    dog.getBreed(),
+                    content.getContentId(),
+                    now,
+                    content.getContentVersion()) <= 0) {
+                throw new IllegalArgumentException("重新分配狗狗问候失败");
+            }
+            AdminPetDailySayingAssignmentDTO updated = assignmentMapper.findAdminByAssignmentId(assignmentId);
+            session.commit();
+            return new AdminPetDailySayingAssignmentListDTO(
+                    Collections.singletonList(updated), 1, 1, 1, today);
+        }
+    }
+
     static PetDailySayingDTO currentState(SqlSession session, long accountId, String today) {
         PetDailySayingAssignmentMapper assignmentMapper = session.getMapper(PetDailySayingAssignmentMapper.class);
         PetDailySayingContentMapper contentMapper = session.getMapper(PetDailySayingContentMapper.class);
@@ -265,6 +349,86 @@ public final class PetDailySayingService {
                     seed(accountId, today, contentVersion, "content-" + category + "-" + excludeLimit));
         }
         return null;
+    }
+
+    private static PetDailySayingContentRecord pickReplacementContent(SqlSession session,
+                                                                      long accountId,
+                                                                      String currentContentId) {
+        Map<String, List<PetDailySayingContentRecord>> candidates =
+                buildReplacementCandidates(session, accountId, currentContentId, true);
+        if (candidates.isEmpty()) {
+            candidates = buildReplacementCandidates(session, accountId, currentContentId, false);
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        String category = pickRandomCategory(candidates);
+        return pickRandomContentInCategory(candidates.get(category));
+    }
+
+    private static Map<String, List<PetDailySayingContentRecord>> buildReplacementCandidates(SqlSession session,
+                                                                                             long accountId,
+                                                                                             String currentContentId,
+                                                                                             boolean excludeAssignedTexts) {
+        PetDailySayingContentMapper contentMapper = session.getMapper(PetDailySayingContentMapper.class);
+        PetDailySayingAssignmentMapper assignmentMapper = session.getMapper(PetDailySayingAssignmentMapper.class);
+        Set<String> assignedTexts = excludeAssignedTexts
+                ? new HashSet<>(assignmentMapper.listAssignedPrimaryTextsByAccount(accountId))
+                : Collections.emptySet();
+        List<String> excludedIds = excludeAssignedTexts
+                ? new ArrayList<>(assignmentMapper.listRecentAssignedContentIds(accountId, RECENT_EXCLUDE_LIMIT))
+                : new ArrayList<>();
+        if (StrUtil.isNotBlank(currentContentId) && !excludedIds.contains(currentContentId)) {
+            excludedIds.add(currentContentId);
+        }
+
+        Map<String, List<PetDailySayingContentRecord>> candidates = new LinkedHashMap<>();
+        for (String category : CATEGORIES) {
+            List<PetDailySayingContentRecord> rows =
+                    contentMapper.listPublishableByCategory(category, excludedIds, 10000);
+            if (excludeAssignedTexts) {
+                rows.removeIf(row -> assignedTexts.contains(row.getPrimaryText()));
+            }
+            if (!rows.isEmpty()) {
+                candidates.put(category, rows);
+            }
+        }
+        return candidates;
+    }
+
+    private static String pickRandomCategory(Map<String, List<PetDailySayingContentRecord>> candidates) {
+        int total = 0;
+        for (String category : candidates.keySet()) {
+            total += Math.max(1, CATEGORY_WEIGHTS.getOrDefault(category, 1));
+        }
+        int point = ThreadLocalRandom.current().nextInt(Math.max(1, total));
+        int cursor = 0;
+        for (String category : candidates.keySet()) {
+            cursor += Math.max(1, CATEGORY_WEIGHTS.getOrDefault(category, 1));
+            if (point < cursor) {
+                return category;
+            }
+        }
+        return candidates.keySet().iterator().next();
+    }
+
+    private static PetDailySayingContentRecord pickRandomContentInCategory(List<PetDailySayingContentRecord> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        double total = 0D;
+        for (PetDailySayingContentRecord row : rows) {
+            total += Math.max(0.01D, row.getRecommendedWeight());
+        }
+        double point = ThreadLocalRandom.current().nextDouble(total);
+        double cursor = 0D;
+        for (PetDailySayingContentRecord row : rows) {
+            cursor += Math.max(0.01D, row.getRecommendedWeight());
+            if (point <= cursor) {
+                return row;
+            }
+        }
+        return rows.get(rows.size() - 1);
     }
 
     private static String pickCategory(Map<String, List<PetDailySayingContentRecord>> candidates, BigInteger seed) {
@@ -451,6 +615,22 @@ public final class PetDailySayingService {
             return DEFAULT_ADMIN_PAGE_SIZE;
         }
         return Math.min(MAX_ADMIN_PAGE_SIZE, pageSize);
+    }
+
+    private static String normalizeDate(String value) {
+        String normalized = normalizeFilter(value);
+        return normalized == null ? LocalDate.now().toString() : normalized;
+    }
+
+    private static String normalizeAssignmentStatus(String value) {
+        String normalized = normalizeFilter(value);
+        if (normalized == null || "ALL".equals(normalized)) {
+            return null;
+        }
+        if (!STATUS_UNREAD.equals(normalized) && !STATUS_READ.equals(normalized)) {
+            throw new IllegalArgumentException("问候状态无效");
+        }
+        return normalized;
     }
 
     private static Map<String, Integer> createCategoryWeights() {

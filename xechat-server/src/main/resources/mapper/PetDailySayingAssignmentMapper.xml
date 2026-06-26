@@ -48,6 +48,24 @@
           AND assignment_id = #{assignmentId}
     </select>
 
+    <select id="findByAssignmentId" resultType="cn.xeblog.server.pet.PetDailySayingAssignmentRecord">
+        SELECT <include refid="cols"/>
+        FROM pet_daily_saying_assignments
+        WHERE assignment_id = #{assignmentId}
+    </select>
+
+    <select id="findAdminByAssignmentId" resultType="cn.xeblog.commons.entity.pet.AdminPetDailySayingAssignmentDTO">
+        SELECT a.assignment_id, a.account_id, ac.account, ac.nickname,
+               a.dog_id, a.dog_name_snapshot, a.dog_avatar_snapshot,
+               a.content_id, c.category, c.title, c.primary_text, c.secondary_text,
+               a.assigned_server_date, a.status, a.assigned_at, a.read_at, a.read_server_date,
+               a.greeting_reward_applied, a.greeting_intimacy_delta, a.content_version
+        FROM pet_daily_saying_assignments a
+        JOIN accounts ac ON ac.account_id = a.account_id
+        LEFT JOIN pet_daily_saying_contents c ON c.content_id = a.content_id
+        WHERE a.assignment_id = #{assignmentId}
+    </select>
+
     <update id="markRead">
         UPDATE pet_daily_saying_assignments
         SET status = 'READ',
@@ -59,6 +77,65 @@
           AND assignment_id = #{assignmentId}
           AND status = 'UNREAD'
     </update>
+
+    <update id="reassign">
+        UPDATE pet_daily_saying_assignments
+        SET dog_id = #{dogId},
+            dog_name_snapshot = #{dogNameSnapshot},
+            dog_avatar_snapshot = #{dogAvatarSnapshot},
+            content_id = #{contentId},
+            status = 'UNREAD',
+            assigned_at = #{assignedAt},
+            read_at = NULL,
+            read_server_date = NULL,
+            greeting_reward_applied = NULL,
+            greeting_intimacy_delta = NULL,
+            content_version = #{contentVersion}
+        WHERE assignment_id = #{assignmentId}
+          AND account_id = #{accountId}
+    </update>
+
+    <sql id="adminFilters">
+        <where>
+            a.assigned_server_date = #{assignedServerDate}
+            <if test="status != null and status != ''">
+                AND a.status = #{status}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    CAST(a.account_id AS TEXT) LIKE '%' || #{keyword} || '%'
+                    OR ac.account LIKE '%' || #{keyword} || '%'
+                    OR ac.nickname LIKE '%' || #{keyword} || '%'
+                    OR a.dog_name_snapshot LIKE '%' || #{keyword} || '%'
+                    OR a.content_id LIKE '%' || #{keyword} || '%'
+                    OR c.title LIKE '%' || #{keyword} || '%'
+                    OR c.primary_text LIKE '%' || #{keyword} || '%'
+                )
+            </if>
+        </where>
+    </sql>
+
+    <select id="countAdminByDate" resultType="int">
+        SELECT COUNT(1)
+        FROM pet_daily_saying_assignments a
+        JOIN accounts ac ON ac.account_id = a.account_id
+        LEFT JOIN pet_daily_saying_contents c ON c.content_id = a.content_id
+        <include refid="adminFilters"/>
+    </select>
+
+    <select id="listAdminByDate" resultType="cn.xeblog.commons.entity.pet.AdminPetDailySayingAssignmentDTO">
+        SELECT a.assignment_id, a.account_id, ac.account, ac.nickname,
+               a.dog_id, a.dog_name_snapshot, a.dog_avatar_snapshot,
+               a.content_id, c.category, c.title, c.primary_text, c.secondary_text,
+               a.assigned_server_date, a.status, a.assigned_at, a.read_at, a.read_server_date,
+               a.greeting_reward_applied, a.greeting_intimacy_delta, a.content_version
+        FROM pet_daily_saying_assignments a
+        JOIN accounts ac ON ac.account_id = a.account_id
+        LEFT JOIN pet_daily_saying_contents c ON c.content_id = a.content_id
+        <include refid="adminFilters"/>
+        ORDER BY a.assigned_at DESC, a.assignment_id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
 
     <select id="listRecentRead" resultType="cn.xeblog.server.pet.PetDailySayingAssignmentRecord">
         SELECT <include refid="cols"/>

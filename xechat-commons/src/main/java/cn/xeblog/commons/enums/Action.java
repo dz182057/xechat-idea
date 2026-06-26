@@ -252,6 +252,16 @@ public enum Action {
     ADMIN_DELETE_PET_DAILY_SAYING,
 
     /**
+     * 管理员:查看狗狗每日问候分配记录
+     */
+    ADMIN_LIST_PET_DAILY_SAYING_ASSIGNMENTS,
+
+    /**
+     * 管理员:重新分配狗狗每日问候
+     */
+    ADMIN_REASSIGN_PET_DAILY_SAYING,
+
+    /**
      * 游客登录(无账号体系,仅大厅聊天,禁止私聊)
      */
     GUEST_LOGIN,
