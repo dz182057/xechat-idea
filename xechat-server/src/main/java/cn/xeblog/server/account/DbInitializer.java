@@ -722,6 +722,8 @@ public final class DbInitializer {
                         "ON pet_daily_saying_assignments(account_id, assigned_server_date)");
                 st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pet_daily_saying_assignments_unread " +
                         "ON pet_daily_saying_assignments(account_id) WHERE status = 'UNREAD'");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_daily_saying_assignments_date_content " +
+                        "ON pet_daily_saying_assignments(assigned_server_date, content_id)");
                 st.execute("CREATE INDEX IF NOT EXISTS idx_pet_daily_saying_assignments_recent " +
                         "ON pet_daily_saying_assignments(account_id, status, read_at DESC)");
             }

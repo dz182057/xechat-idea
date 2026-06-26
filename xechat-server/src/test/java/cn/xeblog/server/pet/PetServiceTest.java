@@ -4,6 +4,7 @@ import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
 import cn.xeblog.commons.entity.pet.PetDailyCompanionDogStatusDTO;
+import cn.xeblog.commons.entity.pet.PetDailySayingDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetExploreChestDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
@@ -89,6 +90,22 @@ public class PetServiceTest {
         Assert.assertFalse(fieldNames.contains("burst"));
         Assert.assertFalse(fieldNames.contains("wisdom"));
         Assert.assertFalse(fieldNames.contains("energy"));
+    }
+
+    @Test
+    public void dailySayingShouldNotReuseSameMessageAcrossPlayersOnSameDay() throws Exception {
+        upsertDailySayingContent("same-message-a", "今天也想陪{dog_name}慢慢走。");
+        upsertDailySayingContent("same-message-b", "今天也想陪{dog_name}慢慢走。");
+        User first = accountUser(990101L);
+        User second = accountUser(990102L);
+        PetService.adopt(first, adopt("corgi", "小一"));
+        PetService.adopt(second, adopt("corgi", "小二"));
+
+        PetDailySayingDTO firstSaying = PetDailySayingService.dailySaying(first.getAccountId()).getDailySaying();
+        PetDailySayingDTO secondSaying = PetDailySayingService.dailySaying(second.getAccountId()).getDailySaying();
+
+        Assert.assertEquals("UNREAD", firstSaying.getState());
+        Assert.assertEquals("NONE", secondSaying.getState());
     }
 
     @Test
@@ -1153,6 +1170,24 @@ public class PetServiceTest {
             statement.setInt(1, bones);
             statement.setLong(2, accountId);
             Assert.assertEquals(1, statement.executeUpdate());
+        }
+    }
+
+    private static void upsertDailySayingContent(String contentId, String primaryText) throws Exception {
+        long now = System.currentTimeMillis();
+        try (org.apache.ibatis.session.SqlSession session = DbInitializer.factory().openSession(true);
+             PreparedStatement statement = session.getConnection().prepareStatement(
+                     "INSERT INTO pet_daily_saying_contents " +
+                             "(content_id, category, subtype, title, primary_text, recommended_weight, " +
+                             "review_status, active, content_version, created_at, updated_at) " +
+                             "VALUES (?, '温柔短句', '测试', '测试问候', ?, 1, '可发布', 1, 'test-version', ?, ?) " +
+                             "ON CONFLICT(content_id) DO UPDATE SET primary_text = excluded.primary_text, " +
+                             "review_status = '可发布', active = 1, updated_at = excluded.updated_at")) {
+            statement.setString(1, contentId);
+            statement.setString(2, primaryText);
+            statement.setLong(3, now);
+            statement.setLong(4, now);
+            statement.executeUpdate();
         }
     }
 

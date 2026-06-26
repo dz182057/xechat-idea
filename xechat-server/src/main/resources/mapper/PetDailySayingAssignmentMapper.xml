@@ -77,6 +77,21 @@
         LIMIT #{limit}
     </select>
 
+    <select id="listAssignedContentIdsOnDate" resultType="string">
+        SELECT DISTINCT content_id
+        FROM pet_daily_saying_assignments
+        WHERE assigned_server_date = #{assignedServerDate}
+    </select>
+
+    <select id="listAssignedPrimaryTextsOnDate" resultType="string">
+        SELECT DISTINCT c.primary_text
+        FROM pet_daily_saying_assignments a
+        JOIN pet_daily_saying_contents c ON c.content_id = a.content_id
+        WHERE a.assigned_server_date = #{assignedServerDate}
+          AND c.primary_text IS NOT NULL
+          AND c.primary_text != ''
+    </select>
+
     <select id="listRecentReadCategories" resultType="string">
         SELECT c.category
         FROM pet_daily_saying_assignments a

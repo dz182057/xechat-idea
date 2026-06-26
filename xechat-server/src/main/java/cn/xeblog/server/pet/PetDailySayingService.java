@@ -21,10 +21,12 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -46,6 +48,7 @@ public final class PetDailySayingService {
             Arrays.asList(180, 120, 60, 30, 0));
     private static final int MAX_ADMIN_PAGE_SIZE = 100;
     private static final int DEFAULT_ADMIN_PAGE_SIZE = 30;
+    private static final Object DAILY_ASSIGNMENT_LOCK = new Object();
 
     private static final List<String> CATEGORIES = Collections.unmodifiableList(Arrays.asList(
             "古诗词及狗狗解读",
@@ -63,9 +66,11 @@ public final class PetDailySayingService {
         synchronized (PetProfileService.accountLock(accountId)) {
             String today = LocalDate.now().toString();
             long now = System.currentTimeMillis();
-            try (SqlSession session = DbInitializer.factory().openSession(false)) {
-                ensureDailySayingAssignment(session, accountId, today, now);
-                session.commit();
+            synchronized (DAILY_ASSIGNMENT_LOCK) {
+                try (SqlSession session = DbInitializer.factory().openSession(false)) {
+                    ensureDailySayingAssignment(session, accountId, today, now);
+                    session.commit();
+                }
             }
             return PetProfileService.profileLocked(accountId);
         }
@@ -234,6 +239,8 @@ public final class PetDailySayingService {
         PetDailySayingContentMapper contentMapper = session.getMapper(PetDailySayingContentMapper.class);
         PetDailySayingAssignmentMapper assignmentMapper = session.getMapper(PetDailySayingAssignmentMapper.class);
         List<String> recentIds = assignmentMapper.listRecentAssignedContentIds(accountId, RECENT_EXCLUDE_LIMIT);
+        Set<String> todayAssignedIds = new HashSet<>(assignmentMapper.listAssignedContentIdsOnDate(today));
+        Set<String> todayAssignedTexts = new HashSet<>(assignmentMapper.listAssignedPrimaryTextsOnDate(today));
         List<String> recentCategories = assignmentMapper.listRecentReadCategories(accountId, 2);
         String bannedCategory = recentCategories.size() >= 2 && recentCategories.get(0).equals(recentCategories.get(1))
                 ? recentCategories.get(0)
@@ -249,6 +256,8 @@ public final class PetDailySayingService {
                     continue;
                 }
                 List<PetDailySayingContentRecord> rows = contentMapper.listPublishableByCategory(category, excluded, 10000);
+                rows.removeIf(row -> todayAssignedIds.contains(row.getContentId())
+                        || todayAssignedTexts.contains(row.getPrimaryText()));
                 if (!rows.isEmpty()) {
                     candidates.put(category, rows);
                 }
