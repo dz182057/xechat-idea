@@ -762,7 +762,7 @@ public class GameRoomPetItemLifecycleTest {
     }
 
     @Test
-    public void gobangGuardShouldConsumeAndHighlightOpponentWinningCell() {
+    public void gobangGuardShouldNotTriggerOnOpponentSingleWinningCell() {
         User alice = user(2160L);
         User bob = user(2161L);
         GameRoom room = room(Game.GOBANG, alice, bob);
@@ -782,14 +782,70 @@ public class GameRoomPetItemLifecycleTest {
         GobangDTO threatMove = gobangMove(3, 0, 1);
         new GameActionHandler().process(bob, room, threatMove);
 
-        Assert.assertEquals(Integer.valueOf(4), threatMove.getPetItemGuardX());
-        Assert.assertEquals(Integer.valueOf(0), threatMove.getPetItemGuardY());
+        Assert.assertNull(threatMove.getPetItemGuardX());
+        Assert.assertNull(threatMove.getPetItemGuardY());
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
+                "item_gomoku_guard", "interaction", "consumed"));
+        Assert.assertNull(threatMove.getPetItemNotice());
+    }
+
+    @Test
+    public void gobangGuardShouldNotTriggerBeforeOpponentPlainOpenFourMove() {
+        User alice = user(2162L);
+        User bob = user(2163L);
+        GameRoom room = room(Game.GOBANG, alice, bob);
+        insertPetItem(alice.getAccountId(), "item_gomoku_guard", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO(null, "item_gomoku_guard"));
+
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 1));
+        new GameActionHandler().process(bob, room, gobangMove(5, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(6, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(1, 2, 2));
+        GobangDTO criticalMove = gobangMove(7, 7, 1);
+        new GameActionHandler().process(bob, room, criticalMove);
+
+        Assert.assertNull(criticalMove.getPetItemGuardX());
+        Assert.assertNull(criticalMove.getPetItemGuardY());
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
+                "item_gomoku_guard", "interaction", "consumed"));
+        Assert.assertNull(criticalMove.getPetItemNotice());
+    }
+
+    @Test
+    public void gobangGuardShouldTriggerBeforeOpponentDoubleThreeMove() {
+        User alice = user(2166L);
+        User bob = user(2167L);
+        GameRoom room = room(Game.GOBANG, alice, bob);
+        insertPetItem(alice.getAccountId(), "item_gomoku_guard", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO(null, "item_gomoku_guard"));
+
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 1));
+        new GameActionHandler().process(bob, room, gobangMove(6, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(8, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(1, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(7, 6, 1));
+        new GameActionHandler().process(alice, room, gobangMove(2, 2, 2));
+        GobangDTO doubleThreeMove = gobangMove(7, 8, 1);
+        new GameActionHandler().process(bob, room, doubleThreeMove);
+
+        Assert.assertEquals(Integer.valueOf(7), doubleThreeMove.getPetItemGuardX());
+        Assert.assertEquals(Integer.valueOf(7), doubleThreeMove.getPetItemGuardY());
         Assert.assertEquals(0, countItem(alice.getAccountId(), "item_gomoku_guard"));
         Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
                 "item_gomoku_guard", "interaction", "consumed"));
-        Assert.assertEquals("守门骨触发，已为 玩家2160 高亮对手下一手五连胜点 (4,0)，道具已消耗。",
-                threatMove.getPetItemNotice());
+        Assert.assertEquals("守门骨触发，已为 玩家2166 高亮对手隐蔽多重威胁点 (7,7)，道具已消耗。",
+                doubleThreeMove.getPetItemNotice());
     }
 
     @Test

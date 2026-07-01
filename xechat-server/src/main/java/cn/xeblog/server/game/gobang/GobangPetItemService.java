@@ -18,6 +18,13 @@ import java.util.function.LongSupplier;
 public final class GobangPetItemService {
 
     private static final int BOARD_SIZE = 15;
+    private static final int[][] DIRECTIONS = new int[][]{
+            {1, 0},
+            {0, 1},
+            {1, 1},
+            {1, -1}
+    };
+    private static final String[] RUSH_FOUR_PATTERNS = new String[]{"OOOO_", "_OOOO", "OO_OO", "OOO_O", "O_OOO"};
     private static final String SLOT_GAMEPLAY = "gameplay";
     private static final String SLOT_INTERACTION = "interaction";
     private static final String ITEM_GUARD = "item_gomoku_guard";
@@ -353,7 +360,7 @@ public final class GobangPetItemService {
         if (dto.getType() != 1 && dto.getType() != 2) {
             return;
         }
-        Cell threat = null;
+        GuardThreat threat = null;
         for (GameRoom.Player player : room.getUsers().values()) {
             String playerKey = player.getId();
             String slot = carriedItemSlot(player, ITEM_GUARD);
@@ -361,20 +368,20 @@ public final class GobangPetItemService {
                 continue;
             }
             if (threat == null) {
-                threat = findWinningCell(state.board, dto.getType());
+                threat = findGuardThreat(state.board, dto.getType());
             }
             if (threat == null) {
                 return;
             }
             PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_GUARD, slot);
             clearCarriedItem(player, slot);
-            dto.setPetItemGuardX(threat.x);
-            dto.setPetItemGuardY(threat.y);
+            dto.setPetItemGuardX(threat.cell.x);
+            dto.setPetItemGuardY(threat.cell.y);
             appendNotice(dto, String.format(
-                    "守门骨触发，已为 %s 高亮对手下一手五连胜点 (%d,%d)，道具已消耗。",
+                    "守门骨触发，已为 %s 高亮对手隐蔽多重威胁点 (%d,%d)，道具已消耗。",
                     playerName(player),
-                    threat.x,
-                    threat.y));
+                    threat.cell.x,
+                    threat.cell.y));
         }
     }
 
@@ -437,6 +444,18 @@ public final class GobangPetItemService {
         return true;
     }
 
+    private static GuardThreat findGuardThreat(int[][] board, int type) {
+        if (type != 1 && type != 2) {
+            return null;
+        }
+        List<Cell> winningCells = findWinningCells(board, type);
+        if (!winningCells.isEmpty()) {
+            return null;
+        }
+        Cell criticalCell = findGuardCriticalCell(board, type);
+        return criticalCell == null ? null : new GuardThreat(criticalCell);
+    }
+
     private static Cell findWinningCell(int[][] board, int type) {
         for (int y = 0; y < BOARD_SIZE; y++) {
             for (int x = 0; x < BOARD_SIZE; x++) {
@@ -447,6 +466,48 @@ public final class GobangPetItemService {
                 boolean wins = isWinningMove(board, x, y, type);
                 board[y][x] = 0;
                 if (wins) {
+                    return new Cell(x, y);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static List<Cell> findWinningCells(int[][] board, int type) {
+        List<Cell> cells = new ArrayList<>();
+        if (type != 1 && type != 2) {
+            return cells;
+        }
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                if (board[y][x] != 0) {
+                    continue;
+                }
+                board[y][x] = type;
+                boolean wins = isWinningMove(board, x, y, type);
+                board[y][x] = 0;
+                if (wins) {
+                    cells.add(new Cell(x, y));
+                }
+            }
+        }
+        return cells;
+    }
+
+    private static Cell findGuardCriticalCell(int[][] board, int type) {
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                if (board[y][x] != 0) {
+                    continue;
+                }
+                board[y][x] = type;
+                int rushFourDirections = countRushFourDirections(board, x, y, type);
+                int openThreeDirections = countOpenThreeDirections(board, x, y, type);
+                boolean createsMultiThreat = rushFourDirections > 1
+                        || openThreeDirections > 1
+                        || (rushFourDirections > 0 && openThreeDirections > 0);
+                board[y][x] = 0;
+                if (createsMultiThreat) {
                     return new Cell(x, y);
                 }
             }
@@ -468,6 +529,75 @@ public final class GobangPetItemService {
         return 1
                 + countDirection(board, x, y, type, dx, dy)
                 + countDirection(board, x, y, type, -dx, -dy);
+    }
+
+    private static int countOpenThreeDirections(int[][] board, int x, int y, int type) {
+        int count = 0;
+        if (hasOpenThree(lineThrough(board, x, y, type, 1, 0))) {
+            count++;
+        }
+        if (hasOpenThree(lineThrough(board, x, y, type, 0, 1))) {
+            count++;
+        }
+        if (hasOpenThree(lineThrough(board, x, y, type, 1, 1))) {
+            count++;
+        }
+        if (hasOpenThree(lineThrough(board, x, y, type, 1, -1))) {
+            count++;
+        }
+        return count;
+    }
+
+    private static int countRushFourDirections(int[][] board, int x, int y, int type) {
+        int count = 0;
+        for (int[] direction : DIRECTIONS) {
+            if (hasRushFour(lineThrough(board, x, y, type, direction[0], direction[1]))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static boolean hasRushFour(String line) {
+        for (String pattern : RUSH_FOUR_PATTERNS) {
+            if (hasCenteredPattern(line, pattern)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasOpenThree(String line) {
+        return hasCenteredPattern(line, "__OOO_")
+                || hasCenteredPattern(line, "_OOO__")
+                || hasCenteredPattern(line, "_OO_O_")
+                || hasCenteredPattern(line, "_O_OO_");
+    }
+
+    private static String lineThrough(int[][] board, int x, int y, int type, int dx, int dy) {
+        StringBuilder builder = new StringBuilder(9);
+        for (int offset = -4; offset <= 4; offset++) {
+            int nextX = x + dx * offset;
+            int nextY = y + dy * offset;
+            if (!isValidCell(nextX, nextY)) {
+                builder.append('X');
+                continue;
+            }
+            int value = board[nextY][nextX];
+            builder.append(value == 0 ? '_' : value == type ? 'O' : 'X');
+        }
+        return builder.toString();
+    }
+
+    private static boolean hasCenteredPattern(String line, String pattern) {
+        int center = 4;
+        for (int start = 0; start <= line.length() - pattern.length(); start++) {
+            if (start <= center && center < start + pattern.length()
+                    && line.regionMatches(start, pattern, 0, pattern.length())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void resetBoard(RoomState state) {
@@ -590,6 +720,14 @@ public final class GobangPetItemService {
             this.slot = slot;
             this.x = x;
             this.y = y;
+        }
+    }
+
+    private static final class GuardThreat {
+        private final Cell cell;
+
+        private GuardThreat(Cell cell) {
+            this.cell = cell;
         }
     }
 
