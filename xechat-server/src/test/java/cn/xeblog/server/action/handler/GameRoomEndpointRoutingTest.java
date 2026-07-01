@@ -8,6 +8,7 @@ import cn.xeblog.commons.entity.game.GamePlayerPetItemsDTO;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.GameRoomMsgDTO;
 import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
+import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.InviteStatus;
 import cn.xeblog.commons.enums.MessageType;
@@ -15,6 +16,7 @@ import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.cache.GameRoomCache;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.game.dogbattle.DogBattleService;
+import cn.xeblog.server.game.gobang.GobangPetItemService;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.After;
 import org.junit.Assert;
@@ -28,12 +30,15 @@ public class GameRoomEndpointRoutingTest {
 
     private final String roomId = "endpoint-routing-room";
     private final String dogBattleRoomId = "dog-battle-reconnect-routing-room";
+    private final String gobangRegretRoomId = "gobang-regret-routing-room";
 
     @After
     public void tearDown() {
         GameRoomCache.removeRoom(roomId);
         GameRoomCache.removeRoom(dogBattleRoomId);
+        GameRoomCache.removeRoom(gobangRegretRoomId);
         DogBattleService.clearRoom(dogBattleRoomId);
+        GobangPetItemService.clearRoom(gobangRegretRoomId);
         UserCache.clear();
     }
 
@@ -150,6 +155,39 @@ public class GameRoomEndpointRoutingTest {
         Assert.assertNull("重连 snapshot 不应广播给对手", readResponse(right));
 
         DogBattleService.clearRoom(room.getId());
+    }
+
+    @Test
+    public void agreedGobangRegretRollsBackAuthoritativeBoard() throws Exception {
+        User homeowner = user("gobang-owner-channel", 3001L, "黑棋");
+        User opponent = user("gobang-opponent-channel", 3002L, "白棋");
+        addOnline(homeowner);
+        addOnline(opponent);
+
+        GameRoom room = GameRoomCache.seize(gobangRegretRoomId);
+        room.setGame(Game.GOBANG);
+        room.setNums(2);
+        room.setHomeowner(homeowner);
+        room.addUser(homeowner);
+        room.addUser(opponent);
+
+        GobangPetItemService.handleMove(homeowner, room, new GobangDTO(0, 0, 2));
+        Assert.assertNotNull(GobangPetItemService.handleMove(homeowner, room, new GobangDTO(7, 7, 1)));
+        Assert.assertNotNull(GobangPetItemService.handleMove(opponent, room, new GobangDTO(8, 7, 2)));
+
+        GameRoomActionHandler handler = new GameRoomActionHandler();
+        GameRoomMsgDTO agreed = new GameRoomMsgDTO(room.getId(), Game.GOBANG,
+                GameRoomMsgDTO.MsgType.REGRET_RESPONSE, true);
+        handler.process(opponent, room, agreed);
+        drain(homeowner);
+        drain(opponent);
+
+        GobangDTO replay = GobangPetItemService.handleMove(homeowner, room, new GobangDTO(7, 7, 1));
+
+        Assert.assertNotNull("同意悔棋后，被撤销的原落点应可重新落子", replay);
+        Assert.assertEquals("MOVE", replay.getEvent());
+        Assert.assertEquals(2, replay.getTurn());
+        Assert.assertEquals(1, replay.getMoveSeq());
     }
 
     private static User user(String channelId, long accountId, String username) {

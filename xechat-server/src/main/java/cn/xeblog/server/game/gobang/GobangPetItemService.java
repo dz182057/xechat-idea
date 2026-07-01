@@ -153,6 +153,39 @@ public final class GobangPetItemService {
         }
     }
 
+    public static boolean undoLastMoves(GameRoom room, int steps) {
+        if (room == null || steps <= 0) {
+            return false;
+        }
+        RoomState state = STATES.get(room.getId());
+        if (state == null) {
+            return false;
+        }
+        synchronized (state) {
+            if (state.moveHistory.size() < steps) {
+                return false;
+            }
+            for (int i = 0; i < steps; i++) {
+                state.moveHistory.remove(state.moveHistory.size() - 1);
+            }
+            resetBoard(state);
+            for (GobangDTO move : state.moveHistory) {
+                if (isValidCell(move.getX(), move.getY()) && (move.getType() == 1 || move.getType() == 2)) {
+                    state.board[move.getY()][move.getX()] = move.getType();
+                }
+            }
+            GobangDTO lastMove = state.moveHistory.isEmpty()
+                    ? null
+                    : state.moveHistory.get(state.moveHistory.size() - 1);
+            state.turn = lastMove == null ? 1 : lastMove.getType() == 1 ? 2 : 1;
+            state.phase = "playing";
+            state.winner = 0;
+            state.moveSeq = state.moveHistory.size();
+            state.pendingByTarget.clear();
+            return true;
+        }
+    }
+
     public static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
         miniGameRewards = testMiniGameRewards == null ? MiniGameRewards.petService() : testMiniGameRewards;
     }
@@ -435,6 +468,14 @@ public final class GobangPetItemService {
         return 1
                 + countDirection(board, x, y, type, dx, dy)
                 + countDirection(board, x, y, type, -dx, -dy);
+    }
+
+    private static void resetBoard(RoomState state) {
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                state.board[y][x] = 0;
+            }
+        }
     }
 
     private static int countDirection(int[][] board, int x, int y, int type, int dx, int dy) {

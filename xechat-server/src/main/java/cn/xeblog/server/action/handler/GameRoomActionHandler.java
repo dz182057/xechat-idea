@@ -122,6 +122,11 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                 if (!gameRoom.isPlayerConnection(user)) {
                     return;
                 }
+                if (body.getMsgType() == GameRoomMsgDTO.MsgType.REGRET_RESPONSE
+                        && gameRoom.getGame() == Game.GOBANG
+                        && isTrueContent(body)) {
+                    GobangPetItemService.undoLastMoves(gameRoom, 2);
+                }
                 // 悔棋协商：服务端不参与决策，只把消息原样转发给房间内其他玩家
                 gameRoom.getUsers().forEach((k, v) -> {
                     if (v.isConnection(user)) {
@@ -315,6 +320,11 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             return null;
         }
         return JSONUtil.parseObj(raw).getInt("slotIndex");
+    }
+
+    private boolean isTrueContent(GameRoomMsgDTO body) {
+        Object content = body.getContent();
+        return Boolean.TRUE.equals(content) || "true".equalsIgnoreCase(String.valueOf(content));
     }
 
     private void sendMsg(GameRoom gameRoom, Response response) {
