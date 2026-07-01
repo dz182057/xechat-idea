@@ -283,6 +283,7 @@ public final class PetProfileService {
     ));
     private static final List<String> OLD_LIBRARY_RARE_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "item_gomoku_guard",
+            "item_gomoku_finisher",
             "item_turtle_probe"
     ));
     private static final List<String> BACK_HILL_COLLECTION_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(

@@ -4338,6 +4338,7 @@ public class PetActionHandlerTest {
             Assert.assertTrue(hasReward(rewards, "item", "item_gomoku_prediction")
                     || hasReward(rewards, "item", "item_prophecy")
                     || hasReward(rewards, "item", "item_gomoku_guard")
+                    || hasReward(rewards, "item", "item_gomoku_finisher")
                     || hasReward(rewards, "item", "item_turtle_probe"));
         } finally {
             setExploreRollSupplier(originalRollSupplier);
@@ -4643,6 +4644,7 @@ public class PetActionHandlerTest {
                 "item_sync_perspective",
                 "item_quiz_wrong_option",
                 "item_gomoku_guard",
+                "item_gomoku_finisher",
                 "item_turtle_probe"
         ));
     }
@@ -4684,6 +4686,7 @@ public class PetActionHandlerTest {
                 "item_sync_perspective",
                 "item_quiz_wrong_option",
                 "item_gomoku_guard",
+                "item_gomoku_finisher",
                 "item_turtle_probe"
         );
         int itemIndex = (int) Math.floorMod(date.toEpochDay(), itemIds.size());

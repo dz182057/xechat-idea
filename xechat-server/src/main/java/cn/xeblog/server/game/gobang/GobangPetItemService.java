@@ -28,6 +28,7 @@ public final class GobangPetItemService {
     private static final String SLOT_GAMEPLAY = "gameplay";
     private static final String SLOT_INTERACTION = "interaction";
     private static final String ITEM_GUARD = "item_gomoku_guard";
+    private static final String ITEM_FINISHER = "item_gomoku_finisher";
     private static final String ITEM_PREDICTION = "item_gomoku_prediction";
     private static final String ITEM_PROPHECY = "item_prophecy";
     private static final int PREDICTION_REWARD_BONES = 50;
@@ -193,6 +194,43 @@ public final class GobangPetItemService {
         }
     }
 
+    public static GobangDTO useFinisherItem(User user, GameRoom room, String itemId, Integer slotIndex) {
+        if (user == null || room == null || !ITEM_FINISHER.equals(itemId) || !room.isPlayerConnection(user)) {
+            return null;
+        }
+        RoomState state = STATES.get(room.getId());
+        if (state == null) {
+            return null;
+        }
+        synchronized (state) {
+            String playerKey = user.getIdentityKey();
+            Integer playerType = state.playerTypes.get(playerKey);
+            if (!"playing".equals(state.phase) || playerType == null || state.turn != playerType) {
+                return itemEvent(room, state, ITEM_FINISHER, slotIndex,
+                        "胜手骨只能在自己的回合使用。", null, false);
+            }
+            GameRoom.Player player = room.getUsers().get(playerKey);
+            String slot = carriedItemSlot(player, ITEM_FINISHER, slotIndex);
+            if (slot == null) {
+                return null;
+            }
+            Cell threat = findWinningHandCell(state.board, playerType);
+            if (threat == null) {
+                return itemEvent(room, state, ITEM_FINISHER, slotIndex,
+                        "胜手骨暂未发现双三或活四胜手，道具未消耗。", null, false);
+            }
+            if (!PetGameItemDeclarationService.ensureReservedForUse(room, playerKey, ITEM_FINISHER, slot)) {
+                return null;
+            }
+            PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_FINISHER, slot);
+            clearCarriedItem(player, slot);
+            return itemEvent(room, state, ITEM_FINISHER, slotIndex,
+                    String.format("胜手骨触发，已高亮你的胜手 (%d,%d)，道具已消耗。", threat.x, threat.y),
+                    threat,
+                    true);
+        }
+    }
+
     public static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {
         miniGameRewards = testMiniGameRewards == null ? MiniGameRewards.petService() : testMiniGameRewards;
     }
@@ -239,6 +277,9 @@ public final class GobangPetItemService {
         dto.setWinner(source.getWinner());
         dto.setMoveSeq(source.getMoveSeq());
         dto.setPetItemNotice(source.getPetItemNotice());
+        dto.setPetItemId(source.getPetItemId());
+        dto.setPetItemSlotIndex(source.getPetItemSlotIndex());
+        dto.setPetItemConsumed(source.getPetItemConsumed());
         dto.setPetItemGuardX(source.getPetItemGuardX());
         dto.setPetItemGuardY(source.getPetItemGuardY());
         return dto;
@@ -515,6 +556,31 @@ public final class GobangPetItemService {
         return null;
     }
 
+    private static Cell findWinningHandCell(int[][] board, int type) {
+        if (type != 1 && type != 2) {
+            return null;
+        }
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                if (board[y][x] != 0) {
+                    continue;
+                }
+                board[y][x] = type;
+                if (isWinningMove(board, x, y, type)) {
+                    board[y][x] = 0;
+                    continue;
+                }
+                boolean createsWinningHand = hasLiveFour(board, x, y, type)
+                        || countOpenThreeDirections(board, x, y, type) >= 2;
+                board[y][x] = 0;
+                if (createsWinningHand) {
+                    return new Cell(x, y);
+                }
+            }
+        }
+        return null;
+    }
+
     private static boolean isWinningMove(int[][] board, int x, int y, int type) {
         if (type != 1 && type != 2) {
             return false;
@@ -529,6 +595,13 @@ public final class GobangPetItemService {
         return 1
                 + countDirection(board, x, y, type, dx, dy)
                 + countDirection(board, x, y, type, -dx, -dy);
+    }
+
+    private static boolean hasLiveFour(int[][] board, int x, int y, int type) {
+        return hasCenteredPattern(lineThrough(board, x, y, type, 1, 0), "_OOOO_")
+                || hasCenteredPattern(lineThrough(board, x, y, type, 0, 1), "_OOOO_")
+                || hasCenteredPattern(lineThrough(board, x, y, type, 1, 1), "_OOOO_")
+                || hasCenteredPattern(lineThrough(board, x, y, type, 1, -1), "_OOOO_");
     }
 
     private static int countOpenThreeDirections(int[][] board, int x, int y, int type) {
@@ -658,8 +731,20 @@ public final class GobangPetItemService {
     }
 
     private static String carriedItemSlot(GameRoom.Player player, String itemId) {
+        return carriedItemSlot(player, itemId, null);
+    }
+
+    private static String carriedItemSlot(GameRoom.Player player, String itemId, Integer slotIndex) {
         if (player == null || itemId == null) {
             return null;
+        }
+        if (slotIndex != null) {
+            if (slotIndex <= 0 && itemId.equals(player.getPetPlayItemId())) {
+                return SLOT_GAMEPLAY;
+            }
+            if (slotIndex == 1 && itemId.equals(player.getPetInteractionItemId())) {
+                return SLOT_INTERACTION;
+            }
         }
         if (itemId.equals(player.getPetPlayItemId())) {
             return SLOT_GAMEPLAY;
@@ -676,6 +761,31 @@ public final class GobangPetItemService {
         } else if (SLOT_INTERACTION.equals(slot)) {
             player.setPetInteractionItemId(null);
         }
+    }
+
+    private static GobangDTO itemEvent(GameRoom room, RoomState state, String itemId, Integer slotIndex,
+                                       String notice, Cell hint, boolean consumed) {
+        GobangDTO dto = new GobangDTO(0, 0, 0);
+        dto.setRoomId(room.getId());
+        dto.setGame(Game.GOBANG);
+        dto.setEvent("ITEM_HINT");
+        dto.setPhase(state.phase);
+        dto.setTurn(state.turn);
+        dto.setWinner(state.winner);
+        dto.setMoveSeq(state.moveSeq);
+        dto.setPetItemNotice(notice);
+        dto.setPetItemId(itemId);
+        dto.setPetItemSlotIndex(normalizeSlotIndex(slotIndex));
+        dto.setPetItemConsumed(consumed);
+        if (hint != null) {
+            dto.setPetItemGuardX(hint.x);
+            dto.setPetItemGuardY(hint.y);
+        }
+        return dto;
+    }
+
+    private static int normalizeSlotIndex(Integer slotIndex) {
+        return slotIndex != null && slotIndex > 0 ? 1 : 0;
     }
 
     private static final class RoomState {

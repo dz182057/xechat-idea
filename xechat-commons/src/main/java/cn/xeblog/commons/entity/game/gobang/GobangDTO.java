@@ -23,6 +23,9 @@ public class GobangDTO extends GameDTO {
     private int winner;
     private int moveSeq;
     private String petItemNotice;
+    private String petItemId;
+    private Integer petItemSlotIndex;
+    private Boolean petItemConsumed;
     private Integer petItemGuardX;
     private Integer petItemGuardY;
 

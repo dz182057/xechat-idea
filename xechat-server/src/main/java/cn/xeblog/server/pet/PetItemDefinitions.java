@@ -163,6 +163,7 @@ public final class PetItemDefinitions {
         interaction(items, "item_sync_secret_question", Rarity.RARE, ReleaseStage.EXPANSION, null, Game.TACIT_QUIZ);
         play(items, "item_quiz_wrong_option", Rarity.RARE, false, Game.QUICK_QUIZ);
         play(items, "item_gomoku_guard", Rarity.RARE, false, Game.GOBANG);
+        play(items, "item_gomoku_finisher", Rarity.RARE, false, Game.GOBANG);
         play(items, "item_turtle_probe", Rarity.RARE, false, Game.TURTLE_SOUP);
         play(items, "item_battle_pebble", Rarity.RARE, false, Game.DOG_BATTLE);
         play(items, "item_battle_airbag", Rarity.RARE, false, Game.DOG_BATTLE);

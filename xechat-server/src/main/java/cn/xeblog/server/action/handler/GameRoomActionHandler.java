@@ -8,6 +8,7 @@ import cn.xeblog.commons.entity.game.GamePlayerPetItemsDTO;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.GameRoomMsgDTO;
 import cn.xeblog.commons.entity.game.dogbattle.DogBattleDTO;
+import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.commons.enums.InviteStatus;
@@ -146,6 +147,14 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                 if (gameRoom.getGame() == Game.TACIT_QUIZ
                         && TacitQuizService.activateInteractionItem(user, gameRoom, readPetItemId(body), readPetItemSlotIndex(body))) {
                     sendMsg(gameRoom, ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
+                    return;
+                }
+                if (gameRoom.getGame() == Game.GOBANG) {
+                    GobangDTO itemResult = GobangPetItemService.useFinisherItem(
+                            user, gameRoom, readPetItemId(body), readPetItemSlotIndex(body));
+                    if (itemResult != null) {
+                        user.send(ResponseBuilder.build(user, itemResult, MessageType.GAME));
+                    }
                 }
                 break;
         }

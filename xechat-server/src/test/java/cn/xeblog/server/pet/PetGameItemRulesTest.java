@@ -61,10 +61,10 @@ public class PetGameItemRulesTest {
     public void normalizeAllowsGameItemsInBothCarrySlotsWithoutTypeLimit() {
         GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(
                 Game.GOBANG,
-                new GamePlayerPetItemsDTO("item_gomoku_prediction", "item_gomoku_guard")
+                new GamePlayerPetItemsDTO("item_gomoku_finisher", "item_gomoku_guard")
         );
 
-        Assert.assertEquals("item_gomoku_prediction", normalized.getPetPlayItemId());
+        Assert.assertEquals("item_gomoku_finisher", normalized.getPetPlayItemId());
         Assert.assertEquals("item_gomoku_guard", normalized.getPetInteractionItemId());
     }
 

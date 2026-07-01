@@ -38,6 +38,7 @@ public class PetItemDefinitionsTest {
                 "item_sync_perspective",
                 "item_quiz_wrong_option",
                 "item_gomoku_guard",
+                "item_gomoku_finisher",
                 "item_turtle_probe"
         ), PetItemDefinitions.luckyBagRareItemIds());
         Assert.assertFalse(PetItemDefinitions.luckyBagRareItemIds().contains("item_battle_pebble"));
@@ -123,6 +124,7 @@ public class PetItemDefinitionsTest {
         Assert.assertTrue(PetItemDefinitions.isCarryItem(Game.TACIT_QUIZ, "item_sync_prophecy"));
         Assert.assertTrue(PetItemDefinitions.isCarryItem(Game.QUICK_QUIZ, "item_quiz_wrong_option"));
         Assert.assertFalse(PetItemDefinitions.isInteractionItem(Game.TACIT_QUIZ, "item_draw_advance_hint"));
+        Assert.assertTrue(PetItemDefinitions.isPlayItem(Game.GOBANG, "item_gomoku_finisher"));
         Assert.assertFalse(PetItemDefinitions.isCarryItem(Game.TURTLE_SOUP, "item_lucky_day"));
 
         Assert.assertFalse(PetItemDefinitions.isPlayItem(Game.DOG_BATTLE, "item_battle_echo"));
