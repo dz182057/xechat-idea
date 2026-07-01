@@ -9,8 +9,10 @@ import cn.xeblog.server.pet.PetGameItemDeclarationService;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
@@ -490,28 +492,175 @@ public final class GobangPetItemService {
             return null;
         }
         List<Cell> winningCells = findWinningCells(board, type);
+        int liveThreeCount = countLiveThreeLines(board, type);
+        List<Cell> criticalCells = findGuardCriticalCells(board, type);
+        if (winningCells.size() == 1 && (liveThreeCount > 0 || hasSecondaryRushFourMove(board, type, winningCells.get(0)))) {
+            return new GuardThreat(winningCells.get(0));
+        }
         if (!winningCells.isEmpty()) {
             return null;
         }
-        Cell criticalCell = findGuardCriticalCell(board, type);
-        return criticalCell == null ? null : new GuardThreat(criticalCell);
+        if (!criticalCells.isEmpty()) {
+            Cell criticalCell = findGuardPreventiveCell(board, type, criticalCells);
+            return criticalCell == null ? null : new GuardThreat(criticalCell);
+        }
+        if (liveThreeCount > 1) {
+            Cell defenseCell = findGuardDefenseCell(board, type);
+            return defenseCell == null ? null : new GuardThreat(defenseCell);
+        }
+        return null;
     }
 
-    private static Cell findWinningCell(int[][] board, int type) {
+    private static Cell findGuardPreventiveCell(int[][] board, int type, List<Cell> criticalCells) {
+        int defenderType = type == 1 ? 2 : 1;
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                if (board[y][x] != 0 || !containsCell(criticalCells, x, y)) {
+                    continue;
+                }
+                board[y][x] = defenderType;
+                boolean blocksThreat = findWinningCells(board, type).isEmpty()
+                        && findGuardCriticalCell(board, type) == null;
+                board[y][x] = 0;
+                if (blocksThreat) {
+                    return new Cell(x, y);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Cell findGuardDefenseCell(int[][] board, int type) {
+        int defenderType = type == 1 ? 2 : 1;
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                if (board[y][x] != 0) {
+                    continue;
+                }
+                board[y][x] = defenderType;
+                boolean blocksThreat = findWinningCells(board, type).isEmpty()
+                        && countLiveThreeLines(board, type) <= 1;
+                board[y][x] = 0;
+                if (blocksThreat) {
+                    return new Cell(x, y);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean containsCell(List<Cell> cells, int x, int y) {
+        for (Cell cell : cells) {
+            if (cell.x == x && cell.y == y) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<Cell> findGuardCriticalCells(int[][] board, int type) {
+        List<Cell> cells = new ArrayList<>();
         for (int y = 0; y < BOARD_SIZE; y++) {
             for (int x = 0; x < BOARD_SIZE; x++) {
                 if (board[y][x] != 0) {
                     continue;
                 }
                 board[y][x] = type;
-                boolean wins = isWinningMove(board, x, y, type);
+                int rushFourDirections = countRushFourDirections(board, x, y, type);
+                int openThreeDirections = countOpenThreeDirections(board, x, y, type);
+                boolean createsThreat = !isWinningMove(board, x, y, type)
+                        && (rushFourDirections > 1
+                        || openThreeDirections > 1
+                        || (rushFourDirections > 0 && openThreeDirections > 0));
                 board[y][x] = 0;
-                if (wins) {
-                    return new Cell(x, y);
+                if (createsThreat) {
+                    cells.add(new Cell(x, y));
                 }
             }
         }
-        return null;
+        return cells;
+    }
+
+    private static Cell findGuardCriticalCell(int[][] board, int type) {
+        List<Cell> cells = findGuardCriticalCells(board, type);
+        return cells.isEmpty() ? null : cells.get(0);
+    }
+
+    private static boolean hasSecondaryRushFourMove(int[][] board, int type, Cell winningCell) {
+        Set<String> winningLineKeys = winningLineKeys(board, type, winningCell);
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                if (board[y][x] != 0) {
+                    continue;
+                }
+                board[y][x] = type;
+                boolean secondaryRush = false;
+                if (!isWinningMove(board, x, y, type)) {
+                    for (int i = 0; i < DIRECTIONS.length; i++) {
+                        if (hasRushFour(lineThrough(board, x, y, type, DIRECTIONS[i][0], DIRECTIONS[i][1]))
+                                && !winningLineKeys.contains(lineKey(i, x, y))) {
+                            secondaryRush = true;
+                            break;
+                        }
+                    }
+                }
+                board[y][x] = 0;
+                if (secondaryRush) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static Set<String> winningLineKeys(int[][] board, int type, Cell winningCell) {
+        Set<String> keys = new HashSet<>();
+        if (board[winningCell.y][winningCell.x] != 0) {
+            return keys;
+        }
+        board[winningCell.y][winningCell.x] = type;
+        for (int i = 0; i < DIRECTIONS.length; i++) {
+            if (countLine(board, winningCell.x, winningCell.y, type, DIRECTIONS[i][0], DIRECTIONS[i][1]) >= 5) {
+                keys.add(lineKey(i, winningCell.x, winningCell.y));
+            }
+        }
+        board[winningCell.y][winningCell.x] = 0;
+        return keys;
+    }
+
+    private static int countLiveThreeLines(int[][] board, int type) {
+        Set<String> lines = new HashSet<>();
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                if (board[y][x] != type) {
+                    continue;
+                }
+                for (int i = 0; i < DIRECTIONS.length; i++) {
+                    if (hasOpenThree(lineThrough(board, x, y, type, DIRECTIONS[i][0], DIRECTIONS[i][1]))) {
+                        lines.add(lineKey(i, x, y));
+                    }
+                }
+            }
+        }
+        return lines.size();
+    }
+
+    private static String lineKey(int directionIndex, int x, int y) {
+        if (directionIndex == 0) {
+            return "h:" + y;
+        }
+        if (directionIndex == 1) {
+            return "v:" + x;
+        }
+        if (directionIndex == 2) {
+            return "d1:" + (y - x);
+        }
+        return "d2:" + (x + y);
+    }
+
+    private static Cell findWinningCell(int[][] board, int type) {
+        List<Cell> cells = findWinningCells(board, type);
+        return cells.isEmpty() ? null : cells.get(0);
     }
 
     private static List<Cell> findWinningCells(int[][] board, int type) {
@@ -533,27 +682,6 @@ public final class GobangPetItemService {
             }
         }
         return cells;
-    }
-
-    private static Cell findGuardCriticalCell(int[][] board, int type) {
-        for (int y = 0; y < BOARD_SIZE; y++) {
-            for (int x = 0; x < BOARD_SIZE; x++) {
-                if (board[y][x] != 0) {
-                    continue;
-                }
-                board[y][x] = type;
-                int rushFourDirections = countRushFourDirections(board, x, y, type);
-                int openThreeDirections = countOpenThreeDirections(board, x, y, type);
-                boolean createsMultiThreat = rushFourDirections > 1
-                        || openThreeDirections > 1
-                        || (rushFourDirections > 0 && openThreeDirections > 0);
-                board[y][x] = 0;
-                if (createsMultiThreat) {
-                    return new Cell(x, y);
-                }
-            }
-        }
-        return null;
     }
 
     private static Cell findWinningHandCell(int[][] board, int type) {

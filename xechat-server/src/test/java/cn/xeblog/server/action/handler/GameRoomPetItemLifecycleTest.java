@@ -849,6 +849,44 @@ public class GameRoomPetItemLifecycleTest {
     }
 
     @Test
+    public void gobangGuardShouldBlockWinningCellInRushFourAndOpenThreeCombo() {
+        User alice = user(2170L);
+        User bob = user(2171L);
+        GameRoom room = room(Game.GOBANG, alice, bob);
+        insertPetItem(alice.getAccountId(), "item_gomoku_guard", 1);
+
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 1));
+        new GameActionHandler().process(bob, room, gobangMove(10, 6, 1));
+        new GameActionHandler().process(alice, room, gobangMove(10, 5, 2));
+        new GameActionHandler().process(bob, room, gobangMove(10, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 1, 2));
+        new GameActionHandler().process(bob, room, gobangMove(10, 8, 1));
+        new GameActionHandler().process(alice, room, gobangMove(2, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(4, 4, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 3, 2));
+        new GameActionHandler().process(bob, room, gobangMove(5, 4, 1));
+        new GameActionHandler().process(alice, room, gobangMove(2, 5, 2));
+        new GameActionHandler().process(bob, room, gobangMove(6, 4, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 6, 2));
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO(null, "item_gomoku_guard"));
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        GobangDTO comboMove = gobangMove(10, 9, 1);
+        new GameActionHandler().process(bob, room, comboMove);
+
+        Assert.assertEquals(Integer.valueOf(10), comboMove.getPetItemGuardX());
+        Assert.assertEquals(Integer.valueOf(10), comboMove.getPetItemGuardY());
+        Assert.assertEquals(0, countItem(alice.getAccountId(), "item_gomoku_guard"));
+        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_gomoku_guard", "interaction", "consumed"));
+        Assert.assertEquals("守门骨触发，已为 玩家2170 高亮对手隐蔽多重威胁点 (10,10)，道具已消耗。",
+                comboMove.getPetItemNotice());
+    }
+
+    @Test
     public void gobangFinisherShouldConsumeAndHighlightDoubleThreeByActiveUse() {
         User alice = user(2164L);
         User bob = user(2165L);
