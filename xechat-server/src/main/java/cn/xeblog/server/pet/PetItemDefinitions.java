@@ -95,6 +95,15 @@ public final class PetItemDefinitions {
                 && definition.getRelatedGames().contains(game);
     }
 
+    public static boolean isCarryItem(Game game, String itemId) {
+        PetItemDefinition definition = byId(itemId);
+        return !isTemporarilyDisabledGame(game)
+                && !isTemporarilyDisabledItem(itemId)
+                && definition != null
+                && definition.getSlot() != Slot.UTILITY
+                && definition.getRelatedGames().contains(game);
+    }
+
     public static String firstCommonPlayItem(Game game) {
         if (game == null || isTemporarilyDisabledGame(game)) {
             return null;

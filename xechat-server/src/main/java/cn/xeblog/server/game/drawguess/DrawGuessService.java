@@ -41,6 +41,7 @@ public final class DrawGuessService {
     private static final int DEFAULT_TIME_LIMIT_SECONDS = 90;
     private static final int BASE_SCORE = 3;
     private static final String SLOT_GAMEPLAY = "gameplay";
+    private static final String SLOT_INTERACTION = "interaction";
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
     private static final ScheduledExecutorService TIMEOUT_EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "draw-guess-timeout");
@@ -453,76 +454,102 @@ public final class DrawGuessService {
         state.petItemPattern = null;
         state.petItemRevealedMask = null;
         state.petItemHintDelaySeconds = null;
-        String itemId = resolveFirstGuesserPlayItem(room, state.drawerId);
-        if (itemId == null) {
-            return;
+        for (String itemId : resolveGuesserCarryItems(room, state.drawerId)) {
+            applyPetAssistItem(state, itemId);
         }
-        state.petItemId = itemId;
+    }
+
+    private static void applyPetAssistItem(RoomState state, String itemId) {
+        if (state.petItemId == null) {
+            state.petItemId = itemId;
+        }
         if ("item_draw_advance_hint".equals(itemId)) {
-            state.petItemNotice = trimToNull(state.hint) == null
+            appendPetItemNotice(state, trimToNull(state.hint) == null
                     ? "抢先闻闻已触发：本题没有额外提示。"
-                    : "抢先闻闻已触发：系统提示立即显示。";
+                    : "抢先闻闻已触发：系统提示立即显示。");
             state.petItemHintDelaySeconds = 0;
             return;
         }
         if ("item_draw_pattern".equals(itemId)) {
-            state.petItemNotice = "字形骨牌已触发：展示答案字形结构。";
+            appendPetItemNotice(state, "字形骨牌已触发：展示答案字形结构。");
             state.petItemPattern = buildPattern(state.word);
             return;
         }
         if ("item_draw_overlap".equals(itemId)) {
-            state.petItemNotice = "沾边铃已触发：下一次猜错时会提示是否至少有一个相同汉字。";
+            appendPetItemNotice(state, "沾边铃已触发：下一次猜错时会提示是否至少有一个相同汉字。");
             return;
         }
         if ("item_draw_replay".equals(itemId)) {
-            state.petItemNotice = "画迹回放已触发：本轮可辅助回看笔画顺序。";
+            appendPetItemNotice(state, "画迹回放已触发：本轮可辅助回看笔画顺序。");
             return;
         }
         if ("item_draw_reveal_char".equals(itemId)) {
-            state.petItemNotice = "漏字饼干已触发：揭示答案中的 1 个字。";
+            appendPetItemNotice(state, "漏字饼干已触发：揭示答案中的 1 个字。");
             state.petItemRevealedMask = revealMask(state.word, 1);
         }
     }
 
-    private static String resolveFirstGuesserPlayItem(GameRoom room, String drawerKey) {
+    private static List<String> resolveGuesserCarryItems(GameRoom room, String drawerKey) {
+        List<String> itemIds = new ArrayList<>();
         for (Map.Entry<String, GameRoom.Player> entry : room.getUsers().entrySet()) {
             if (entry.getKey().equals(drawerKey)) {
                 continue;
             }
-            String itemId = entry.getValue().getPetPlayItemId();
-            if (PetGameItemRules.isPlayItem(Game.DRAW_GUESS, itemId)) {
-                return itemId;
-            }
+            addDrawGuessCarryItem(itemIds, entry.getValue().getPetPlayItemId());
+            addDrawGuessCarryItem(itemIds, entry.getValue().getPetInteractionItemId());
         }
-        return null;
+        return itemIds;
+    }
+
+    private static void addDrawGuessCarryItem(List<String> itemIds, String itemId) {
+        if (PetGameItemRules.isCarryItem(Game.DRAW_GUESS, itemId)) {
+            itemIds.add(itemId);
+        }
     }
 
     private static void consumeDrawGuessGuesserItems(GameRoom room, String drawerKey) {
         room.getUsers().forEach((playerKey, player) -> {
             if (!drawerKey.equals(playerKey)) {
-                settleDrawGuessPlayItem(room, player);
+                settleDrawGuessCarryItem(room, player, player.getPetPlayItemId(), SLOT_GAMEPLAY, true);
+                settleDrawGuessCarryItem(room, player, player.getPetInteractionItemId(), SLOT_INTERACTION, true);
             }
         });
     }
 
     private static void refundRemainingDrawGuessItems(GameRoom room) {
         room.getUsers().forEach((playerKey, player) -> {
-            if (player == null || !PetGameItemRules.isPlayItem(Game.DRAW_GUESS, player.getPetPlayItemId())) {
-                return;
-            }
-            String itemId = player.getPetPlayItemId();
-            PetGameItemDeclarationService.settleRefunded(room, player.getId(), itemId, SLOT_GAMEPLAY);
-            player.setPetPlayItemId(null);
+            settleDrawGuessCarryItem(room, player, player == null ? null : player.getPetPlayItemId(), SLOT_GAMEPLAY, false);
+            settleDrawGuessCarryItem(room, player, player == null ? null : player.getPetInteractionItemId(), SLOT_INTERACTION, false);
         });
     }
 
-    private static void settleDrawGuessPlayItem(GameRoom room, GameRoom.Player player) {
-        if (player == null || !PetGameItemRules.isPlayItem(Game.DRAW_GUESS, player.getPetPlayItemId())) {
+    private static void settleDrawGuessCarryItem(GameRoom room, GameRoom.Player player, String itemId, String slot,
+                                                 boolean consumed) {
+        if (player == null || !PetGameItemRules.isCarryItem(Game.DRAW_GUESS, itemId)) {
             return;
         }
-        String itemId = player.getPetPlayItemId();
-        PetGameItemDeclarationService.settleConsumed(room, player.getId(), itemId, SLOT_GAMEPLAY);
-        player.setPetPlayItemId(null);
+        if (consumed) {
+            PetGameItemDeclarationService.settleConsumed(room, player.getId(), itemId, slot);
+        } else {
+            PetGameItemDeclarationService.settleRefunded(room, player.getId(), itemId, slot);
+        }
+        clearCarriedItem(player, slot);
+    }
+
+    private static void clearCarriedItem(GameRoom.Player player, String slot) {
+        if (SLOT_GAMEPLAY.equals(slot)) {
+            player.setPetPlayItemId(null);
+        } else if (SLOT_INTERACTION.equals(slot)) {
+            player.setPetInteractionItemId(null);
+        }
+    }
+
+    private static void appendPetItemNotice(RoomState state, String notice) {
+        String next = trimToNull(notice);
+        if (next == null) {
+            return;
+        }
+        state.petItemNotice = trimToNull(state.petItemNotice) == null ? next : state.petItemNotice + " " + next;
     }
 
     private static boolean allGuessersAnswered(RoomState state) {

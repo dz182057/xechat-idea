@@ -15,12 +15,12 @@ import java.io.Serializable;
 public class GamePlayerPetItemsDTO implements Serializable {
 
     /**
-     * 兼容字段：界面统一展示为携带栏，服务端仍按道具内部类型结算。
+     * 兼容字段：界面统一展示为携带栏 1。
      */
     private String petPlayItemId;
 
     /**
-     * 兼容字段：界面统一展示为携带栏，服务端仍按道具内部类型结算。
+     * 兼容字段：界面统一展示为携带栏 2。
      */
     private String petInteractionItemId;
 

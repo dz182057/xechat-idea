@@ -120,7 +120,10 @@ public class PetItemDefinitionsTest {
     public void definitionsExposeGameSlotsAndModeLimits() {
         Assert.assertTrue(PetItemDefinitions.isPlayItem(Game.MINESWEEPER, "item_mine_shield"));
         Assert.assertTrue(PetItemDefinitions.isInteractionItem(Game.TACIT_QUIZ, "item_sync_prophecy"));
+        Assert.assertTrue(PetItemDefinitions.isCarryItem(Game.TACIT_QUIZ, "item_sync_prophecy"));
+        Assert.assertTrue(PetItemDefinitions.isCarryItem(Game.QUICK_QUIZ, "item_quiz_wrong_option"));
         Assert.assertFalse(PetItemDefinitions.isInteractionItem(Game.TACIT_QUIZ, "item_draw_advance_hint"));
+        Assert.assertFalse(PetItemDefinitions.isCarryItem(Game.TURTLE_SOUP, "item_lucky_day"));
 
         Assert.assertFalse(PetItemDefinitions.isPlayItem(Game.DOG_BATTLE, "item_battle_echo"));
         Assert.assertFalse(PetItemDefinitions.isInteractionItem(Game.DOG_BATTLE, "item_battle_direct_hit"));

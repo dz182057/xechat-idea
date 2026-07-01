@@ -232,12 +232,13 @@ public final class QuickQuizService {
 
     private static int applyScorePadIfNeeded(User user, GameRoom room, RoomState state, String playerKey, int delta) {
         GameRoom.Player player = room.getUsers().get(playerKey);
-        if (player == null || !ITEM_SCORE_PAD.equals(player.getPetPlayItemId()) || delta >= 0) {
+        String slot = carriedItemSlot(player, ITEM_SCORE_PAD);
+        if (slot == null || delta >= 0) {
             return delta;
         }
         int reducedPenalty = Math.max(0, Math.abs(delta) - SCORE_PAD_BLOCK_POINTS);
-        PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_SCORE_PAD, SLOT_GAMEPLAY);
-        player.setPetPlayItemId(null);
+        PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_SCORE_PAD, slot);
+        clearCarriedItem(player, slot);
         if (reducedPenalty == 0) {
             state.petItemNotices.add("护分爪垫触发，" + displayName(user) + " 本题答错扣分被抵消。");
         } else {
@@ -349,12 +350,13 @@ public final class QuickQuizService {
         for (User player : state.players) {
             String key = playerKey(player);
             GameRoom.Player roomPlayer = room.getUsers().get(key);
-            if (roomPlayer == null || !ITEM_WRONG_OPTION.equals(roomPlayer.getPetPlayItemId())) {
+            String slot = carriedItemSlot(roomPlayer, ITEM_WRONG_OPTION);
+            if (slot == null) {
                 continue;
             }
             state.disabledWrongOptionByPlayerKey.put(key, disabledOptionIndex);
-            PetGameItemDeclarationService.settleConsumed(room, key, ITEM_WRONG_OPTION, SLOT_GAMEPLAY);
-            roomPlayer.setPetPlayItemId(null);
+            PetGameItemDeclarationService.settleConsumed(room, key, ITEM_WRONG_OPTION, slot);
+            clearCarriedItem(roomPlayer, slot);
         }
     }
 
@@ -486,18 +488,19 @@ public final class QuickQuizService {
         }
         for (GameRoom.Player player : room.getUsers().values()) {
             String playerKey = player.getId();
-            if (!ITEM_DUEL.equals(player.getPetInteractionItemId())) {
+            String slot = carriedItemSlot(player, ITEM_DUEL);
+            if (slot == null) {
                 continue;
             }
             GameRoom.Player target = defaultDuelTarget(room, playerKey);
             QuickQuizPlayerScoreDTO carrierScore = rankingsByPlayer.get(playerKey);
             QuickQuizPlayerScoreDTO targetScore = target == null ? null : rankingsByPlayer.get(target.getId());
             if (target == null || carrierScore == null || targetScore == null || carrierScore.getScore() == targetScore.getScore()) {
-                PetGameItemDeclarationService.settleRefunded(room, playerKey, ITEM_DUEL, SLOT_INTERACTION);
+                PetGameItemDeclarationService.settleRefunded(room, playerKey, ITEM_DUEL, slot);
                 state.petItemNotices.add("点名对决未结算，" + displayName(player) + " 的道具已返还。");
             } else if (carrierScore.getScore() > targetScore.getScore()) {
                 int reward = PetGameItemDeclarationService.settleSucceededWithInteractionReward(
-                        room, playerKey, ITEM_DUEL, SLOT_INTERACTION, DUEL_REWARD_BONES);
+                        room, playerKey, ITEM_DUEL, slot, DUEL_REWARD_BONES);
                 if (reward > 0) {
                     state.petItemNotices.add("点名对决命中，" + displayName(player) + " 得分高于 "
                             + displayName(target) + "，返还道具并获得 🦴" + reward + "。");
@@ -506,11 +509,11 @@ public final class QuickQuizService {
                             + displayName(target) + "，返还道具；今日互动奖励额度已用完。");
                 }
             } else {
-                PetGameItemDeclarationService.settleFailed(room, playerKey, ITEM_DUEL, SLOT_INTERACTION);
+                PetGameItemDeclarationService.settleFailed(room, playerKey, ITEM_DUEL, slot);
                 state.petItemNotices.add("点名对决未命中，" + displayName(player) + " 得分未高于 "
                         + displayName(target) + "，道具已消耗。");
             }
-            player.setPetInteractionItemId(null);
+            clearCarriedItem(player, slot);
         }
     }
 
@@ -539,16 +542,17 @@ public final class QuickQuizService {
         int rewardBones = prophecyRewardBones(room.getUsers().size());
         for (GameRoom.Player player : room.getUsers().values()) {
             String playerKey = player.getId();
-            if (!ITEM_PROPHECY.equals(player.getPetInteractionItemId())) {
+            String slot = carriedItemSlot(player, ITEM_PROPHECY);
+            if (slot == null) {
                 continue;
             }
             if (!uniqueWinner) {
-                PetGameItemDeclarationService.settleRefunded(room, playerKey, ITEM_PROPHECY, SLOT_INTERACTION);
+                PetGameItemDeclarationService.settleRefunded(room, playerKey, ITEM_PROPHECY, slot);
                 state.petItemNotices.add("胜负预言贴未结算，快问快答出现并列胜者，"
                         + displayName(player) + " 的道具已返还。");
             } else if (Objects.equals(playerKey, winnerKey)) {
                 int reward = PetGameItemDeclarationService.settleSucceededWithInteractionReward(
-                        room, playerKey, ITEM_PROPHECY, SLOT_INTERACTION, rewardBones);
+                        room, playerKey, ITEM_PROPHECY, slot, rewardBones);
                 if (reward > 0) {
                     state.petItemNotices.add("胜负预言贴命中，" + displayName(player)
                             + " 成为唯一胜者，返还道具并获得 🦴" + reward + "。");
@@ -557,11 +561,11 @@ public final class QuickQuizService {
                             + " 成为唯一胜者，返还道具；今日互动奖励额度已用完。");
                 }
             } else {
-                PetGameItemDeclarationService.settleFailed(room, playerKey, ITEM_PROPHECY, SLOT_INTERACTION);
+                PetGameItemDeclarationService.settleFailed(room, playerKey, ITEM_PROPHECY, slot);
                 state.petItemNotices.add("胜负预言贴未命中，" + displayName(player)
                         + " 未成为唯一胜者，道具已消耗。");
             }
-            player.setPetInteractionItemId(null);
+            clearCarriedItem(player, slot);
         }
     }
 
@@ -577,13 +581,39 @@ public final class QuickQuizService {
 
     private static void refundUntriggeredPlayItems(GameRoom room, RoomState state) {
         for (GameRoom.Player player : room.getUsers().values()) {
-            String itemId = player.getPetPlayItemId();
-            if (!ITEM_SCORE_PAD.equals(itemId) && !ITEM_WRONG_OPTION.equals(itemId)) {
-                continue;
-            }
-            PetGameItemDeclarationService.settleRefunded(room, player.getId(), itemId, SLOT_GAMEPLAY);
-            state.petItemNotices.add(itemName(itemId) + "未触发，" + displayName(player) + " 的道具已返还。");
+            refundUntriggeredQuizItem(room, state, player, player.getPetPlayItemId(), SLOT_GAMEPLAY);
+            refundUntriggeredQuizItem(room, state, player, player.getPetInteractionItemId(), SLOT_INTERACTION);
+        }
+    }
+
+    private static void refundUntriggeredQuizItem(GameRoom room, RoomState state, GameRoom.Player player,
+                                                  String itemId, String slot) {
+        if (!ITEM_SCORE_PAD.equals(itemId) && !ITEM_WRONG_OPTION.equals(itemId)) {
+            return;
+        }
+        PetGameItemDeclarationService.settleRefunded(room, player.getId(), itemId, slot);
+        state.petItemNotices.add(itemName(itemId) + "未触发，" + displayName(player) + " 的道具已返还。");
+        clearCarriedItem(player, slot);
+    }
+
+    private static String carriedItemSlot(GameRoom.Player player, String itemId) {
+        if (player == null || itemId == null) {
+            return null;
+        }
+        if (itemId.equals(player.getPetPlayItemId())) {
+            return SLOT_GAMEPLAY;
+        }
+        if (itemId.equals(player.getPetInteractionItemId())) {
+            return SLOT_INTERACTION;
+        }
+        return null;
+    }
+
+    private static void clearCarriedItem(GameRoom.Player player, String slot) {
+        if (SLOT_GAMEPLAY.equals(slot)) {
             player.setPetPlayItemId(null);
+        } else if (SLOT_INTERACTION.equals(slot)) {
+            player.setPetInteractionItemId(null);
         }
     }
 

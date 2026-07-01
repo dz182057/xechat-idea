@@ -34,10 +34,8 @@ public final class PetGameItemRules {
             return new GamePlayerPetItemsDTO();
         }
         Predicate<String> ownership = hasItem == null ? itemId -> true : hasItem;
-        String playItemId = isFormalMode(gameMode)
-                ? null
-                : normalizeSlot(true, game, petItems.getPetPlayItemId(), ownership);
-        String interactionItemId = normalizeSlot(false, game, petItems.getPetInteractionItemId(), ownership);
+        String playItemId = normalizeCarryItem(game, petItems.getPetPlayItemId(), ownership);
+        String interactionItemId = normalizeCarryItem(game, petItems.getPetInteractionItemId(), ownership);
         int limit = Math.max(1, carrySlotLimit);
         if (limit <= 1 && playItemId != null && interactionItemId != null) {
             interactionItemId = null;
@@ -53,6 +51,10 @@ public final class PetGameItemRules {
         return PetItemDefinitions.isInteractionItem(game, itemId);
     }
 
+    public static boolean isCarryItem(Game game, String itemId) {
+        return PetItemDefinitions.isCarryItem(game, itemId);
+    }
+
     public static boolean isWildCommonItem(String itemId) {
         return PetItemDefinitions.isWildCommonItem(itemId);
     }
@@ -61,15 +63,15 @@ public final class PetGameItemRules {
         return PetItemDefinitions.isPartyEqualizerItem(itemId);
     }
 
-    private static String normalizeSlot(boolean playSlot, Game game, String itemId, Predicate<String> hasItem) {
+    private static String normalizeCarryItem(Game game, String itemId, Predicate<String> hasItem) {
         String normalizedItemId = trimToNull(itemId);
-        if (playSlot && isWildCommonItem(normalizedItemId)) {
+        if (isWildCommonItem(normalizedItemId)) {
             return normalizeCommonPlaySource(game, normalizedItemId, hasItem);
         }
-        if (playSlot && isPartyEqualizerItem(normalizedItemId)) {
+        if (isPartyEqualizerItem(normalizedItemId)) {
             return normalizeCommonPlaySource(game, normalizedItemId, hasItem);
         }
-        if (normalizedItemId == null || !contains(playSlot, game, normalizedItemId) || !hasItem.test(normalizedItemId)) {
+        if (normalizedItemId == null || !isCarryItem(game, normalizedItemId) || !hasItem.test(normalizedItemId)) {
             return null;
         }
         return normalizedItemId;
@@ -82,39 +84,11 @@ public final class PetGameItemRules {
         return PetItemDefinitions.firstCommonPlayItem(game);
     }
 
-    private static boolean contains(boolean playSlot, Game game, String itemId) {
-        String normalizedItemId = trimToNull(itemId);
-        if (game == null || normalizedItemId == null) {
-            return false;
-        }
-        if (!playSlot && game == Game.MINESWEEPER && PetItemDefinitions.isPlayItem(game, normalizedItemId)) {
-            return true;
-        }
-        if (playSlot && game == Game.TACIT_QUIZ && PetItemDefinitions.isInteractionItem(game, normalizedItemId)) {
-            return true;
-        }
-        return playSlot
-                ? PetItemDefinitions.isPlayItem(game, normalizedItemId)
-                : PetItemDefinitions.isInteractionItem(game, normalizedItemId);
-    }
-
     private static String trimToNull(String value) {
         if (value == null) {
             return null;
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    private static boolean isFormalMode(String gameMode) {
-        String normalized = trimToNull(gameMode);
-        if (normalized == null) {
-            return false;
-        }
-        return normalized.contains("正式")
-                || normalized.contains("竞技")
-                || normalized.contains("排位")
-                || normalized.contains("排行")
-                || normalized.toLowerCase().contains("rank");
     }
 }

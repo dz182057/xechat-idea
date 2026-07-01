@@ -19,37 +19,31 @@ public class PetGameItemRulesTest {
     }
 
     @Test
-    public void normalizeClearsItemsFromWrongGameOrSlot() {
+    public void normalizeClearsItemsFromWrongGame() {
         GamePlayerPetItemsDTO wrongGame = PetGameItemRules.normalize(
                 Game.GOBANG,
                 new GamePlayerPetItemsDTO("item_battle_echo", "item_battle_direct_hit")
         );
-        GamePlayerPetItemsDTO wrongSlot = PetGameItemRules.normalize(
-                Game.DOG_BATTLE,
-                new GamePlayerPetItemsDTO("item_battle_direct_hit", "item_battle_echo")
-        );
 
         Assert.assertNull(wrongGame.getPetPlayItemId());
         Assert.assertNull(wrongGame.getPetInteractionItemId());
-        Assert.assertNull(wrongSlot.getPetPlayItemId());
-        Assert.assertNull(wrongSlot.getPetInteractionItemId());
     }
 
     @Test
     public void normalizeKeepsCurrentNonRaceGameItems() {
         GamePlayerPetItemsDTO quickQuiz = PetGameItemRules.normalize(
                 Game.QUICK_QUIZ,
-                new GamePlayerPetItemsDTO("item_quiz_score_pad", "item_quiz_duel")
+                new GamePlayerPetItemsDTO("item_quiz_duel", "item_quiz_wrong_option")
         );
         GamePlayerPetItemsDTO tacitQuiz = PetGameItemRules.normalize(
                 Game.TACIT_QUIZ,
-                new GamePlayerPetItemsDTO(null, "item_sync_prophecy")
+                new GamePlayerPetItemsDTO("item_sync_prophecy", "item_sync_perspective")
         );
 
-        Assert.assertEquals("item_quiz_score_pad", quickQuiz.getPetPlayItemId());
-        Assert.assertEquals("item_quiz_duel", quickQuiz.getPetInteractionItemId());
-        Assert.assertNull(tacitQuiz.getPetPlayItemId());
-        Assert.assertEquals("item_sync_prophecy", tacitQuiz.getPetInteractionItemId());
+        Assert.assertEquals("item_quiz_duel", quickQuiz.getPetPlayItemId());
+        Assert.assertEquals("item_quiz_wrong_option", quickQuiz.getPetInteractionItemId());
+        Assert.assertEquals("item_sync_prophecy", tacitQuiz.getPetPlayItemId());
+        Assert.assertEquals("item_sync_perspective", tacitQuiz.getPetInteractionItemId());
     }
 
     @Test
@@ -64,14 +58,14 @@ public class PetGameItemRulesTest {
     }
 
     @Test
-    public void normalizeAllowsTacitQuizInteractionItemsInBothCarrySlots() {
+    public void normalizeAllowsGameItemsInBothCarrySlotsWithoutTypeLimit() {
         GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(
-                Game.TACIT_QUIZ,
-                new GamePlayerPetItemsDTO("item_sync_prophecy", "item_sync_perspective")
+                Game.GOBANG,
+                new GamePlayerPetItemsDTO("item_gomoku_prediction", "item_gomoku_guard")
         );
 
-        Assert.assertEquals("item_sync_prophecy", normalized.getPetPlayItemId());
-        Assert.assertEquals("item_sync_perspective", normalized.getPetInteractionItemId());
+        Assert.assertEquals("item_gomoku_prediction", normalized.getPetPlayItemId());
+        Assert.assertEquals("item_gomoku_guard", normalized.getPetInteractionItemId());
     }
 
     @Test
@@ -87,15 +81,15 @@ public class PetGameItemRulesTest {
     }
 
     @Test
-    public void normalizeClearsPlayItemsInFormalModeButKeepsInteractionItems() {
+    public void normalizeKeepsCarryItemsInFormalModeWithoutTypeLimit() {
         GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(
-                Game.DOG_BATTLE,
+                Game.QUICK_QUIZ,
                 "正式模式",
-                new GamePlayerPetItemsDTO("item_battle_echo", "item_battle_direct_hit")
+                new GamePlayerPetItemsDTO("item_quiz_score_pad", "item_quiz_duel")
         );
 
-        Assert.assertNull(normalized.getPetPlayItemId());
-        Assert.assertNull(normalized.getPetInteractionItemId());
+        Assert.assertEquals("item_quiz_score_pad", normalized.getPetPlayItemId());
+        Assert.assertEquals("item_quiz_duel", normalized.getPetInteractionItemId());
     }
 
     @Test
@@ -107,7 +101,7 @@ public class PetGameItemRulesTest {
         );
         GamePlayerPetItemsDTO quickQuiz = PetGameItemRules.normalize(
                 Game.QUICK_QUIZ,
-                new GamePlayerPetItemsDTO("item_wild_common", null),
+                new GamePlayerPetItemsDTO(null, "item_wild_common"),
                 itemId -> "item_wild_common".equals(itemId)
         );
         GamePlayerPetItemsDTO gobang = PetGameItemRules.normalize(
@@ -118,8 +112,8 @@ public class PetGameItemRulesTest {
 
         Assert.assertNull(dogBattle.getPetPlayItemId());
         Assert.assertNull(dogBattle.getPetInteractionItemId());
-        Assert.assertEquals("item_quiz_score_pad", quickQuiz.getPetPlayItemId());
-        Assert.assertNull(quickQuiz.getPetInteractionItemId());
+        Assert.assertNull(quickQuiz.getPetPlayItemId());
+        Assert.assertEquals("item_quiz_score_pad", quickQuiz.getPetInteractionItemId());
         Assert.assertNull(gobang.getPetPlayItemId());
         Assert.assertNull(gobang.getPetInteractionItemId());
     }
@@ -136,10 +130,17 @@ public class PetGameItemRulesTest {
                 new GamePlayerPetItemsDTO("item_party_equalizer", "item_party_equalizer"),
                 itemId -> "item_party_equalizer".equals(itemId)
         );
+        GamePlayerPetItemsDTO quickQuiz = PetGameItemRules.normalize(
+                Game.QUICK_QUIZ,
+                new GamePlayerPetItemsDTO(null, "item_party_equalizer"),
+                itemId -> "item_party_equalizer".equals(itemId)
+        );
 
         Assert.assertNull(dogBattle.getPetPlayItemId());
         Assert.assertNull(dogBattle.getPetInteractionItemId());
         Assert.assertNull(gobang.getPetPlayItemId());
         Assert.assertNull(gobang.getPetInteractionItemId());
+        Assert.assertNull(quickQuiz.getPetPlayItemId());
+        Assert.assertEquals("item_quiz_score_pad", quickQuiz.getPetInteractionItemId());
     }
 }

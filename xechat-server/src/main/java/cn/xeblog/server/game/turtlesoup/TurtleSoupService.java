@@ -35,6 +35,7 @@ public final class TurtleSoupService {
     private static final int DEFAULT_GUESS_LIMIT = 3;
     private static final String ITEM_TURTLE_PROBE = "item_turtle_probe";
     private static final String SLOT_GAMEPLAY = "gameplay";
+    private static final String SLOT_INTERACTION = "interaction";
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
     private static MiniGameRewards miniGameRewards = MiniGameRewards.petService();
 
@@ -462,7 +463,7 @@ public final class TurtleSoupService {
 
     private static boolean hasProbeItem(GameRoom room, String playerKey) {
         GameRoom.Player player = room.getUsers().get(playerKey);
-        return player != null && ITEM_TURTLE_PROBE.equals(player.getPetPlayItemId());
+        return carriedItemSlot(player, ITEM_TURTLE_PROBE) != null;
     }
 
     private static String settlePendingProbe(GameRoom room, RoomState state, TurtleSoupDTO.GuessResult result) {
@@ -471,21 +472,43 @@ public final class TurtleSoupService {
         }
         state.pendingProbe = false;
         GameRoom.Player player = room.getUsers().get(state.guesserId);
-        if (player == null || !ITEM_TURTLE_PROBE.equals(player.getPetPlayItemId())) {
+        String slot = carriedItemSlot(player, ITEM_TURTLE_PROBE);
+        if (slot == null) {
             return null;
         }
 
         if (result == TurtleSoupDTO.GuessResult.CORRECT) {
-            PetGameItemDeclarationService.settleRefunded(room, player.getId(), ITEM_TURTLE_PROBE, SLOT_GAMEPLAY);
-            player.setPetPlayItemId(null);
+            PetGameItemDeclarationService.settleRefunded(room, player.getId(), ITEM_TURTLE_PROBE, slot);
+            clearCarriedItem(player, slot);
             return "试探骨命中正确汤底，道具已返还。";
         }
 
         state.guessUsed = Math.max(0, state.guessUsed - 1);
-        PetGameItemDeclarationService.settleConsumed(room, player.getId(), ITEM_TURTLE_PROBE, SLOT_GAMEPLAY);
-        player.setPetPlayItemId(null);
+        PetGameItemDeclarationService.settleConsumed(room, player.getId(), ITEM_TURTLE_PROBE, slot);
+        clearCarriedItem(player, slot);
         return "试探骨触发，本次猜底判定为" + guessResultText(result)
                 + "，不消耗正式猜底次数，道具已消耗。";
+    }
+
+    private static String carriedItemSlot(GameRoom.Player player, String itemId) {
+        if (player == null || itemId == null) {
+            return null;
+        }
+        if (itemId.equals(player.getPetPlayItemId())) {
+            return SLOT_GAMEPLAY;
+        }
+        if (itemId.equals(player.getPetInteractionItemId())) {
+            return SLOT_INTERACTION;
+        }
+        return null;
+    }
+
+    private static void clearCarriedItem(GameRoom.Player player, String slot) {
+        if (SLOT_GAMEPLAY.equals(slot)) {
+            player.setPetPlayItemId(null);
+        } else if (SLOT_INTERACTION.equals(slot)) {
+            player.setPetInteractionItemId(null);
+        }
     }
 
     private static String guessResultText(TurtleSoupDTO.GuessResult result) {

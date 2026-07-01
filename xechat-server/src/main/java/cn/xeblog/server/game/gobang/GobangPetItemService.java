@@ -221,18 +221,18 @@ public final class GobangPetItemService {
         if (carrier == null) {
             return;
         }
-        carrier.setPetInteractionItemId(null);
+        clearCarriedItem(carrier, prediction.slot);
         if (prediction.x == dto.getX() && prediction.y == dto.getY()) {
             int reward = PetGameItemDeclarationService.settleSucceededWithInteractionReward(
                     room,
                     prediction.carrierKey,
                     ITEM_PREDICTION,
-                    SLOT_INTERACTION,
+                    prediction.slot,
                     PREDICTION_REWARD_BONES);
             appendNotice(dto, successNotice(carrier, prediction, reward));
             return;
         }
-        PetGameItemDeclarationService.settleFailed(room, prediction.carrierKey, ITEM_PREDICTION, SLOT_INTERACTION);
+        PetGameItemDeclarationService.settleFailed(room, prediction.carrierKey, ITEM_PREDICTION, prediction.slot);
         appendNotice(dto, String.format(
                 "猜你落这儿未命中，%s 预测 (%d,%d)，实际落子 (%d,%d)，道具已消耗。",
                 playerName(carrier),
@@ -244,7 +244,8 @@ public final class GobangPetItemService {
 
     private static void armPredictionAfterMove(GameRoom room, String playerKey, GobangDTO dto, RoomState state) {
         GameRoom.Player player = room.getUsers().get(playerKey);
-        if (player == null || !ITEM_PREDICTION.equals(player.getPetInteractionItemId())) {
+        String slot = carriedItemSlot(player, ITEM_PREDICTION);
+        if (slot == null) {
             return;
         }
         if (hasPendingPredictionForCarrier(state, playerKey)) {
@@ -256,22 +257,23 @@ public final class GobangPetItemService {
         }
         Cell target = pickPredictionCell(state, dto.getX(), dto.getY());
         if (target == null) {
-            PetGameItemDeclarationService.settleRefunded(room, playerKey, ITEM_PREDICTION, SLOT_INTERACTION);
-            player.setPetInteractionItemId(null);
+            PetGameItemDeclarationService.settleRefunded(room, playerKey, ITEM_PREDICTION, slot);
+            clearCarriedItem(player, slot);
             return;
         }
-        state.pendingByTarget.put(targetKey, new PendingPrediction(playerKey, target.x, target.y));
+        state.pendingByTarget.put(targetKey, new PendingPrediction(playerKey, slot, target.x, target.y));
     }
 
     private static void settleProphecies(GameRoom room, String winnerPlayerKey, GobangDTO dto) {
         for (GameRoom.Player player : room.getUsers().values()) {
             String playerKey = player.getId();
-            if (!ITEM_PROPHECY.equals(player.getPetInteractionItemId())) {
+            String slot = carriedItemSlot(player, ITEM_PROPHECY);
+            if (slot == null) {
                 continue;
             }
             if (playerKey.equals(winnerPlayerKey)) {
                 int reward = PetGameItemDeclarationService.settleSucceededWithInteractionReward(
-                        room, playerKey, ITEM_PROPHECY, SLOT_INTERACTION, PROPHECY_REWARD_BONES);
+                        room, playerKey, ITEM_PROPHECY, slot, PROPHECY_REWARD_BONES);
                 if (reward > 0) {
                     appendNotice(dto, "胜负预言贴命中，" + playerName(player)
                             + " 成为唯一胜者，返还道具并获得 🦴" + reward + "。");
@@ -280,11 +282,11 @@ public final class GobangPetItemService {
                             + " 成为唯一胜者，返还道具；今日互动奖励额度已用完。");
                 }
             } else {
-                PetGameItemDeclarationService.settleFailed(room, playerKey, ITEM_PROPHECY, SLOT_INTERACTION);
+                PetGameItemDeclarationService.settleFailed(room, playerKey, ITEM_PROPHECY, slot);
                 appendNotice(dto, "胜负预言贴未命中，" + playerName(player)
                         + " 未成为唯一胜者，道具已消耗。");
             }
-            player.setPetInteractionItemId(null);
+            clearCarriedItem(player, slot);
         }
     }
 
@@ -321,7 +323,8 @@ public final class GobangPetItemService {
         Cell threat = null;
         for (GameRoom.Player player : room.getUsers().values()) {
             String playerKey = player.getId();
-            if (playerKey.equals(moverKey) || !ITEM_GUARD.equals(player.getPetPlayItemId())) {
+            String slot = carriedItemSlot(player, ITEM_GUARD);
+            if (playerKey.equals(moverKey) || slot == null) {
                 continue;
             }
             if (threat == null) {
@@ -330,8 +333,8 @@ public final class GobangPetItemService {
             if (threat == null) {
                 return;
             }
-            PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_GUARD, SLOT_GAMEPLAY);
-            player.setPetPlayItemId(null);
+            PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_GUARD, slot);
+            clearCarriedItem(player, slot);
             dto.setPetItemGuardX(threat.x);
             dto.setPetItemGuardY(threat.y);
             appendNotice(dto, String.format(
@@ -483,6 +486,27 @@ public final class GobangPetItemService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    private static String carriedItemSlot(GameRoom.Player player, String itemId) {
+        if (player == null || itemId == null) {
+            return null;
+        }
+        if (itemId.equals(player.getPetPlayItemId())) {
+            return SLOT_GAMEPLAY;
+        }
+        if (itemId.equals(player.getPetInteractionItemId())) {
+            return SLOT_INTERACTION;
+        }
+        return null;
+    }
+
+    private static void clearCarriedItem(GameRoom.Player player, String slot) {
+        if (SLOT_GAMEPLAY.equals(slot)) {
+            player.setPetPlayItemId(null);
+        } else if (SLOT_INTERACTION.equals(slot)) {
+            player.setPetInteractionItemId(null);
+        }
+    }
+
     private static final class RoomState {
         private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
         private final Map<String, PendingPrediction> pendingByTarget = new ConcurrentHashMap<>();
@@ -516,11 +540,13 @@ public final class GobangPetItemService {
 
     private static final class PendingPrediction {
         private final String carrierKey;
+        private final String slot;
         private final int x;
         private final int y;
 
-        private PendingPrediction(String carrierKey, int x, int y) {
+        private PendingPrediction(String carrierKey, String slot, int x, int y) {
             this.carrierKey = carrierKey;
+            this.slot = slot;
             this.x = x;
             this.y = y;
         }

@@ -121,7 +121,7 @@ public class GameRoomPetItemLifecycleTest {
     }
 
     @Test
-    public void drawGuessStartRoundConsumesGuesserPlayItem() {
+    public void drawGuessStartRoundConsumesGuesserCarryItemFromSecondSlot() {
         User drawer = user(2020L);
         User guesser = user(2021L);
         GameRoom room = room(Game.DRAW_GUESS, drawer, guesser);
@@ -129,7 +129,7 @@ public class GameRoomPetItemLifecycleTest {
         PetGameItemDeclarationService.applyDeclarationForUser(
                 guesser,
                 room,
-                new GamePlayerPetItemsDTO("item_draw_advance_hint", null));
+                new GamePlayerPetItemsDTO(null, "item_draw_advance_hint"));
 
         DrawGuessDTO body = new DrawGuessDTO();
         body.setRoomId(room.getId());
@@ -141,9 +141,9 @@ public class GameRoomPetItemLifecycleTest {
         new GameActionHandler().process(drawer, room, body);
 
         Assert.assertEquals(0, countItem(guesser.getAccountId(), "item_draw_advance_hint"));
-        Assert.assertNull(room.getUsers().get(guesser.getIdentityKey()).getPetPlayItemId());
+        Assert.assertNull(room.getUsers().get(guesser.getIdentityKey()).getPetInteractionItemId());
         Assert.assertEquals(1, countUsages(room.getId(), guesser.getAccountId(),
-                "item_draw_advance_hint", "gameplay", "consumed"));
+                "item_draw_advance_hint", "interaction", "consumed"));
     }
 
     @Test
@@ -544,7 +544,7 @@ public class GameRoomPetItemLifecycleTest {
         PetGameItemDeclarationService.applyDeclarationForUser(
                 alice,
                 room,
-                new GamePlayerPetItemsDTO("item_quiz_wrong_option", null));
+                new GamePlayerPetItemsDTO(null, "item_quiz_wrong_option"));
 
         QuickQuizQuestionDTO question = QuickQuizService.nextQuestion(alice, room);
 
@@ -552,9 +552,9 @@ public class GameRoomPetItemLifecycleTest {
         Assert.assertNotEquals(question.getCorrectAnswerIndex(), question.getPetItemDisabledOptionIndex().intValue());
         Assert.assertEquals("错项嗅探触发，已为你排除一个错误选项。", question.getPetItemNotice());
         Assert.assertEquals(0, countItem(alice.getAccountId(), "item_quiz_wrong_option"));
-        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetPlayItemId());
+        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
-                "item_quiz_wrong_option", "gameplay", "consumed"));
+                "item_quiz_wrong_option", "interaction", "consumed"));
     }
 
     @Test
@@ -770,23 +770,24 @@ public class GameRoomPetItemLifecycleTest {
         PetGameItemDeclarationService.applyDeclarationForUser(
                 alice,
                 room,
-                new GamePlayerPetItemsDTO("item_gomoku_guard", null));
+                new GamePlayerPetItemsDTO(null, "item_gomoku_guard"));
 
-        new GameActionHandler().process(bob, room, gobangMove(0, 0, 2));
-        new GameActionHandler().process(alice, room, gobangMove(0, 2, 1));
-        new GameActionHandler().process(bob, room, gobangMove(1, 0, 2));
-        new GameActionHandler().process(alice, room, gobangMove(1, 2, 1));
-        new GameActionHandler().process(bob, room, gobangMove(2, 0, 2));
-        new GameActionHandler().process(alice, room, gobangMove(2, 2, 1));
-        GobangDTO threatMove = gobangMove(3, 0, 2);
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 1));
+        new GameActionHandler().process(bob, room, gobangMove(0, 0, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(1, 0, 1));
+        new GameActionHandler().process(alice, room, gobangMove(1, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(2, 0, 1));
+        new GameActionHandler().process(alice, room, gobangMove(2, 2, 2));
+        GobangDTO threatMove = gobangMove(3, 0, 1);
         new GameActionHandler().process(bob, room, threatMove);
 
         Assert.assertEquals(Integer.valueOf(4), threatMove.getPetItemGuardX());
         Assert.assertEquals(Integer.valueOf(0), threatMove.getPetItemGuardY());
         Assert.assertEquals(0, countItem(alice.getAccountId(), "item_gomoku_guard"));
-        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetPlayItemId());
+        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
-                "item_gomoku_guard", "gameplay", "consumed"));
+                "item_gomoku_guard", "interaction", "consumed"));
         Assert.assertEquals("守门骨触发，已为 玩家2160 高亮对手下一手五连胜点 (4,0)，道具已消耗。",
                 threatMove.getPetItemNotice());
     }
@@ -802,7 +803,7 @@ public class GameRoomPetItemLifecycleTest {
         PetGameItemDeclarationService.applyDeclarationForUser(
                 guesser,
                 room,
-                new GamePlayerPetItemsDTO("item_turtle_probe", null));
+                new GamePlayerPetItemsDTO(null, "item_turtle_probe"));
 
         TurtleSoupService.nextStory(host, room);
         new GameActionHandler().process(host, room, turtleSoupEvent(TurtleSoupDTO.Event.CONFIRM_STORY));
@@ -814,9 +815,9 @@ public class GameRoomPetItemLifecycleTest {
         new GameActionHandler().process(host, room, judge);
 
         Assert.assertEquals(0, countItem(guesser.getAccountId(), "item_turtle_probe"));
-        Assert.assertNull(room.getUsers().get(guesser.getIdentityKey()).getPetPlayItemId());
+        Assert.assertNull(room.getUsers().get(guesser.getIdentityKey()).getPetInteractionItemId());
         Assert.assertEquals(1, countUsages(room.getId(), guesser.getAccountId(),
-                "item_turtle_probe", "gameplay", "consumed"));
+                "item_turtle_probe", "interaction", "consumed"));
         Assert.assertEquals(0, countTurtleSoupRecords(room.getId()));
         Assert.assertEquals("试探骨触发，本次猜底判定为错误，不消耗正式猜底次数，道具已消耗。",
                 judge.getPetItemNotice());

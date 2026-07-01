@@ -50,7 +50,8 @@ public final class PetGameItemDeclarationService {
         }
 
         boolean partyEqualizerRequested = petItems != null
-                && PetGameItemRules.isPartyEqualizerItem(petItems.getPetPlayItemId());
+                && (PetGameItemRules.isPartyEqualizerItem(petItems.getPetPlayItemId())
+                || PetGameItemRules.isPartyEqualizerItem(petItems.getPetInteractionItemId()));
         int carrySlotLimit = PetProfileService.itemCarrySlotLimit(player.getAccountId());
         GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(room.getGame(), room.getGameMode(), petItems,
                 itemId -> PetProfileService.hasPositiveItem(player.getAccountId(), itemId), carrySlotLimit);
@@ -62,12 +63,14 @@ public final class PetGameItemDeclarationService {
                     SLOT_GAMEPLAY);
             String interactionItemId = updateReservedSlot(room, player, player.getPetInteractionItemId(),
                     normalized.getPetInteractionItemId(),
-                    normalized.getPetInteractionItemId(),
+                    reservationSourceItemId(petItems == null ? null : petItems.getPetInteractionItemId(),
+                            normalized.getPetInteractionItemId()),
                     SLOT_INTERACTION);
             GamePlayerPetItemsDTO applied = new GamePlayerPetItemsDTO(playItemId, interactionItemId);
             room.applyPetItems(user, applied);
-            if (partyEqualizerRequested && playItemId != null) {
-                applyTemporaryPlayItemForOtherPlayers(room, user.getIdentityKey(), playItemId);
+            String partyEqualizerItemId = playItemId != null ? playItemId : interactionItemId;
+            if (partyEqualizerRequested && partyEqualizerItemId != null) {
+                applyTemporaryPlayItemForOtherPlayers(room, user.getIdentityKey(), partyEqualizerItemId);
             }
             return applied;
         }
