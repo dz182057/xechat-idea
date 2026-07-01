@@ -35,6 +35,17 @@
         WHERE pet_items.count + excluded.count &lt;= #{maxCount}
     </insert>
 
+    <insert id="addItem">
+        INSERT INTO pet_items (
+            account_id, item_id, count, updated_at
+        ) VALUES (
+            #{accountId}, #{itemId}, #{quantity}, #{updatedAt}
+        )
+        ON CONFLICT(account_id, item_id) DO UPDATE
+        SET count = count + excluded.count,
+            updated_at = excluded.updated_at
+    </insert>
+
     <update id="decrementItemIfEnough">
         UPDATE pet_items
         SET count = count - #{quantity},

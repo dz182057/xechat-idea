@@ -262,6 +262,11 @@ public enum Action {
     ADMIN_REASSIGN_PET_DAILY_SAYING,
 
     /**
+     * 管理员:手动发放狗狗之家资源
+     */
+    ADMIN_GRANT_PET_RESOURCE,
+
+    /**
      * 游客登录(无账号体系,仅大厅聊天,禁止私聊)
      */
     GUEST_LOGIN,

@@ -136,12 +136,26 @@
         WHERE account_id = #{accountId}
     </update>
 
+    <update id="addMakeupCards">
+        UPDATE pet_assets
+        SET makeup_cards = makeup_cards + #{amount},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+    </update>
+
     <update id="addMakeupCardsIfUnderLimit">
         UPDATE pet_assets
         SET makeup_cards = makeup_cards + #{amount},
             updated_at = #{updatedAt}
         WHERE account_id = #{accountId}
           AND makeup_cards + #{amount} &lt;= #{maxMakeupCards}
+    </update>
+
+    <update id="addEnergy">
+        UPDATE pet_assets
+        SET energy = energy + #{amount},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
     </update>
 
     <select id="findByAccountId" resultType="cn.xeblog.server.pet.PetAssetsRecord">

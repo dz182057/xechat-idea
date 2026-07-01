@@ -152,6 +152,10 @@ public enum MessageType {
      */
     PET_DAILY_SAYING_ASSIGNMENT_LIST,
     /**
+     * 管理员手动发放狗狗之家资源响应
+     */
+    ADMIN_PET_RESOURCE_GRANTED,
+    /**
      * 对端身份公钥(GET_PEER_KEY 响应)
      */
     PEER_KEY,

@@ -20,6 +20,11 @@ public interface PetItemMapper {
                             @Param("maxCount") int maxCount,
                             @Param("updatedAt") long updatedAt);
 
+    int addItem(@Param("accountId") long accountId,
+                @Param("itemId") String itemId,
+                @Param("quantity") int quantity,
+                @Param("updatedAt") long updatedAt);
+
     int decrementItemIfEnough(@Param("accountId") long accountId,
                               @Param("itemId") String itemId,
                               @Param("quantity") int quantity,

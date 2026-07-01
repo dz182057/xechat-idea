@@ -43,6 +43,18 @@
             updated_at = #{updatedAt}
     </insert>
 
+    <insert id="addCollectionQuantity">
+        INSERT INTO pet_collections (
+            account_id, item_id, count, discovered, updated_at
+        ) VALUES (
+            #{accountId}, #{itemId}, #{quantity}, 1, #{updatedAt}
+        )
+        ON CONFLICT(account_id, item_id) DO UPDATE
+        SET count = count + excluded.count,
+            discovered = 1,
+            updated_at = excluded.updated_at
+    </insert>
+
     <update id="decrementCollectionIfEnough">
         UPDATE pet_collections
         SET count = count - #{quantity},

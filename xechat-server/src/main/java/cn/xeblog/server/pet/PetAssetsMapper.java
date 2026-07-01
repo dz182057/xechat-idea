@@ -59,9 +59,13 @@ public interface PetAssetsMapper {
 
     int addFood(@Param("accountId") long accountId, @Param("amount") int amount, @Param("updatedAt") long updatedAt);
 
+    int addMakeupCards(@Param("accountId") long accountId, @Param("amount") int amount, @Param("updatedAt") long updatedAt);
+
     int addMakeupCardsIfUnderLimit(@Param("accountId") long accountId,
                                    @Param("amount") int amount,
                                    @Param("maxMakeupCards") int maxMakeupCards,
                                    @Param("updatedAt") long updatedAt);
+
+    int addEnergy(@Param("accountId") long accountId, @Param("amount") int amount, @Param("updatedAt") long updatedAt);
 
 }
