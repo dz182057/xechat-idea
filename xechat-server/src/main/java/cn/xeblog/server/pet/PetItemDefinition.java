@@ -11,7 +11,8 @@ public final class PetItemDefinition {
     public enum Rarity {
         COMMON,
         RARE,
-        EPIC
+        EPIC,
+        LEGENDARY
     }
 
     public enum Slot {

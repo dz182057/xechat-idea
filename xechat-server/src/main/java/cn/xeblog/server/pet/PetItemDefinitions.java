@@ -18,6 +18,7 @@ public final class PetItemDefinitions {
     private static final int COMMON_SELL_PRICE = 20;
     private static final int RARE_SELL_PRICE = 80;
     private static final int EPIC_SELL_PRICE = 200;
+    private static final int LEGENDARY_SELL_PRICE = 500;
     private static final String ITEM_WILD_COMMON = "item_wild_common";
     private static final String ITEM_PARTY_EQUALIZER = "item_party_equalizer";
     private static final Set<String> TEMPORARILY_DISABLED_ITEM_IDS = Collections.unmodifiableSet(
@@ -174,6 +175,7 @@ public final class PetItemDefinitions {
         utility(items, "item_gift_pack", Rarity.EPIC, ReleaseStage.EXPANSION);
         utility(items, "item_express", Rarity.EPIC);
         utility(items, "item_lucky_day", Rarity.EPIC);
+        play(items, "item_gomoku_oracle", Rarity.LEGENDARY, false, Game.GOBANG);
         return Collections.unmodifiableList(items);
     }
 
@@ -215,6 +217,9 @@ public final class PetItemDefinitions {
         }
         if (rarity == Rarity.EPIC) {
             return EPIC_SELL_PRICE;
+        }
+        if (rarity == Rarity.LEGENDARY) {
+            return LEGENDARY_SELL_PRICE;
         }
         return COMMON_SELL_PRICE;
     }

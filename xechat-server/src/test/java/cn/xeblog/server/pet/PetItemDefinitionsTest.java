@@ -51,6 +51,7 @@ public class PetItemDefinitionsTest {
         Assert.assertEquals(Integer.valueOf(80), PetItemDefinitions.sellItemPrices().get("item_turtle_probe"));
         Assert.assertEquals(Integer.valueOf(80), PetItemDefinitions.sellItemPrices().get("item_race_knee"));
         Assert.assertEquals(Integer.valueOf(200), PetItemDefinitions.sellItemPrices().get("item_lucky_day"));
+        Assert.assertEquals(Integer.valueOf(500), PetItemDefinitions.sellItemPrices().get("item_gomoku_oracle"));
 
         Assert.assertEquals(ReleaseStage.EXPANSION,
                 PetItemDefinitions.byId("item_race_knee").getReleaseStage());
@@ -135,5 +136,7 @@ public class PetItemDefinitionsTest {
 
         Assert.assertFalse(PetItemDefinitions.byId("item_draw_advance_hint").isFormalModeAllowed());
         Assert.assertTrue(PetItemDefinitions.byId("item_prophecy").isFormalModeAllowed());
+        Assert.assertTrue(PetItemDefinitions.isPlayItem(Game.GOBANG, "item_gomoku_oracle"));
+        Assert.assertFalse(PetItemDefinitions.luckyBagAllItemIds().contains("item_gomoku_oracle"));
     }
 }
