@@ -21,6 +21,8 @@ public class PetShopStatusDTO implements Serializable {
 
     private List<String> normalItemIds;
 
+    private String dailySkinItemId;
+
     private long currentPeriodStartAt;
 
     private long nextFreeRefreshAt;

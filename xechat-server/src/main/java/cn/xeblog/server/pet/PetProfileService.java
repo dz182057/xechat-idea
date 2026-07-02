@@ -105,6 +105,7 @@ public final class PetProfileService {
     private static final int SHOP_MAKEUP_CARD_PRICE = 150;
     private static final int SHOP_NORMAL_ITEM_PRICE = 80;
     private static final int SHOP_DAILY_RARE_ITEM_PRICE = 320;
+    private static final int SHOP_DAILY_SKIN_ITEM_PRICE = 1680;
     private static final int SHOP_LUCKY_BAG_PRICE = 250;
     private static final long SHOP_SHELF_REFRESH_INTERVAL_MILLIS = 6L * 60L * 60L * 1000L;
     private static final int SHOP_SHELF_NORMAL_ITEM_COUNT = 3;
@@ -117,6 +118,7 @@ public final class PetProfileService {
     private static final int MONTHLY_MAKEUP_CARD_BUY_LIMIT = 2;
     private static final int DAILY_NORMAL_ITEM_BUY_LIMIT = 3;
     private static final int DAILY_RARE_ITEM_BUY_LIMIT = 1;
+    private static final int DAILY_SKIN_ITEM_BUY_LIMIT = 1;
     private static final int DAILY_LUCKY_BAG_BUY_LIMIT = 2;
     private static final int SEVENTH_DAY_CHECKIN_BONES = 100;
     private static final int SEVENTH_DAY_CHECKIN_NORMAL_ITEM_COUNT = 1;
@@ -158,6 +160,7 @@ public final class PetProfileService {
     private static final String ITEM_LEDGER_SOURCE_OPEN_EXPLORE_CHEST = "open_explore_chest";
     private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_NORMAL = "shop_buy_normal";
     private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_DAILY_RARE = "shop_buy_daily_rare";
+    private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_DAILY_SKIN = "shop_buy_daily_skin";
     private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_LUCKY_BAG = "shop_buy_lucky_bag";
     private static final String ITEM_LEDGER_SOURCE_EXPLORE_REWARD = "explore_reward";
     private static final String ITEM_LEDGER_SOURCE_LEGACY_CHEST_MIGRATION = "legacy_chest_migration";
@@ -235,6 +238,7 @@ public final class PetProfileService {
     private static final String DAILY_COUNTER_USE_ITEM_LUCKY_DAY = "use_item_lucky_day";
     private static final String DAILY_COUNTER_SHOP_NORMAL_ITEM_BUY = "shop_normal_item_buy";
     private static final String DAILY_COUNTER_SHOP_DAILY_RARE_ITEM_BUY = "shop_daily_rare_item_buy";
+    private static final String DAILY_COUNTER_SHOP_DAILY_SKIN_ITEM_BUY = "shop_daily_skin_item_buy";
     private static final String DAILY_COUNTER_SHOP_LUCKY_BAG_BUY = "shop_lucky_bag_buy";
     private static final String COUNTER_SHOP_SHELF_PAID_REFRESH = "shop_shelf_paid_refresh";
     private static final String DAILY_COUNTER_EXPLORE_START = "explore_start";
@@ -250,6 +254,7 @@ public final class PetProfileService {
     private static final List<String> LUCKY_BAG_NORMAL_ITEM_IDS = PetItemDefinitions.luckyBagNormalItemIds();
     private static final List<String> LUCKY_BAG_RARE_ITEM_IDS = PetItemDefinitions.luckyBagRareItemIds();
     private static final List<String> LUCKY_BAG_EPIC_ITEM_IDS = PetItemDefinitions.luckyBagEpicItemIds();
+    private static final List<String> DAILY_SKIN_SHOP_ITEM_IDS = PetItemDefinitions.dailySkinShopItemIds();
     private static final List<String> BACK_HILL_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "item_mine_mark",
             "item_mine_safe_ping"
@@ -585,12 +590,25 @@ public final class PetProfileService {
         return new PetShopStatusDTO(
                 rareItems.get(0),
                 new ArrayList<>(normalItems.subList(0, Math.min(SHOP_SHELF_NORMAL_ITEM_COUNT, normalItems.size()))),
+                dailySkinShopItemId(accountId, now),
                 periodStartAt,
                 periodStartAt + SHOP_SHELF_REFRESH_INTERVAL_MILLIS,
                 normalizedRefreshes,
                 SHOP_SHELF_MAX_PAID_REFRESHES,
                 new ArrayList<>(SHOP_SHELF_PAID_REFRESH_COSTS),
                 nextPaidRefreshCost);
+    }
+
+    private static String dailySkinShopItemId(long accountId, long now) {
+        if (DAILY_SKIN_SHOP_ITEM_IDS.isEmpty()) {
+            return null;
+        }
+        ZoneId zone = ZoneId.systemDefault();
+        long epochDay = Instant.ofEpochMilli(now).atZone(zone).toLocalDate().toEpochDay();
+        long seed = accountId * 2_654_435_761L + epochDay * 1_000_003L;
+        List<String> skinItems = new ArrayList<>(DAILY_SKIN_SHOP_ITEM_IDS);
+        Collections.shuffle(skinItems, new Random(seed ^ 0x6C8E9CF570932BD5L));
+        return skinItems.get(0);
     }
 
     private static long currentShopShelfPeriodStartAt(long now) {
@@ -1868,6 +1886,9 @@ public final class PetProfileService {
         if (LUCKY_BAG_RARE_ITEM_IDS.contains(itemId)) {
             return buyDailyRareItem(accountId, itemId, quantity);
         }
+        if (DAILY_SKIN_SHOP_ITEM_IDS.contains(itemId)) {
+            return buyDailySkinItem(accountId, itemId, quantity);
+        }
         throw new IllegalArgumentException("暂不支持该商店商品");
     }
 
@@ -2106,6 +2127,51 @@ public final class PetProfileService {
             }
             recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, quantity,
                     ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_SHOP_BUY_DAILY_RARE, todayText, null, now);
+            session.commit();
+        }
+
+        return profile(accountId);
+    }
+
+    private static PetProfileDTO buyDailySkinItem(long accountId, String itemId, int quantity) {
+        LocalDate today = LocalDate.now();
+        if (quantity > DAILY_SKIN_ITEM_BUY_LIMIT) {
+            throw new IllegalArgumentException("今日皮肤购买次数已达上限");
+        }
+
+        long now = System.currentTimeMillis();
+        String todayText = today.toString();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
+            PetAssetsRecord assets = ensureAssets(session, accountId);
+            PetShopStatusDTO shopStatus = buildShopStatus(counterMapper, accountId, now);
+            if (!itemId.equals(shopStatus.getDailySkinItemId())) {
+                throw new IllegalArgumentException("今日未出售该皮肤");
+            }
+            PetItemRecord item = itemMapper.findByAccountIdAndItemId(accountId, itemId);
+            int currentCount = item == null ? 0 : item.getCount();
+            if ((long) currentCount + quantity > 1) {
+                throw new IllegalArgumentException("该皮肤已拥有");
+            }
+
+            int price = SHOP_DAILY_SKIN_ITEM_PRICE * quantity;
+            if (assets.getBones() < price) {
+                throw new IllegalArgumentException("骨头币不足");
+            }
+            if (counterMapper.incrementByIfUnderLimit(accountId, todayText, DAILY_COUNTER_SHOP_DAILY_SKIN_ITEM_BUY,
+                    quantity, DAILY_SKIN_ITEM_BUY_LIMIT, now) <= 0) {
+                throw new IllegalArgumentException("今日皮肤购买次数已达上限");
+            }
+            if (assetsMapper.decrementBonesIfEnough(accountId, price, now) <= 0) {
+                throw new IllegalArgumentException("骨头币不足");
+            }
+            if (itemMapper.addItemIfUnderLimit(accountId, itemId, quantity, 1, now) <= 0) {
+                throw new IllegalArgumentException("该皮肤已拥有");
+            }
+            recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, quantity,
+                    ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_SHOP_BUY_DAILY_SKIN, todayText, null, now);
             session.commit();
         }
 

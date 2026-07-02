@@ -46,15 +46,26 @@ public class PetItemDefinitionsTest {
         Assert.assertTrue(PetItemDefinitions.luckyBagRareItemIds().contains("item_turtle_probe"));
         Assert.assertFalse(PetItemDefinitions.luckyBagRareItemIds().contains("item_race_knee"));
         Assert.assertTrue(PetItemDefinitions.luckyBagEpicItemIds().contains("item_lucky_day"));
+        Assert.assertEquals(Arrays.asList(
+                "item_minesweeper_skin_ink_wash",
+                "item_minesweeper_skin_toy",
+                "item_gomoku_skin_magic",
+                "item_gomoku_skin_fairy",
+                "item_gomoku_skin_ink",
+                "item_gomoku_skin_toy"
+        ), PetItemDefinitions.dailySkinShopItemIds());
 
         Assert.assertEquals(Integer.valueOf(20), PetItemDefinitions.sellItemPrices().get("item_draw_advance_hint"));
         Assert.assertEquals(Integer.valueOf(80), PetItemDefinitions.sellItemPrices().get("item_turtle_probe"));
         Assert.assertEquals(Integer.valueOf(80), PetItemDefinitions.sellItemPrices().get("item_race_knee"));
         Assert.assertEquals(Integer.valueOf(200), PetItemDefinitions.sellItemPrices().get("item_lucky_day"));
         Assert.assertEquals(Integer.valueOf(500), PetItemDefinitions.sellItemPrices().get("item_gomoku_oracle"));
+        Assert.assertEquals(Integer.valueOf(500), PetItemDefinitions.sellItemPrices().get("item_gomoku_skin_magic"));
 
         Assert.assertEquals(ReleaseStage.EXPANSION,
                 PetItemDefinitions.byId("item_race_knee").getReleaseStage());
+        Assert.assertEquals(PetItemDefinition.Slot.UTILITY,
+                PetItemDefinitions.byId("item_minesweeper_skin_toy").getSlot());
 
         Assert.assertEquals(Integer.valueOf(40),
                 PetItemDefinitions.byId("item_battle_direct_hit").getInteractionRewardBones());
@@ -138,5 +149,7 @@ public class PetItemDefinitionsTest {
         Assert.assertTrue(PetItemDefinitions.byId("item_prophecy").isFormalModeAllowed());
         Assert.assertTrue(PetItemDefinitions.isPlayItem(Game.GOBANG, "item_gomoku_oracle"));
         Assert.assertFalse(PetItemDefinitions.luckyBagAllItemIds().contains("item_gomoku_oracle"));
+        Assert.assertFalse(PetItemDefinitions.luckyBagAllItemIds().contains("item_gomoku_skin_magic"));
+        Assert.assertFalse(PetItemDefinitions.isCarryItem(Game.GOBANG, "item_gomoku_skin_magic"));
     }
 }

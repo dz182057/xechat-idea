@@ -38,6 +38,14 @@ public final class PetItemDefinitions {
     private static final List<String> LUCKY_BAG_RARE_ITEM_IDS = itemIdsByRarity(Rarity.RARE);
     private static final List<String> LUCKY_BAG_EPIC_ITEM_IDS = itemIdsByRarity(Rarity.EPIC);
     private static final List<String> LUCKY_BAG_ITEM_IDS = luckyBagItemIds();
+    private static final List<String> DAILY_SKIN_SHOP_ITEM_IDS = Collections.unmodifiableList(List.of(
+            "item_minesweeper_skin_ink_wash",
+            "item_minesweeper_skin_toy",
+            "item_gomoku_skin_magic",
+            "item_gomoku_skin_fairy",
+            "item_gomoku_skin_ink",
+            "item_gomoku_skin_toy"
+    ));
     private static final Set<String> SHOP_NORMAL_ITEM_IDS = Collections.unmodifiableSet(
             new LinkedHashSet<>(LUCKY_BAG_NORMAL_ITEM_IDS));
     private static final Map<String, Integer> SELL_ITEM_PRICES = sellPrices();
@@ -68,6 +76,10 @@ public final class PetItemDefinitions {
 
     public static Set<String> shopNormalItemIds() {
         return SHOP_NORMAL_ITEM_IDS;
+    }
+
+    public static List<String> dailySkinShopItemIds() {
+        return DAILY_SKIN_SHOP_ITEM_IDS;
     }
 
     public static Map<String, Integer> sellItemPrices() {
@@ -153,6 +165,12 @@ public final class PetItemDefinitions {
         interaction(items, "item_mine_share_marks", Rarity.COMMON, ReleaseStage.EXPANSION, null, Game.MINESWEEPER);
         interaction(items, "item_gomoku_review", Rarity.COMMON, ReleaseStage.EXPANSION, null, Game.GOBANG);
         interaction(items, "item_turtle_menu", Rarity.COMMON, ReleaseStage.EXPANSION, null, Game.TURTLE_SOUP);
+        utility(items, "item_minesweeper_skin_ink_wash", Rarity.LEGENDARY, Game.MINESWEEPER);
+        utility(items, "item_minesweeper_skin_toy", Rarity.LEGENDARY, Game.MINESWEEPER);
+        utility(items, "item_gomoku_skin_magic", Rarity.LEGENDARY, Game.GOBANG);
+        utility(items, "item_gomoku_skin_fairy", Rarity.LEGENDARY, Game.GOBANG);
+        utility(items, "item_gomoku_skin_ink", Rarity.LEGENDARY, Game.GOBANG);
+        utility(items, "item_gomoku_skin_toy", Rarity.LEGENDARY, Game.GOBANG);
 
         play(items, "item_mine_shield", Rarity.RARE, false, Game.MINESWEEPER);
         play(items, "item_mine_detector", Rarity.RARE, false, Game.MINESWEEPER);

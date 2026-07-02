@@ -1477,6 +1477,43 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void shopBuyDailySkinItemSucceedsForTodayOffer() {
+        User user = user();
+        setAssets(user.getAccountId(), 2000, 1);
+        String itemId = currentShopDailySkinItemId(user);
+
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 1, 90019L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertTrue(body.isSuccess());
+        Assert.assertEquals(PetAction.SHOP_BUY, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(90019L), body.getRequestId());
+        PetProfileDTO profile = (PetProfileDTO) body.getContent();
+        Assert.assertEquals(320, profile.getAssets().getBones());
+        Assert.assertEquals(1, countItem(user.getAccountId(), itemId));
+        Assert.assertEquals(1, countDailyCounter(user.getAccountId(), "shop_daily_skin_item_buy"));
+    }
+
+    @Test
+    public void shopBuyDailySkinItemRejectsDuplicateWithoutSideEffects() {
+        User user = user();
+        setAssets(user.getAccountId(), 4000, 1);
+        String itemId = currentShopDailySkinItemId(user);
+        insertPetItem(user.getAccountId(), itemId, 1);
+
+        new PetActionHandler().process(user, shopBuyRequest(itemId, 1, 90020L));
+
+        PetResponseDTO body = readPetBody(user);
+        Assert.assertFalse(body.isSuccess());
+        Assert.assertEquals(PetAction.SHOP_BUY, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(90020L), body.getRequestId());
+        Assert.assertEquals("该皮肤已拥有", body.getError());
+        Assert.assertEquals(1, countItem(user.getAccountId(), itemId));
+        Assert.assertEquals(0, countDailyCounter(user.getAccountId(), "shop_daily_skin_item_buy"));
+        Assert.assertEquals(4000, requestProfile(user).getAssets().getBones());
+    }
+
+    @Test
     public void shopBuyRejectsUnsupportedItemWithoutSideEffects() {
         User user = user();
         setAssets(user.getAccountId(), 300, 1);
@@ -4655,6 +4692,10 @@ public class PetActionHandlerTest {
 
     private static String currentShopRareItemId(User user) {
         return requestProfile(user).getShopStatus().getRareItemId();
+    }
+
+    private static String currentShopDailySkinItemId(User user) {
+        return requestProfile(user).getShopStatus().getDailySkinItemId();
     }
 
     private static String normalItemNotOnShelf(User user) {
