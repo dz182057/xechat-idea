@@ -494,7 +494,7 @@ public final class GobangPetItemService {
         List<Cell> winningCells = findWinningCells(board, type);
         int liveThreeCount = countLiveThreeLines(board, type);
         List<Cell> criticalCells = findGuardCriticalCells(board, type);
-        if (winningCells.size() == 1 && (liveThreeCount > 0 || hasSecondaryRushFourMove(board, type, winningCells.get(0)))) {
+        if (winningCells.size() == 1 && (liveThreeCount > 0 || hasSecondaryForcingMove(board, type, winningCells.get(0)))) {
             return new GuardThreat(winningCells.get(0));
         }
         if (!winningCells.isEmpty()) {
@@ -566,12 +566,13 @@ public final class GobangPetItemService {
                     continue;
                 }
                 board[y][x] = type;
+                int liveFourDirections = countLiveFourDirections(board, x, y, type);
                 int rushFourDirections = countRushFourDirections(board, x, y, type);
                 int openThreeDirections = countOpenThreeDirections(board, x, y, type);
                 boolean createsThreat = !isWinningMove(board, x, y, type)
-                        && (rushFourDirections > 1
-                        || openThreeDirections > 1
-                        || (rushFourDirections > 0 && openThreeDirections > 0));
+                        && ((liveFourDirections > 0
+                        && liveFourDirections + rushFourDirections + openThreeDirections > 1)
+                        || createsMultiThreat(rushFourDirections, openThreeDirections));
                 board[y][x] = 0;
                 if (createsThreat) {
                     cells.add(new Cell(x, y));
@@ -586,7 +587,7 @@ public final class GobangPetItemService {
         return cells.isEmpty() ? null : cells.get(0);
     }
 
-    private static boolean hasSecondaryRushFourMove(int[][] board, int type, Cell winningCell) {
+    private static boolean hasSecondaryForcingMove(int[][] board, int type, Cell winningCell) {
         Set<String> winningLineKeys = winningLineKeys(board, type, winningCell);
         for (int y = 0; y < BOARD_SIZE; y++) {
             for (int x = 0; x < BOARD_SIZE; x++) {
@@ -594,18 +595,18 @@ public final class GobangPetItemService {
                     continue;
                 }
                 board[y][x] = type;
-                boolean secondaryRush = false;
+                boolean secondaryThreat = false;
                 if (!isWinningMove(board, x, y, type)) {
                     for (int i = 0; i < DIRECTIONS.length; i++) {
-                        if (hasRushFour(lineThrough(board, x, y, type, DIRECTIONS[i][0], DIRECTIONS[i][1]))
-                                && !winningLineKeys.contains(lineKey(i, x, y))) {
-                            secondaryRush = true;
+                        String line = lineThrough(board, x, y, type, DIRECTIONS[i][0], DIRECTIONS[i][1]);
+                        if (!hasLiveFour(line) && hasRushFour(line) && !winningLineKeys.contains(lineKey(i, x, y))) {
+                            secondaryThreat = true;
                             break;
                         }
                     }
                 }
                 board[y][x] = 0;
-                if (secondaryRush) {
+                if (secondaryThreat) {
                     return true;
                 }
             }
@@ -722,6 +723,10 @@ public final class GobangPetItemService {
     private static boolean createsMultiThreat(int[][] board, int x, int y, int type) {
         int rushFourDirections = countRushFourDirections(board, x, y, type);
         int openThreeDirections = countOpenThreeDirections(board, x, y, type);
+        return createsMultiThreat(rushFourDirections, openThreeDirections);
+    }
+
+    private static boolean createsMultiThreat(int rushFourDirections, int openThreeDirections) {
         return rushFourDirections > 1
                 || openThreeDirections > 1
                 || (rushFourDirections > 0 && openThreeDirections > 0);
@@ -734,25 +739,26 @@ public final class GobangPetItemService {
     }
 
     private static boolean hasLiveFour(int[][] board, int x, int y, int type) {
-        return hasCenteredPattern(lineThrough(board, x, y, type, 1, 0), "_OOOO_")
-                || hasCenteredPattern(lineThrough(board, x, y, type, 0, 1), "_OOOO_")
-                || hasCenteredPattern(lineThrough(board, x, y, type, 1, 1), "_OOOO_")
-                || hasCenteredPattern(lineThrough(board, x, y, type, 1, -1), "_OOOO_");
+        return countLiveFourDirections(board, x, y, type) > 0;
+    }
+
+    private static int countLiveFourDirections(int[][] board, int x, int y, int type) {
+        int count = 0;
+        for (int[] direction : DIRECTIONS) {
+            if (hasLiveFour(lineThrough(board, x, y, type, direction[0], direction[1]))) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static int countOpenThreeDirections(int[][] board, int x, int y, int type) {
         int count = 0;
-        if (hasOpenThree(lineThrough(board, x, y, type, 1, 0))) {
-            count++;
-        }
-        if (hasOpenThree(lineThrough(board, x, y, type, 0, 1))) {
-            count++;
-        }
-        if (hasOpenThree(lineThrough(board, x, y, type, 1, 1))) {
-            count++;
-        }
-        if (hasOpenThree(lineThrough(board, x, y, type, 1, -1))) {
-            count++;
+        for (int[] direction : DIRECTIONS) {
+            String line = lineThrough(board, x, y, type, direction[0], direction[1]);
+            if (!hasLiveFour(line) && !hasRushFour(line) && hasOpenThree(line)) {
+                count++;
+            }
         }
         return count;
     }
@@ -760,7 +766,8 @@ public final class GobangPetItemService {
     private static int countRushFourDirections(int[][] board, int x, int y, int type) {
         int count = 0;
         for (int[] direction : DIRECTIONS) {
-            if (hasRushFour(lineThrough(board, x, y, type, direction[0], direction[1]))) {
+            String line = lineThrough(board, x, y, type, direction[0], direction[1]);
+            if (!hasLiveFour(line) && hasRushFour(line)) {
                 count++;
             }
         }
@@ -774,6 +781,10 @@ public final class GobangPetItemService {
             }
         }
         return false;
+    }
+
+    private static boolean hasLiveFour(String line) {
+        return hasCenteredPattern(line, "_OOOO_");
     }
 
     private static boolean hasOpenThree(String line) {

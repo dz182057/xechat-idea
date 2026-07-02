@@ -818,6 +818,41 @@ public class GameRoomPetItemLifecycleTest {
     }
 
     @Test
+    public void gobangGuardShouldTriggerBeforeLiveFourAndOpenThreeFork() {
+        User alice = user(2178L);
+        User bob = user(2179L);
+        GameRoom room = room(Game.GOBANG, alice, bob);
+        insertPetItem(alice.getAccountId(), "item_gomoku_guard", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO(null, "item_gomoku_guard"));
+
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 1));
+        new GameActionHandler().process(bob, room, gobangMove(5, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(6, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(1, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(8, 7, 1));
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        new GameActionHandler().process(alice, room, gobangMove(2, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(7, 6, 1));
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        new GameActionHandler().process(alice, room, gobangMove(3, 2, 2));
+        GobangDTO forkMove = gobangMove(7, 8, 1);
+        new GameActionHandler().process(bob, room, forkMove);
+
+        Assert.assertEquals(Integer.valueOf(7), forkMove.getPetItemGuardX());
+        Assert.assertEquals(Integer.valueOf(7), forkMove.getPetItemGuardY());
+        Assert.assertEquals(0, countItem(alice.getAccountId(), "item_gomoku_guard"));
+        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_gomoku_guard", "interaction", "consumed"));
+        Assert.assertEquals("守门骨触发，已为 玩家2178 高亮对手隐蔽多重威胁点 (7,7)，道具已消耗。",
+                forkMove.getPetItemNotice());
+    }
+
+    @Test
     public void gobangGuardShouldTriggerBeforeOpponentDoubleThreeMove() {
         User alice = user(2166L);
         User bob = user(2167L);
