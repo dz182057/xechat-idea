@@ -24,6 +24,10 @@ public enum MessageType {
      */
     GAME,
     /**
+     * 五子棋天元罗盘推荐
+     */
+    GOBANG_ORACLE,
+    /**
      * 游戏结束消息
      */
     GAME_OVER,

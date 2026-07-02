@@ -23,6 +23,11 @@ public enum Action {
     GAME,
 
     /**
+     * 五子棋天元罗盘推荐
+     */
+    GOBANG_ORACLE,
+
+    /**
      * 扫雷单人服务端生成/操作
      */
     MINESWEEPER,
