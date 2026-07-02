@@ -419,7 +419,7 @@ public class PetServiceTest {
         Assert.assertNotNull(reward);
         Assert.assertEquals(1, reward.getMilestoneIndex());
         Assert.assertNull(reward.getDecorationId());
-        Assert.assertTrue(PetItemDefinitions.dailySkinShopItemIds().contains(reward.getItemId()));
+        Assert.assertTrue(PetItemDefinitions.skinItemIds().contains(reward.getItemId()));
         Assert.assertEquals(0, reward.getOverflowBones());
         Assert.assertEquals(28, profile.getCheckinStatus().getTotalCheckins());
         Assert.assertEquals(28, profile.getCheckinStatus().getMilestoneRemaining());

@@ -53,7 +53,10 @@ public class PetItemDefinitionsTest {
                 "item_gomoku_skin_fairy",
                 "item_gomoku_skin_ink",
                 "item_gomoku_skin_toy"
-        ), PetItemDefinitions.dailySkinShopItemIds());
+        ), PetItemDefinitions.skinItemIds());
+        Assert.assertEquals(PetItemDefinitions.skinItemIds(), PetItemDefinitions.dailySkinShopItemIds());
+        Assert.assertTrue(PetItemDefinitions.isSkinItem("item_gomoku_skin_magic"));
+        Assert.assertFalse(PetItemDefinitions.isSkinItem("item_gomoku_guard"));
         Assert.assertTrue(PetItemDefinitions.isDailySkinShopItem("item_gomoku_skin_magic"));
         Assert.assertFalse(PetItemDefinitions.isDailySkinShopItem("item_gomoku_guard"));
 

@@ -254,6 +254,7 @@ public final class PetProfileService {
     private static final List<String> LUCKY_BAG_NORMAL_ITEM_IDS = PetItemDefinitions.luckyBagNormalItemIds();
     private static final List<String> LUCKY_BAG_RARE_ITEM_IDS = PetItemDefinitions.luckyBagRareItemIds();
     private static final List<String> LUCKY_BAG_EPIC_ITEM_IDS = PetItemDefinitions.luckyBagEpicItemIds();
+    private static final List<String> SKIN_ITEM_IDS = PetItemDefinitions.skinItemIds();
     private static final List<String> DAILY_SKIN_SHOP_ITEM_IDS = PetItemDefinitions.dailySkinShopItemIds();
     private static final List<String> BACK_HILL_NORMAL_ITEM_IDS = Collections.unmodifiableList(Arrays.asList(
             "item_mine_mark",
@@ -590,7 +591,7 @@ public final class PetProfileService {
         return new PetShopStatusDTO(
                 rareItems.get(0),
                 new ArrayList<>(normalItems.subList(0, Math.min(SHOP_SHELF_NORMAL_ITEM_COUNT, normalItems.size()))),
-                dailySkinShopItemId(accountId, now),
+                dailySkinShopItemId(accountId, periodIndex, normalizedRefreshes),
                 periodStartAt,
                 periodStartAt + SHOP_SHELF_REFRESH_INTERVAL_MILLIS,
                 normalizedRefreshes,
@@ -599,16 +600,14 @@ public final class PetProfileService {
                 nextPaidRefreshCost);
     }
 
-    private static String dailySkinShopItemId(long accountId, long now) {
+    private static String dailySkinShopItemId(long accountId, long periodIndex, int refreshIndex) {
         if (DAILY_SKIN_SHOP_ITEM_IDS.isEmpty()) {
             return null;
         }
-        ZoneId zone = ZoneId.systemDefault();
-        long epochDay = Instant.ofEpochMilli(now).atZone(zone).toLocalDate().toEpochDay();
-        long seed = accountId * 2_654_435_761L + epochDay * 1_000_003L;
+        long seed = accountId * 2_654_435_761L + periodIndex * 1_000_003L;
         List<String> skinItems = new ArrayList<>(DAILY_SKIN_SHOP_ITEM_IDS);
         Collections.shuffle(skinItems, new Random(seed ^ 0x6C8E9CF570932BD5L));
-        return skinItems.get(0);
+        return skinItems.get(Math.floorMod(refreshIndex, skinItems.size()));
     }
 
     private static long currentShopShelfPeriodStartAt(long now) {
@@ -3282,12 +3281,12 @@ public final class PetProfileService {
     private static String pickAvailableSkinItem(PetItemMapper itemMapper, long accountId) {
         Map<String, Integer> counts = new HashMap<>();
         for (PetItemRecord item : itemMapper.listPositiveByAccountId(accountId)) {
-            if (DAILY_SKIN_SHOP_ITEM_IDS.contains(item.getItemId())) {
+            if (SKIN_ITEM_IDS.contains(item.getItemId())) {
                 counts.put(item.getItemId(), item.getCount());
             }
         }
         List<String> availableItems = new ArrayList<>();
-        for (String itemId : DAILY_SKIN_SHOP_ITEM_IDS) {
+        for (String itemId : SKIN_ITEM_IDS) {
             if (counts.getOrDefault(itemId, 0) < 1) {
                 availableItems.add(itemId);
             }

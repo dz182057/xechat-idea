@@ -38,7 +38,7 @@ public final class PetItemDefinitions {
     private static final List<String> LUCKY_BAG_RARE_ITEM_IDS = itemIdsByRarity(Rarity.RARE);
     private static final List<String> LUCKY_BAG_EPIC_ITEM_IDS = itemIdsByRarity(Rarity.EPIC);
     private static final List<String> LUCKY_BAG_ITEM_IDS = luckyBagItemIds();
-    private static final List<String> DAILY_SKIN_SHOP_ITEM_IDS = Collections.unmodifiableList(List.of(
+    private static final List<String> SKIN_ITEM_IDS = Collections.unmodifiableList(List.of(
             "item_minesweeper_skin_ink_wash",
             "item_minesweeper_skin_toy",
             "item_gomoku_skin_magic",
@@ -46,6 +46,7 @@ public final class PetItemDefinitions {
             "item_gomoku_skin_ink",
             "item_gomoku_skin_toy"
     ));
+    private static final List<String> DAILY_SKIN_SHOP_ITEM_IDS = SKIN_ITEM_IDS;
     private static final Set<String> SHOP_NORMAL_ITEM_IDS = Collections.unmodifiableSet(
             new LinkedHashSet<>(LUCKY_BAG_NORMAL_ITEM_IDS));
     private static final Map<String, Integer> SELL_ITEM_PRICES = sellPrices();
@@ -82,8 +83,16 @@ public final class PetItemDefinitions {
         return DAILY_SKIN_SHOP_ITEM_IDS;
     }
 
+    public static List<String> skinItemIds() {
+        return SKIN_ITEM_IDS;
+    }
+
     public static boolean isDailySkinShopItem(String itemId) {
         return DAILY_SKIN_SHOP_ITEM_IDS.contains(trimToNull(itemId));
+    }
+
+    public static boolean isSkinItem(String itemId) {
+        return SKIN_ITEM_IDS.contains(trimToNull(itemId));
     }
 
     public static Map<String, Integer> sellItemPrices() {

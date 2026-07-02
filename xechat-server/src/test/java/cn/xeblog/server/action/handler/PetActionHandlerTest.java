@@ -987,12 +987,14 @@ public class PetActionHandlerTest {
         Assert.assertEquals(Integer.valueOf(50), firstProfile.getShopStatus().getNextPaidRefreshCost());
         Assert.assertNotEquals(initialShelf.getRareItemId() + initialShelf.getNormalItemIds(),
                 firstProfile.getShopStatus().getRareItemId() + firstProfile.getShopStatus().getNormalItemIds());
+        Assert.assertNotEquals(initialShelf.getDailySkinItemId(), firstProfile.getShopStatus().getDailySkinItemId());
 
         new PetActionHandler().process(user, shopRefreshRequest(92014L));
         PetProfileDTO secondProfile = (PetProfileDTO) readPetBody(user).getContent();
         Assert.assertEquals(420, secondProfile.getAssets().getBones());
         Assert.assertEquals(2, secondProfile.getShopStatus().getPaidRefreshesUsed());
         Assert.assertEquals(Integer.valueOf(70), secondProfile.getShopStatus().getNextPaidRefreshCost());
+        Assert.assertNotEquals(firstProfile.getShopStatus().getDailySkinItemId(), secondProfile.getShopStatus().getDailySkinItemId());
 
         new PetActionHandler().process(user, shopRefreshRequest(92015L));
         PetProfileDTO thirdProfile = (PetProfileDTO) readPetBody(user).getContent();

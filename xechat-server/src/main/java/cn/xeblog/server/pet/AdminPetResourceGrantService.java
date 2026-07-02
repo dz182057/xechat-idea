@@ -312,7 +312,7 @@ public final class AdminPetResourceGrantService {
         if (StrUtil.isBlank(normalizedItemId)) {
             throw new AccountException("皮肤 ID 不能为空");
         }
-        if (!PetItemDefinitions.isDailySkinShopItem(normalizedItemId)) {
+        if (!PetItemDefinitions.isSkinItem(normalizedItemId)) {
             throw new AccountException("皮肤 ID 不存在");
         }
         return normalizedItemId;
