@@ -209,7 +209,7 @@ public final class GobangPetItemService {
             Integer playerType = state.playerTypes.get(playerKey);
             if (!"playing".equals(state.phase) || playerType == null || state.turn != playerType) {
                 return itemEvent(room, state, ITEM_FINISHER, slotIndex,
-                        "胜手骨只能在自己的回合使用。", null, false);
+                        "妙手骨只能在自己的回合使用。", null, false);
             }
             GameRoom.Player player = room.getUsers().get(playerKey);
             String slot = carriedItemSlot(player, ITEM_FINISHER, slotIndex);
@@ -219,7 +219,7 @@ public final class GobangPetItemService {
             Cell threat = findWinningHandCell(state.board, playerType);
             if (threat == null) {
                 return itemEvent(room, state, ITEM_FINISHER, slotIndex,
-                        "胜手骨暂未发现双三或活四胜手，道具未消耗。", null, false);
+                        "妙手骨暂未发现对手一手挡不完的妙手，道具未消耗。", null, false);
             }
             if (!PetGameItemDeclarationService.ensureReservedForUse(room, playerKey, ITEM_FINISHER, slot)) {
                 return null;
@@ -227,7 +227,7 @@ public final class GobangPetItemService {
             PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_FINISHER, slot);
             clearCarriedItem(player, slot);
             return itemEvent(room, state, ITEM_FINISHER, slotIndex,
-                    String.format("胜手骨触发，已高亮你的胜手 (%d,%d)，道具已消耗。", threat.x, threat.y),
+                    String.format("妙手骨触发，已高亮你的妙手 (%d,%d)，道具已消耗。", threat.x, threat.y),
                     threat,
                     true);
         }
@@ -699,7 +699,7 @@ public final class GobangPetItemService {
                     continue;
                 }
                 boolean createsWinningHand = hasLiveFour(board, x, y, type)
-                        || countOpenThreeDirections(board, x, y, type) >= 2;
+                        || createsMultiThreat(board, x, y, type);
                 board[y][x] = 0;
                 if (createsWinningHand) {
                     return new Cell(x, y);
@@ -717,6 +717,14 @@ public final class GobangPetItemService {
                 || countLine(board, x, y, type, 0, 1) >= 5
                 || countLine(board, x, y, type, 1, 1) >= 5
                 || countLine(board, x, y, type, 1, -1) >= 5;
+    }
+
+    private static boolean createsMultiThreat(int[][] board, int x, int y, int type) {
+        int rushFourDirections = countRushFourDirections(board, x, y, type);
+        int openThreeDirections = countOpenThreeDirections(board, x, y, type);
+        return rushFourDirections > 1
+                || openThreeDirections > 1
+                || (rushFourDirections > 0 && openThreeDirections > 0);
     }
 
     private static int countLine(int[][] board, int x, int y, int type, int dx, int dy) {

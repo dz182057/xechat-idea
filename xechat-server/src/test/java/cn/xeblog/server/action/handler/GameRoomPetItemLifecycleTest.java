@@ -924,7 +924,83 @@ public class GameRoomPetItemLifecycleTest {
         Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetPlayItemId());
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
                 "item_gomoku_finisher", "gameplay", "consumed"));
-        Assert.assertEquals("胜手骨触发，已高亮你的胜手 (7,7)，道具已消耗。",
+        Assert.assertEquals("妙手骨触发，已高亮你的妙手 (7,7)，道具已消耗。",
+                itemResult.getPetItemNotice());
+        Assert.assertNull(readResponse(bob));
+    }
+
+    @Test
+    public void gobangFinisherShouldHighlightStraightLiveFourByActiveUse() {
+        User alice = user(2176L);
+        User bob = user(2177L);
+        GameRoom room = room(Game.GOBANG, alice, bob);
+        insertPetItem(alice.getAccountId(), "item_gomoku_finisher", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO("item_gomoku_finisher", null));
+
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 2));
+        new GameActionHandler().process(alice, room, gobangMove(5, 7, 1));
+        new GameActionHandler().process(bob, room, gobangMove(0, 2, 2));
+        new GameActionHandler().process(alice, room, gobangMove(6, 7, 1));
+        new GameActionHandler().process(bob, room, gobangMove(1, 2, 2));
+        new GameActionHandler().process(alice, room, gobangMove(7, 7, 1));
+        new GameActionHandler().process(bob, room, gobangMove(2, 2, 2));
+        drainOutbound(alice);
+        drainOutbound(bob);
+        useGobangItemThroughRoomMessage(alice, room, "item_gomoku_finisher", 0);
+        Response<?> response = readResponse(alice);
+        Assert.assertNotNull(response);
+        Assert.assertEquals(MessageType.GAME, response.getType());
+        GobangDTO itemResult = (GobangDTO) response.getBody();
+
+        Assert.assertEquals("ITEM_HINT", itemResult.getEvent());
+        Assert.assertEquals(Integer.valueOf(4), itemResult.getPetItemGuardX());
+        Assert.assertEquals(Integer.valueOf(7), itemResult.getPetItemGuardY());
+        Assert.assertEquals(Boolean.TRUE, itemResult.getPetItemConsumed());
+        Assert.assertEquals(0, countItem(alice.getAccountId(), "item_gomoku_finisher"));
+        Assert.assertEquals("妙手骨触发，已高亮你的妙手 (4,7)，道具已消耗。",
+                itemResult.getPetItemNotice());
+        Assert.assertNull(readResponse(bob));
+    }
+
+    @Test
+    public void gobangFinisherShouldConsumeAndHighlightThreeFourThreatByActiveUse() {
+        User alice = user(2174L);
+        User bob = user(2175L);
+        GameRoom room = room(Game.GOBANG, alice, bob);
+        insertPetItem(alice.getAccountId(), "item_gomoku_finisher", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO("item_gomoku_finisher", null));
+
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 2));
+        new GameActionHandler().process(alice, room, gobangMove(5, 7, 1));
+        new GameActionHandler().process(bob, room, gobangMove(4, 7, 2));
+        new GameActionHandler().process(alice, room, gobangMove(6, 7, 1));
+        new GameActionHandler().process(bob, room, gobangMove(0, 2, 2));
+        new GameActionHandler().process(alice, room, gobangMove(8, 7, 1));
+        new GameActionHandler().process(bob, room, gobangMove(1, 2, 2));
+        new GameActionHandler().process(alice, room, gobangMove(7, 6, 1));
+        new GameActionHandler().process(bob, room, gobangMove(2, 2, 2));
+        new GameActionHandler().process(alice, room, gobangMove(7, 8, 1));
+        new GameActionHandler().process(bob, room, gobangMove(3, 2, 2));
+        drainOutbound(alice);
+        drainOutbound(bob);
+        useGobangItemThroughRoomMessage(alice, room, "item_gomoku_finisher", 0);
+        Response<?> response = readResponse(alice);
+        Assert.assertNotNull(response);
+        Assert.assertEquals(MessageType.GAME, response.getType());
+        GobangDTO itemResult = (GobangDTO) response.getBody();
+
+        Assert.assertEquals("ITEM_HINT", itemResult.getEvent());
+        Assert.assertEquals(Integer.valueOf(7), itemResult.getPetItemGuardX());
+        Assert.assertEquals(Integer.valueOf(7), itemResult.getPetItemGuardY());
+        Assert.assertEquals(Boolean.TRUE, itemResult.getPetItemConsumed());
+        Assert.assertEquals(0, countItem(alice.getAccountId(), "item_gomoku_finisher"));
+        Assert.assertEquals("妙手骨触发，已高亮你的妙手 (7,7)，道具已消耗。",
                 itemResult.getPetItemNotice());
         Assert.assertNull(readResponse(bob));
     }
@@ -956,7 +1032,7 @@ public class GameRoomPetItemLifecycleTest {
         Assert.assertEquals("item_gomoku_finisher", room.getUsers().get(alice.getIdentityKey()).getPetPlayItemId());
         Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
                 "item_gomoku_finisher", "gameplay", "consumed"));
-        Assert.assertEquals("胜手骨暂未发现双三或活四胜手，道具未消耗。",
+        Assert.assertEquals("妙手骨暂未发现对手一手挡不完的妙手，道具未消耗。",
                 itemResult.getPetItemNotice());
         Assert.assertNull(readResponse(bob));
     }
@@ -996,7 +1072,7 @@ public class GameRoomPetItemLifecycleTest {
         Assert.assertEquals("item_gomoku_finisher", room.getUsers().get(alice.getIdentityKey()).getPetPlayItemId());
         Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
                 "item_gomoku_finisher", "gameplay", "consumed"));
-        Assert.assertEquals("胜手骨暂未发现双三或活四胜手，道具未消耗。",
+        Assert.assertEquals("妙手骨暂未发现对手一手挡不完的妙手，道具未消耗。",
                 itemResult.getPetItemNotice());
         Assert.assertNull(readResponse(bob));
     }
