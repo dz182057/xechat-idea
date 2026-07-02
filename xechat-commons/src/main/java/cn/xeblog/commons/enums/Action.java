@@ -28,6 +28,11 @@ public enum Action {
     GOBANG_ORACLE,
 
     /**
+     * 五子棋本地棋局留痕
+     */
+    GOBANG_HISTORY,
+
+    /**
      * 扫雷单人服务端生成/操作
      */
     MINESWEEPER,

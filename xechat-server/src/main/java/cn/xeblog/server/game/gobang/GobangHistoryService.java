@@ -2,6 +2,8 @@ package cn.xeblog.server.game.gobang;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import cn.xeblog.commons.entity.User;
+import cn.xeblog.commons.entity.game.gobang.GobangHistoryReportDTO;
 import cn.xeblog.server.config.GlobalConfig;
 import lombok.extern.slf4j.Slf4j;
 
@@ -42,6 +44,29 @@ public final class GobangHistoryService {
     private GobangHistoryService() {
     }
 
+    public static void recordClientReport(User user, GobangHistoryReportDTO report) {
+        if (report == null || StrUtil.isBlank(report.getSessionId())) {
+            return;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("event", StrUtil.blankToDefault(report.getEvent(), "CLIENT_REPORT"));
+        payload.put("source", "client");
+        payload.put("sessionId", report.getSessionId());
+        payload.put("actor", actorSnapshot(user));
+        payload.put("mode", report.getMode());
+        payload.put("aiDifficulty", report.getAiDifficulty());
+        payload.put("myType", report.getMyType());
+        payload.put("turn", report.getTurn());
+        payload.put("winner", report.getWinner());
+        payload.put("phase", report.getPhase());
+        payload.put("moveSeq", report.getMoveSeq());
+        payload.put("lastMove", lastMoveSnapshot(report));
+        payload.put("notice", report.getNotice());
+        payload.put("moveHistory", report.getMoveHistory());
+        payload.put("board", report.getBoard());
+        record(report.getSessionId(), payload);
+    }
+
     public static void record(String roomId, Map<String, Object> payload) {
         if (!enabled || StrUtil.isBlank(roomId) || payload == null || payload.isEmpty()) {
             return;
@@ -69,6 +94,31 @@ public final class GobangHistoryService {
         } catch (Exception e) {
             log.warn("五子棋留痕写入失败 roomId={}: {}", roomId, e.getMessage());
         }
+    }
+
+    private static Map<String, Object> actorSnapshot(User user) {
+        if (user == null) {
+            return null;
+        }
+        Map<String, Object> actor = new LinkedHashMap<>();
+        actor.put("identityKey", user.getIdentityKey());
+        actor.put("channelId", user.getId());
+        actor.put("accountId", user.getAccountId() > 0 ? user.getAccountId() : null);
+        actor.put("account", StrUtil.blankToDefault(user.getAccount(), null));
+        actor.put("username", StrUtil.blankToDefault(user.getUsername(), null));
+        actor.put("nickname", StrUtil.blankToDefault(user.getNickname(), null));
+        return actor;
+    }
+
+    private static Map<String, Object> lastMoveSnapshot(GobangHistoryReportDTO report) {
+        if (report.getLastX() == null || report.getLastY() == null || report.getLastType() == null) {
+            return null;
+        }
+        Map<String, Object> lastMove = new LinkedHashMap<>();
+        lastMove.put("x", report.getLastX());
+        lastMove.put("y", report.getLastY());
+        lastMove.put("type", report.getLastType());
+        return lastMove;
     }
 
     static Path historyRoot() {

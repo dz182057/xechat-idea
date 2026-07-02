@@ -3,6 +3,7 @@ package cn.xeblog.server.game.gobang;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.gobang.GobangDTO;
+import cn.xeblog.commons.entity.game.gobang.GobangHistoryReportDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.config.GlobalConfig;
 import org.junit.After;
@@ -79,6 +80,43 @@ public class GobangHistoryServiceTest {
 
         Assert.assertFalse(Files.exists(oldDir));
         Assert.assertTrue(Files.exists(historyFile("fresh-room", now)));
+    }
+
+    @Test
+    public void recordsClientSingleGobangReport() throws Exception {
+        long now = Instant.parse("2026-07-02T06:00:00Z").toEpochMilli();
+        initTempDataPath(now);
+        User user = user(4103L, "history-client-channel", "单人玩家");
+        int[][] board = new int[15][15];
+        board[7][7] = 1;
+        GobangDTO move = new GobangDTO(7, 7, 1);
+        GobangHistoryReportDTO report = new GobangHistoryReportDTO(
+                "client-session-1",
+                "SINGLE_PLAYER_MOVE",
+                "ai",
+                "normal",
+                1,
+                2,
+                0,
+                "playing",
+                1,
+                7,
+                7,
+                1,
+                "AI 思考中",
+                board,
+                List.of(move));
+
+        GobangHistoryService.recordClientReport(user, report);
+
+        List<String> lines = Files.readAllLines(historyFile("client-session-1", now), StandardCharsets.UTF_8);
+        Assert.assertEquals(1, lines.size());
+        Assert.assertTrue(lines.get(0).contains("\"event\":\"SINGLE_PLAYER_MOVE\""));
+        Assert.assertTrue(lines.get(0).contains("\"source\":\"client\""));
+        Assert.assertTrue(lines.get(0).contains("\"sessionId\":\"client-session-1\""));
+        Assert.assertTrue(lines.get(0).contains("\"mode\":\"ai\""));
+        Assert.assertTrue(lines.get(0).contains("\"moveHistory\""));
+        Assert.assertTrue(lines.get(0).contains("\"board\""));
     }
 
     private void initTempDataPath(long now) throws Exception {
