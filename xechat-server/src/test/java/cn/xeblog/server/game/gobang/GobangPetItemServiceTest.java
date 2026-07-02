@@ -6,15 +6,22 @@ import cn.xeblog.commons.entity.game.gobang.GobangDTO;
 import cn.xeblog.commons.enums.Game;
 import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 public class GobangPetItemServiceTest {
 
     private static final String ROOM_ID = "gobang-opening-room";
 
+    @Before
+    public void setUp() {
+        GobangHistoryService.setEnabledForTest(false);
+    }
+
     @After
     public void tearDown() {
         GobangPetItemService.clearRoom(ROOM_ID);
+        GobangHistoryService.resetForTest();
     }
 
     @Test

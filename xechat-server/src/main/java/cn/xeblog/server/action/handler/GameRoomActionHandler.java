@@ -126,7 +126,7 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
                 if (body.getMsgType() == GameRoomMsgDTO.MsgType.REGRET_RESPONSE
                         && gameRoom.getGame() == Game.GOBANG
                         && isTrueContent(body)) {
-                    GobangPetItemService.undoLastMoves(gameRoom, 2);
+                    GobangPetItemService.undoLastMoves(user, gameRoom, 2);
                 }
                 // 悔棋协商：服务端不参与决策，只把消息原样转发给房间内其他玩家
                 gameRoom.getUsers().forEach((k, v) -> {

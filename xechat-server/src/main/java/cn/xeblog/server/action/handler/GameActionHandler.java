@@ -65,7 +65,7 @@ public class GameActionHandler extends AbstractGameActionHandler<GameDTO> {
             gobangOpeningColorMessage = GobangPetItemService.isOpeningColorMessage(user, gameRoom, gobangDTO);
             GobangDTO acceptedMove = GobangPetItemService.handleMove(user, gameRoom, gobangDTO);
             if (!gobangOpeningColorMessage && acceptedMove == null) {
-                GobangDTO rejectedMove = GobangPetItemService.rejectedMove(gameRoom, gobangDTO);
+                GobangDTO rejectedMove = GobangPetItemService.rejectedMove(user, gameRoom, gobangDTO);
                 if (rejectedMove != null) {
                     user.send(ResponseBuilder.build(user, rejectedMove, MessageType.GAME));
                 }

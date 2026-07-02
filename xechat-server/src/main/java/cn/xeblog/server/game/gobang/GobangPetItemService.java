@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,6 +55,7 @@ public final class GobangPetItemService {
                 state.phase = "playing";
                 state.turn = 1;
                 state.winner = 0;
+                recordHistory("START", user, room, dto, null, state, null);
                 return null;
             }
             String playerKey = user.getIdentityKey();
@@ -89,26 +91,34 @@ public final class GobangPetItemService {
             GobangDTO acceptedMove = copyMove(room, dto);
             applyAuthoritativeFields(acceptedMove, state, "MOVE");
             state.moveHistory.add(copyMove(room, acceptedMove));
+            recordHistory("MOVE", user, room, dto, acceptedMove, state, null);
             return acceptedMove;
         }
     }
 
     public static GobangDTO rejectedMove(GameRoom room, GobangDTO source) {
+        return rejectedMove(null, room, source);
+    }
+
+    public static GobangDTO rejectedMove(User user, GameRoom room, GobangDTO source) {
         if (room == null || source == null) {
             return null;
         }
         GobangDTO dto = copyMove(room, source);
         RoomState state = STATES.get(room.getId());
+        Map<String, Object> extra = historyExtra("reason", "server_rejected");
         if (state == null) {
             dto.setEvent("REJECTED");
             dto.setPhase("idle");
             dto.setTurn(1);
             dto.setWinner(0);
             dto.setMoveSeq(0);
+            recordHistory("REJECTED", user, room, source, dto, null, extra);
             return dto;
         }
         synchronized (state) {
             applyAuthoritativeFields(dto, state, "REJECTED");
+            recordHistory("REJECTED", user, room, source, dto, state, extra);
             return dto;
         }
     }
@@ -153,17 +163,30 @@ public final class GobangPetItemService {
 
     public static void clearRoom(GameRoom room) {
         if (room != null) {
-            clearRoom(room.getId());
+            clearRoom(room, room.getId(), "CLEAR_ROOM");
         }
     }
 
     public static void clearRoom(String roomId) {
+        clearRoom(null, roomId, "CLEAR_ROOM");
+    }
+
+    private static void clearRoom(GameRoom room, String roomId, String reason) {
         if (roomId != null) {
-            STATES.remove(roomId);
+            RoomState state = STATES.remove(roomId);
+            if (state != null) {
+                synchronized (state) {
+                    recordHistory(reason, null, room, roomId, null, null, state, null);
+                }
+            }
         }
     }
 
     public static boolean undoLastMoves(GameRoom room, int steps) {
+        return undoLastMoves(null, room, steps);
+    }
+
+    public static boolean undoLastMoves(User user, GameRoom room, int steps) {
         if (room == null || steps <= 0) {
             return false;
         }
@@ -175,8 +198,9 @@ public final class GobangPetItemService {
             if (state.moveHistory.size() < steps) {
                 return false;
             }
+            List<GobangDTO> removedMoves = new ArrayList<>();
             for (int i = 0; i < steps; i++) {
-                state.moveHistory.remove(state.moveHistory.size() - 1);
+                removedMoves.add(0, copyMove(room, state.moveHistory.remove(state.moveHistory.size() - 1)));
             }
             resetBoard(state);
             for (GobangDTO move : state.moveHistory) {
@@ -192,6 +216,9 @@ public final class GobangPetItemService {
             state.winner = 0;
             state.moveSeq = state.moveHistory.size();
             state.pendingByTarget.clear();
+            Map<String, Object> extra = historyExtra("steps", steps);
+            extra.put("removedMoves", moveHistorySnapshot(removedMoves));
+            recordHistory("UNDO", user, room, null, null, state, extra);
             return true;
         }
     }
@@ -208,8 +235,10 @@ public final class GobangPetItemService {
             String playerKey = user.getIdentityKey();
             Integer playerType = state.playerTypes.get(playerKey);
             if (!"playing".equals(state.phase) || playerType == null || state.turn != playerType) {
-                return itemEvent(room, state, ITEM_FINISHER, slotIndex,
+                GobangDTO result = itemEvent(room, state, ITEM_FINISHER, slotIndex,
                         "妙手骨只能在自己的回合使用。", null, false);
+                recordHistory("ITEM_HINT", user, room, null, result, state, historyExtra("itemId", ITEM_FINISHER));
+                return result;
             }
             GameRoom.Player player = room.getUsers().get(playerKey);
             String slot = carriedItemSlot(player, ITEM_FINISHER, slotIndex);
@@ -218,18 +247,22 @@ public final class GobangPetItemService {
             }
             Cell threat = findWinningHandCell(state.board, playerType);
             if (threat == null) {
-                return itemEvent(room, state, ITEM_FINISHER, slotIndex,
+                GobangDTO result = itemEvent(room, state, ITEM_FINISHER, slotIndex,
                         "妙手骨暂未发现对手一手挡不完的妙手，道具未消耗。", null, false);
+                recordHistory("ITEM_HINT", user, room, null, result, state, historyExtra("itemId", ITEM_FINISHER));
+                return result;
             }
             if (!PetGameItemDeclarationService.ensureReservedForUse(room, playerKey, ITEM_FINISHER, slot)) {
                 return null;
             }
             PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_FINISHER, slot);
             clearCarriedItem(player, slot);
-            return itemEvent(room, state, ITEM_FINISHER, slotIndex,
+            GobangDTO result = itemEvent(room, state, ITEM_FINISHER, slotIndex,
                     String.format("妙手骨触发，已高亮你的妙手 (%d,%d)，道具已消耗。", threat.x, threat.y),
                     threat,
                     true);
+            recordHistory("ITEM_HINT", user, room, null, result, state, historyExtra("itemId", ITEM_FINISHER));
+            return result;
         }
     }
 
@@ -933,6 +966,168 @@ public final class GobangPetItemService {
 
     private static int normalizeSlotIndex(Integer slotIndex) {
         return slotIndex != null && slotIndex > 0 ? 1 : 0;
+    }
+
+    private static void recordHistory(String event, User actor, GameRoom room, GobangDTO request,
+                                      GobangDTO response, RoomState state, Map<String, Object> extra) {
+        String roomId = room == null ? null : room.getId();
+        if (roomId == null && request != null) {
+            roomId = request.getRoomId();
+        }
+        if (roomId == null && response != null) {
+            roomId = response.getRoomId();
+        }
+        recordHistory(event, actor, room, roomId, request, response, state, extra);
+    }
+
+    private static void recordHistory(String event, User actor, GameRoom room, String roomId,
+                                      GobangDTO request, GobangDTO response, RoomState state,
+                                      Map<String, Object> extra) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("event", event);
+        payload.put("roomId", roomId);
+        payload.put("actor", actorSnapshot(actor));
+        payload.put("room", roomSnapshot(room));
+        payload.put("request", dtoSnapshot(request));
+        payload.put("response", dtoSnapshot(response));
+        payload.put("state", stateSnapshot(state));
+        if (extra != null && !extra.isEmpty()) {
+            payload.put("extra", extra);
+        }
+        GobangHistoryService.record(roomId, payload);
+    }
+
+    private static Map<String, Object> historyExtra(String key, Object value) {
+        Map<String, Object> extra = new LinkedHashMap<>();
+        extra.put(key, value);
+        return extra;
+    }
+
+    private static Map<String, Object> actorSnapshot(User user) {
+        if (user == null) {
+            return null;
+        }
+        Map<String, Object> actor = new LinkedHashMap<>();
+        actor.put("identityKey", user.getIdentityKey());
+        actor.put("channelId", user.getId());
+        actor.put("accountId", user.getAccountId() > 0 ? user.getAccountId() : null);
+        actor.put("account", trimToNull(user.getAccount()));
+        actor.put("username", trimToNull(user.getUsername()));
+        actor.put("nickname", trimToNull(user.getNickname()));
+        return actor;
+    }
+
+    private static Map<String, Object> roomSnapshot(GameRoom room) {
+        if (room == null) {
+            return null;
+        }
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("id", room.getId());
+        snapshot.put("game", room.getGame() == null ? null : room.getGame().name());
+        snapshot.put("nums", room.getNums());
+        snapshot.put("homeowner", actorSnapshot(room.getHomeowner()));
+        List<Map<String, Object>> players = new ArrayList<>();
+        for (GameRoom.Player player : room.getUsers().values()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("identityKey", player.getId());
+            item.put("channelId", player.getChannelId());
+            item.put("accountId", player.getAccountId() > 0 ? player.getAccountId() : null);
+            item.put("account", trimToNull(player.getAccount()));
+            item.put("username", trimToNull(player.getUsername()));
+            item.put("nickname", trimToNull(player.getNickname()));
+            item.put("readied", player.isReadied());
+            item.put("petPlayItemId", trimToNull(player.getPetPlayItemId()));
+            item.put("petInteractionItemId", trimToNull(player.getPetInteractionItemId()));
+            players.add(item);
+        }
+        snapshot.put("players", players);
+        return snapshot;
+    }
+
+    private static Map<String, Object> stateSnapshot(RoomState state) {
+        if (state == null) {
+            return null;
+        }
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("phase", state.phase);
+        snapshot.put("turn", state.turn);
+        snapshot.put("winner", state.winner);
+        snapshot.put("moveSeq", state.moveSeq);
+        snapshot.put("started", state.started);
+        snapshot.put("startedAt", state.startedAt);
+        snapshot.put("moveCount", state.moveCount());
+        snapshot.put("miniGameRewardsApplied", state.miniGameRewardsApplied);
+        snapshot.put("gameOverReleased", state.gameOverReleased);
+        snapshot.put("playerTypes", new LinkedHashMap<>(state.playerTypes));
+        snapshot.put("pendingPredictions", pendingPredictionSnapshot(state));
+        snapshot.put("moveHistory", moveHistorySnapshot(state.moveHistory));
+        snapshot.put("board", boardSnapshot(state.board));
+        return snapshot;
+    }
+
+    private static List<Map<String, Object>> pendingPredictionSnapshot(RoomState state) {
+        List<Map<String, Object>> predictions = new ArrayList<>();
+        for (Map.Entry<String, PendingPrediction> entry : state.pendingByTarget.entrySet()) {
+            PendingPrediction prediction = entry.getValue();
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("targetKey", entry.getKey());
+            item.put("carrierKey", prediction.carrierKey);
+            item.put("slot", prediction.slot);
+            item.put("x", prediction.x);
+            item.put("y", prediction.y);
+            predictions.add(item);
+        }
+        return predictions;
+    }
+
+    private static List<Map<String, Object>> moveHistorySnapshot(List<GobangDTO> moves) {
+        List<Map<String, Object>> history = new ArrayList<>();
+        if (moves == null) {
+            return history;
+        }
+        for (GobangDTO move : moves) {
+            history.add(dtoSnapshot(move));
+        }
+        return history;
+    }
+
+    private static List<List<Integer>> boardSnapshot(int[][] board) {
+        List<List<Integer>> rows = new ArrayList<>();
+        if (board == null) {
+            return rows;
+        }
+        for (int y = 0; y < BOARD_SIZE; y++) {
+            List<Integer> row = new ArrayList<>();
+            for (int x = 0; x < BOARD_SIZE; x++) {
+                row.add(board[y][x]);
+            }
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    private static Map<String, Object> dtoSnapshot(GobangDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("roomId", dto.getRoomId());
+        snapshot.put("game", dto.getGame() == null ? null : dto.getGame().name());
+        snapshot.put("x", dto.getX());
+        snapshot.put("y", dto.getY());
+        snapshot.put("type", dto.getType());
+        snapshot.put("event", dto.getEvent());
+        snapshot.put("phase", dto.getPhase());
+        snapshot.put("turn", dto.getTurn());
+        snapshot.put("winner", dto.getWinner());
+        snapshot.put("moveSeq", dto.getMoveSeq());
+        snapshot.put("petItemNotice", trimToNull(dto.getPetItemNotice()));
+        snapshot.put("petItemId", trimToNull(dto.getPetItemId()));
+        snapshot.put("petItemSlotIndex", dto.getPetItemSlotIndex());
+        snapshot.put("petItemConsumed", dto.getPetItemConsumed());
+        snapshot.put("petItemGuardX", dto.getPetItemGuardX());
+        snapshot.put("petItemGuardY", dto.getPetItemGuardY());
+        return snapshot;
     }
 
     private static final class RoomState {
