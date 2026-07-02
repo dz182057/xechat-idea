@@ -51,6 +51,24 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.getReason().contains("对手下一手成五点"));
     }
 
+    @Test
+    public void opponentLiveFourSetupMustBeOccupiedBeforeItForms() {
+        int[][] board = board();
+        board[7][5] = 2;
+        board[7][6] = 2;
+        board[7][8] = 2;
+        board[6][7] = 1;
+        board[8][7] = 1;
+
+        GobangOracleResponseDTO response = GobangOracleService.suggest(
+                new GobangOracleRequestDTO("req-4", board, 1, 5));
+
+        Assert.assertTrue(response.isSuccess());
+        Assert.assertEquals(Integer.valueOf(7), response.getX());
+        Assert.assertEquals(Integer.valueOf(7), response.getY());
+        Assert.assertTrue(response.getReason().contains("强迫杀"));
+    }
+
     private static int[][] board() {
         return new int[15][15];
     }

@@ -20,8 +20,22 @@ public final class GobangOracleService {
             {1, -1}
     };
     private static final int WIN_SCORE = 1_000_000;
-    private static final int SEARCH_DEPTH = 4;
-    private static final int MAX_CANDIDATES = 10;
+    private static final int SEARCH_DEPTH = 5;
+    private static final int MAX_CANDIDATES = 12;
+    private static final int RISK_HIGH = 800_000;
+    private static final int RISK_MEDIUM = 500_000;
+    private static final int RISK_LOW = 100_000;
+    private static final Model[] MODELS = {
+            new Model("LIANWU", 10_000_000, "11111"),
+            new Model("HUOSI", 1_000_000, "011110"),
+            new Model("HUOSAN", 10_000, "001110", "011100", "010110", "011010"),
+            new Model("CHONGSI", 9_000, "11110", "01111", "10111", "11011", "11101"),
+            new Model("HUOER", 100, "001100", "011000", "000110", "001010", "010100"),
+            new Model("HUOYI", 80, "010200", "002010", "020100", "001020", "201000", "000102", "000201"),
+            new Model("MIANSAN", 30, "001112", "010112", "011012", "211100", "211010"),
+            new Model("MIANER", 10, "011200", "001120", "002110", "021100", "110000", "000011", "000112", "211000"),
+            new Model("MIANYI", 1, "001200", "002100", "000210", "000120", "210000", "000012")
+    };
 
     private GobangOracleService() {
     }
@@ -48,6 +62,21 @@ public final class GobangOracleService {
             Point directBlock = findWinningPoint(board, opponent(type));
             if (directBlock != null) {
                 return success(response, directBlock, type, WIN_SCORE - 1, "服务端 AI 判断这里是对手下一手成五点，先封住避免立刻输棋。");
+            }
+            Point ownThreat = findBestThreatPoint(board, type, RISK_MEDIUM);
+            Point opponentHighThreat = findBestThreatPoint(board, opponent(type), RISK_HIGH);
+            if (ownThreat != null && (opponentHighThreat == null || ownThreat.score >= opponentHighThreat.score)) {
+                return success(response, ownThreat, type, ownThreat.score,
+                        "服务端 AI 判断这一步能形成强迫杀，优先扩大胜势。");
+            }
+            if (opponentHighThreat != null) {
+                return success(response, opponentHighThreat, type, opponentHighThreat.score,
+                        "服务端 AI 判断对手下一手会形成强迫杀，先占住关键点。");
+            }
+            Point opponentMediumThreat = findBestThreatPoint(board, opponent(type), RISK_MEDIUM);
+            if (opponentMediumThreat != null && (ownThreat == null || opponentMediumThreat.score > ownThreat.score)) {
+                return success(response, opponentMediumThreat, type, opponentMediumThreat.score,
+                        "服务端 AI 判断对手这里威胁过强，先行压制。");
             }
             Point best = searchBestPoint(board, type);
             if (best == null) {
@@ -134,7 +163,7 @@ public final class GobangOracleService {
 
         boolean maximizing = currentType == rootType;
         int best = maximizing ? -Integer.MAX_VALUE : Integer.MAX_VALUE;
-        List<Point> candidates = topCandidates(board, currentType, MAX_CANDIDATES);
+        List<Point> candidates = topCandidates(board, currentType, depth >= 3 ? MAX_CANDIDATES : 8);
         for (Point point : candidates) {
             board[point.y][point.x] = currentType;
             int score = minimax(board, opponent(currentType), rootType, depth - 1, alpha, beta);
@@ -168,7 +197,13 @@ public final class GobangOracleService {
                 int attackScore = evaluateMove(board, x, y, type);
                 int defenseScore = evaluateMove(board, x, y, opponent);
                 int centerScore = 14 - Math.abs(x - SIZE / 2) - Math.abs(y - SIZE / 2);
-                points.add(new Point(x, y, attackScore + defenseScore * 9 / 10 + centerScore));
+                int riskBonus = 0;
+                if (attackScore >= RISK_HIGH || defenseScore >= RISK_HIGH) {
+                    riskBonus += RISK_HIGH;
+                } else if (attackScore >= RISK_MEDIUM || defenseScore >= RISK_MEDIUM) {
+                    riskBonus += RISK_MEDIUM / 2;
+                }
+                points.add(new Point(x, y, attackScore + defenseScore * 11 / 10 + centerScore + riskBonus));
             }
         }
         points.sort(Comparator.comparingInt((Point point) -> point.score).reversed());
@@ -195,6 +230,25 @@ public final class GobangOracleService {
         return null;
     }
 
+    private static Point findBestThreatPoint(int[][] board, int type, int threshold) {
+        Point best = null;
+        for (int y = 0; y < SIZE; y++) {
+            for (int x = 0; x < SIZE; x++) {
+                if (board[y][x] != 0 || !hasNeighbor(board, x, y, 2)) {
+                    continue;
+                }
+                int score = evaluateMove(board, x, y, type);
+                if (score < threshold) {
+                    continue;
+                }
+                if (best == null || score > best.score) {
+                    best = new Point(x, y, score);
+                }
+            }
+        }
+        return best;
+    }
+
     private static int evaluateBoard(int[][] board, int type) {
         int score = 0;
         for (int y = 0; y < SIZE; y++) {
@@ -210,56 +264,72 @@ public final class GobangOracleService {
 
     private static int evaluateMove(int[][] board, int x, int y, int type) {
         int score = 0;
+        int liveThree = 0;
+        int rushFour = 0;
+        int liveFour = 0;
+        int threeFourCombo = 0;
         for (int[] direction : DIRECTIONS) {
-            Line line = lineInfo(board, x, y, direction[0], direction[1], type);
-            score += scoreLine(line.count, line.openEnds);
+            String situation = getSituation(board, x, y, direction[0], direction[1], type);
+            Model model = getModel(situation);
+            if (model == null) {
+                continue;
+            }
+            if ("HUOSI".equals(model.id)) {
+                liveFour++;
+            } else if ("HUOSAN".equals(model.id)) {
+                liveThree++;
+                if (containsModel(situation, "CHONGSI")) {
+                    threeFourCombo++;
+                }
+            } else if ("CHONGSI".equals(model.id)) {
+                rushFour++;
+            }
+            score += model.score;
+        }
+        if (liveFour > 0 || rushFour > 1 || threeFourCombo > 1) {
+            score += RISK_HIGH;
+        } else if ((rushFour > 0 && liveThree > 0) || (threeFourCombo > 0 && liveThree > 1)) {
+            score += RISK_MEDIUM;
+        } else if (liveThree > 1) {
+            score += RISK_LOW;
         }
         return score;
     }
 
-    private static int scoreLine(int count, int openEnds) {
-        if (count >= 5) {
-            return WIN_SCORE;
+    private static Model getModel(String situation) {
+        for (Model model : MODELS) {
+            if (model.matches(situation)) {
+                return model;
+            }
         }
-        if (count == 4 && openEnds == 2) {
-            return 120_000;
-        }
-        if (count == 4 && openEnds == 1) {
-            return 20_000;
-        }
-        if (count == 3 && openEnds == 2) {
-            return 8_000;
-        }
-        if (count == 3 && openEnds == 1) {
-            return 1_500;
-        }
-        if (count == 2 && openEnds == 2) {
-            return 800;
-        }
-        if (count == 2 && openEnds == 1) {
-            return 120;
-        }
-        return Math.max(1, count * 8 + openEnds * 6);
+        return null;
     }
 
-    private static Line lineInfo(int[][] board, int x, int y, int dx, int dy, int type) {
-        int count = 1;
-        int openEnds = 0;
-        int forward = countDirection(board, x, y, dx, dy, type);
-        count += forward;
-        int fx = x + dx * (forward + 1);
-        int fy = y + dy * (forward + 1);
-        if (inBounds(fx, fy) && board[fy][fx] == 0) {
-            openEnds++;
+    private static boolean containsModel(String situation, String id) {
+        for (Model model : MODELS) {
+            if (model.id.equals(id)) {
+                return model.matches(situation);
+            }
         }
-        int backward = countDirection(board, x, y, -dx, -dy, type);
-        count += backward;
-        int bx = x - dx * (backward + 1);
-        int by = y - dy * (backward + 1);
-        if (inBounds(bx, by) && board[by][bx] == 0) {
-            openEnds++;
+        return false;
+    }
+
+    private static String getSituation(int[][] board, int x, int y, int dx, int dy, int type) {
+        StringBuilder builder = new StringBuilder(9);
+        for (int offset = -4; offset <= 4; offset++) {
+            if (offset == 0) {
+                builder.append('1');
+                continue;
+            }
+            int cx = x + dx * offset;
+            int cy = y + dy * offset;
+            if (!inBounds(cx, cy)) {
+                continue;
+            }
+            int cell = board[cy][cx];
+            builder.append(cell == 0 ? '0' : cell == type ? '1' : '2');
         }
-        return new Line(count, openEnds);
+        return builder.toString();
     }
 
     private static int countDirection(int[][] board, int x, int y, int dx, int dy, int type) {
@@ -344,13 +414,24 @@ public final class GobangOracleService {
         }
     }
 
-    private static final class Line {
-        private final int count;
-        private final int openEnds;
+    private static final class Model {
+        private final String id;
+        private final int score;
+        private final String[] values;
 
-        private Line(int count, int openEnds) {
-            this.count = count;
-            this.openEnds = openEnds;
+        private Model(String id, int score, String... values) {
+            this.id = id;
+            this.score = score;
+            this.values = values;
+        }
+
+        private boolean matches(String situation) {
+            for (String value : values) {
+                if (situation.contains(value)) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
