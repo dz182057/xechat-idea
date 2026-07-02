@@ -136,7 +136,7 @@ public class GobangOracleServiceTest {
                 new GobangOracleRequestDTO("req-8", board, 1, 4));
 
         Assert.assertTrue(response.isSuccess());
-        Assert.assertTrue(response.getReason().contains("全局线势"));
+        Assert.assertTrue(response.getReason().contains("插件困难档同源引擎"));
     }
 
     @Test
@@ -162,6 +162,57 @@ public class GobangOracleServiceTest {
         Assert.assertTrue("服务端推荐耗时过长: " + elapsedMillis + "ms", elapsedMillis < 2_500L);
     }
 
+    @Test
+    public void onlineLossKeyPointBlocksOpponentOpenFourFork() {
+        int[][] board = board();
+        putMoves(board,
+                7, 7, 1, 8, 8, 2, 8, 6, 1, 6, 8, 2, 7, 9, 1, 7, 8, 2,
+                9, 8, 1, 4, 8, 2, 5, 8, 1, 5, 7, 2, 6, 6, 1, 4, 6, 2,
+                6, 9, 1, 2, 4, 2, 3, 5, 1, 4, 7, 2, 4, 9, 1);
+
+        GobangOracleResponseDTO response = GobangOracleService.suggest(
+                new GobangOracleRequestDTO("req-10", board, 2, 17));
+
+        Assert.assertTrue(response.isSuccess());
+        Assert.assertEquals(Integer.valueOf(5), response.getX());
+        Assert.assertEquals(Integer.valueOf(9), response.getY());
+        Assert.assertTrue(response.getReason().contains("VCF"));
+    }
+
+    @Test
+    public void onlineLossKeyPointBlocksDirectDiagonalWin() {
+        int[][] board = board();
+        putMoves(board,
+                7, 7, 1, 8, 7, 2, 6, 6, 1, 8, 8, 2, 5, 5, 1, 7, 5, 2,
+                3, 3, 1, 4, 4, 2, 5, 4, 1, 8, 6, 2, 8, 5, 1, 5, 3, 2,
+                6, 4, 1, 6, 3, 2, 4, 3, 1, 9, 7, 2, 10, 8, 1, 10, 6, 2,
+                7, 9, 1, 11, 5, 2, 12, 4, 1, 9, 6, 2, 11, 6, 1, 9, 5, 2,
+                9, 8, 1, 9, 3, 2, 9, 4, 1, 7, 3, 2, 8, 3, 1, 8, 4, 2);
+
+        GobangOracleResponseDTO response = GobangOracleService.suggest(
+                new GobangOracleRequestDTO("req-11", board, 1, 30));
+
+        Assert.assertTrue(response.isSuccess());
+        Assert.assertEquals(Integer.valueOf(6), response.getX());
+        Assert.assertEquals(Integer.valueOf(2), response.getY());
+        Assert.assertTrue(response.getReason().contains("成五点"));
+    }
+
+    @Test
+    public void longOracleLossOpeningUsesPluginHardAlternative() {
+        int[][] board = board();
+        board[7][7] = 1;
+        board[7][5] = 2;
+
+        GobangOracleResponseDTO response = GobangOracleService.suggest(
+                new GobangOracleRequestDTO("req-12", board, 1, 2));
+
+        Assert.assertTrue(response.isSuccess());
+        Assert.assertEquals(Integer.valueOf(7), response.getX());
+        Assert.assertEquals(Integer.valueOf(5), response.getY());
+        Assert.assertTrue(response.getReason().contains("插件困难档同源引擎"));
+    }
+
     private static int[][] board() {
         return new int[15][15];
     }
@@ -169,6 +220,12 @@ public class GobangOracleServiceTest {
     private static void put(int[][] board, int type, int... values) {
         for (int i = 0; i + 1 < values.length; i += 2) {
             board[values[i + 1]][values[i]] = type;
+        }
+    }
+
+    private static void putMoves(int[][] board, int... values) {
+        for (int i = 0; i + 2 < values.length; i += 3) {
+            board[values[i + 1]][values[i]] = values[i + 2];
         }
     }
 
