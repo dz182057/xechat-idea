@@ -24,12 +24,12 @@ public final class GobangOracleService {
     private static final int WIN_SCORE = 10_000_000;
     private static final int FORCE_SCORE = 9_000_000;
     private static final int SEARCH_DEPTH = 5;
-    private static final int MAX_CANDIDATES = 14;
-    private static final int MAX_TACTICAL_CANDIDATES = 10;
+    private static final int MAX_CANDIDATES = 12;
+    private static final int MAX_TACTICAL_CANDIDATES = 8;
     private static final int MAX_DEFENSES = 6;
-    private static final int VCF_DEPTH = 9;
-    private static final int VCT_DEPTH = 7;
-    private static final long TIME_BUDGET_NANOS = 1_400_000_000L;
+    private static final int VCF_DEPTH = 7;
+    private static final int VCT_DEPTH = 5;
+    private static final long TIME_BUDGET_NANOS = 850_000_000L;
     private static final int RISK_HIGH = 1_200_000;
     private static final int RISK_MEDIUM = 220_000;
     private static final int RISK_LOW = 45_000;
@@ -64,6 +64,7 @@ public final class GobangOracleService {
             }
             int[][] board = normalizeBoard(request.getBoard());
             long deadline = System.nanoTime() + TIME_BUDGET_NANOS;
+            Map<String, Boolean> forceCache = new HashMap<>();
 
             Point directWin = findWinningPoint(board, type);
             if (directWin != null) {
@@ -74,22 +75,22 @@ public final class GobangOracleService {
                 return success(response, directBlock, type, WIN_SCORE - 1, "服务端 AI 判断这里是对手下一手成五点，先封住避免立刻输棋。");
             }
 
-            Point ownVcf = findForcingMove(board, type, ThreatMode.VCF, VCF_DEPTH, deadline);
+            Point ownVcf = findForcingMove(board, type, ThreatMode.VCF, VCF_DEPTH, deadline, forceCache);
             if (ownVcf != null) {
                 return success(response, ownVcf, type, ownVcf.score,
                         "服务端 AI 的 VCF 连续冲四求解器判断这一步可以进入强迫取胜序列。");
             }
-            Point opponentVcf = findForcingMove(board, opponent(type), ThreatMode.VCF, VCF_DEPTH, deadline);
+            Point opponentVcf = findForcingMove(board, opponent(type), ThreatMode.VCF, VCF_DEPTH, deadline, forceCache);
             if (opponentVcf != null) {
                 return success(response, opponentVcf, type, opponentVcf.score,
                         "服务端 AI 的 VCF 连续冲四求解器判断对手这里有强迫取胜点，先占住关键点。");
             }
-            Point ownVct = findForcingMove(board, type, ThreatMode.VCT, VCT_DEPTH, deadline);
+            Point ownVct = findForcingMove(board, type, ThreatMode.VCT, VCT_DEPTH, deadline, forceCache);
             if (ownVct != null) {
                 return success(response, ownVct, type, ownVct.score,
                         "服务端 AI 的 VCT 连续威胁求解器判断这一步可以形成持续强迫攻势。");
             }
-            Point opponentVct = findForcingMove(board, opponent(type), ThreatMode.VCT, VCT_DEPTH, deadline);
+            Point opponentVct = findForcingMove(board, opponent(type), ThreatMode.VCT, VCT_DEPTH, deadline, forceCache);
             if (opponentVct != null) {
                 return success(response, opponentVct, type, opponentVct.score,
                         "服务端 AI 的 VCT 连续威胁求解器判断对手这里会形成持续强迫攻势，先行压制。");
@@ -115,7 +116,7 @@ public final class GobangOracleService {
                 return fail(response, "暂未找到可推荐的落点");
             }
             return success(response, best, type, best.score,
-                    "服务端 AI 已按强化候选搜索、威胁画像和 Alpha-Beta 剪枝评估，认为这里的后续局面最好。");
+                    "服务端 AI 已按全局线势、连接空间、威胁画像和 Alpha-Beta 剪枝评估，认为这里的后续局面最好。");
         } catch (IllegalArgumentException e) {
             return fail(response, e.getMessage());
         }
@@ -160,7 +161,7 @@ public final class GobangOracleService {
     }
 
     private static Point searchBestPoint(int[][] board, int type, long deadline) {
-        List<Point> candidates = topCandidates(board, type, MAX_CANDIDATES);
+        List<Point> candidates = topCandidates(board, type, MAX_CANDIDATES, true);
         if (candidates.isEmpty()) {
             return isEmptyBoard(board) ? new Point(SIZE / 2, SIZE / 2, 0) : null;
         }
@@ -206,7 +207,7 @@ public final class GobangOracleService {
 
         boolean maximizing = currentType == rootType;
         int best = maximizing ? -Integer.MAX_VALUE : Integer.MAX_VALUE;
-        List<Point> candidates = topCandidates(board, currentType, depth >= 3 ? MAX_CANDIDATES : 9);
+        List<Point> candidates = topCandidates(board, currentType, depth >= 3 ? MAX_CANDIDATES : 8, false);
         if (candidates.isEmpty()) {
             return evaluateBoard(board, rootType) - evaluateBoard(board, opponent(rootType));
         }
@@ -229,7 +230,7 @@ public final class GobangOracleService {
         return best;
     }
 
-    private static List<Point> topCandidates(int[][] board, int type, int limit) {
+    private static List<Point> topCandidates(int[][] board, int type, int limit, boolean strictRisk) {
         List<Point> points = new ArrayList<>();
         int stones = countStones(board);
         if (stones == 0) {
@@ -248,10 +249,13 @@ public final class GobangOracleService {
                 int centerScore = Math.max(0, 14 - Math.abs(x - SIZE / 2) - Math.abs(y - SIZE / 2))
                         * (stones < 10 ? 60 : 10);
                 int neighborScore = countNeighbors(board, x, y, 1) * 220 + countNeighbors(board, x, y, 2) * 45;
-                int riskPenalty = leavesOpponentImmediateWin(board, x, y, type) && attack.score < WIN_SCORE
+                int strategicScore = strategicMoveScore(board, x, y, type)
+                        + strategicMoveScore(board, x, y, opponent) * 4 / 5;
+                int riskPenalty = strictRisk && leavesOpponentImmediateWin(board, x, y, type) && attack.score < WIN_SCORE
                         ? WIN_SCORE
                         : 0;
-                int score = attack.score + defense.score * 6 / 5 + centerScore + neighborScore - riskPenalty;
+                int score = attack.score + defense.score * 6 / 5 + strategicScore
+                        + centerScore + neighborScore - riskPenalty;
                 points.add(new Point(x, y, score));
             }
         }
@@ -262,7 +266,8 @@ public final class GobangOracleService {
         return points;
     }
 
-    private static Point findForcingMove(int[][] board, int type, ThreatMode mode, int maxPly, long deadline) {
+    private static Point findForcingMove(int[][] board, int type, ThreatMode mode, int maxPly, long deadline,
+                                         Map<String, Boolean> forceCache) {
         List<Point> candidates = forcingCandidates(board, type, mode, MAX_TACTICAL_CANDIDATES);
         for (Point point : candidates) {
             if (isTimeUp(deadline)) {
@@ -275,7 +280,7 @@ public final class GobangOracleService {
             board[point.y][point.x] = type;
             boolean force = vctEntry
                     || isWin(board, point.x, point.y, type)
-                    || isForcedWinAfterAttack(board, type, mode, maxPly - 1, deadline);
+                    || isForcedWinAfterAttack(board, type, mode, maxPly - 1, deadline, forceCache);
             board[point.y][point.x] = 0;
             if (force) {
                 point.score += FORCE_SCORE;
@@ -286,10 +291,23 @@ public final class GobangOracleService {
     }
 
     private static boolean isForcedWinAfterAttack(int[][] board, int attacker, ThreatMode mode, int remainingPly,
-                                                  long deadline) {
+                                                  long deadline, Map<String, Boolean> forceCache) {
         if (isTimeUp(deadline)) {
             return false;
         }
+        String key = "force:" + attacker + ':' + mode + ':' + remainingPly + ':'
+                + encodeBoard(board, attacker, attacker, remainingPly);
+        Boolean cached = forceCache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        boolean forced = computeForcedWinAfterAttack(board, attacker, mode, remainingPly, deadline, forceCache);
+        forceCache.put(key, forced);
+        return forced;
+    }
+
+    private static boolean computeForcedWinAfterAttack(int[][] board, int attacker, ThreatMode mode, int remainingPly,
+                                                       long deadline, Map<String, Boolean> forceCache) {
         int defender = opponent(attacker);
         if (!findWinningPoints(board, defender).isEmpty()) {
             return false;
@@ -321,7 +339,8 @@ public final class GobangOracleService {
             }
             board[defense.y][defense.x] = defender;
             boolean defenderWin = isWin(board, defense.x, defense.y, defender);
-            Point next = defenderWin ? null : findForcingMove(board, attacker, mode, remainingPly - 1, deadline);
+            Point next = defenderWin ? null
+                    : findForcingMove(board, attacker, mode, remainingPly - 1, deadline, forceCache);
             board[defense.y][defense.x] = 0;
             if (next == null) {
                 return false;
@@ -418,7 +437,7 @@ public final class GobangOracleService {
     }
 
     private static int evaluateBoard(int[][] board, int type) {
-        int score = 0;
+        int score = evaluateLinePotential(board, type);
         for (int y = 0; y < SIZE; y++) {
             for (int x = 0; x < SIZE; x++) {
                 if (board[y][x] != 0 || !hasNeighbor(board, x, y, 2)) {
@@ -428,6 +447,60 @@ public final class GobangOracleService {
             }
         }
         return score;
+    }
+
+    private static int evaluateLinePotential(int[][] board, int type) {
+        int score = 0;
+        for (int y = 0; y < SIZE; y++) {
+            for (int x = 0; x < SIZE; x++) {
+                for (int[] direction : DIRECTIONS) {
+                    score += segmentPotentialScore(board, x, y, direction[0], direction[1], type);
+                }
+            }
+        }
+        return score;
+    }
+
+    private static int segmentPotentialScore(int[][] board, int x, int y, int dx, int dy, int type) {
+        int endX = x + dx * 4;
+        int endY = y + dy * 4;
+        if (!inBounds(x, y) || !inBounds(endX, endY)) {
+            return 0;
+        }
+        int own = 0;
+        int empty = 0;
+        int opponent = opponent(type);
+        for (int i = 0; i < 5; i++) {
+            int cell = board[y + dy * i][x + dx * i];
+            if (cell == opponent) {
+                return 0;
+            }
+            if (cell == type) {
+                own++;
+            } else {
+                empty++;
+            }
+        }
+        if (own == 0 || empty == 0) {
+            return 0;
+        }
+        int openEnds = 0;
+        if (isOpen(board, x - dx, y - dy)) {
+            openEnds++;
+        }
+        if (isOpen(board, endX + dx, endY + dy)) {
+            openEnds++;
+        }
+        if (own >= 4) {
+            return 180_000 + openEnds * 90_000;
+        }
+        if (own == 3) {
+            return (openEnds == 2 ? 42_000 : 12_000) + empty * 500;
+        }
+        if (own == 2) {
+            return (openEnds == 2 ? 1_800 : 700) + empty * 90;
+        }
+        return openEnds * 60 + empty * 12;
     }
 
     private static int evaluateMove(int[][] board, int x, int y, int type) {
@@ -458,6 +531,56 @@ public final class GobangOracleService {
         board[y][x] = 0;
         profile.applyComboBonus();
         return profile;
+    }
+
+    private static int strategicMoveScore(int[][] board, int x, int y, int type) {
+        int score = 0;
+        for (int[] direction : DIRECTIONS) {
+            int left = countDirection(board, x, y, -direction[0], -direction[1], type);
+            int right = countDirection(board, x, y, direction[0], direction[1], type);
+            int connected = left + right;
+            int leftSpace = countLineSpace(board, x, y, -direction[0], -direction[1], type);
+            int rightSpace = countLineSpace(board, x, y, direction[0], direction[1], type);
+            int totalSpace = leftSpace + rightSpace + 1;
+            if (totalSpace < 5) {
+                continue;
+            }
+            int openEnds = 0;
+            if (leftSpace > left) {
+                openEnds++;
+            }
+            if (rightSpace > right) {
+                openEnds++;
+            }
+            score += connected * connected * 520;
+            score += totalSpace * 55;
+            if (left > 0 && right > 0) {
+                score += 850;
+            }
+            if (openEnds == 2) {
+                score += 650 + connected * 220;
+            } else if (openEnds == 1) {
+                score += 160 + connected * 80;
+            }
+        }
+        return score;
+    }
+
+    private static int countLineSpace(int[][] board, int x, int y, int dx, int dy, int type) {
+        int space = 0;
+        int blockedBy = opponent(type);
+        int cx = x + dx;
+        int cy = y + dy;
+        while (space < 4 && inBounds(cx, cy) && board[cy][cx] != blockedBy) {
+            space++;
+            cx += dx;
+            cy += dy;
+        }
+        return space;
+    }
+
+    private static boolean isOpen(int[][] board, int x, int y) {
+        return inBounds(x, y) && board[y][x] == 0;
     }
 
     private static Model getModel(String situation) {
