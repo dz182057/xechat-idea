@@ -54,6 +54,8 @@ public class PetItemDefinitionsTest {
                 "item_gomoku_skin_ink",
                 "item_gomoku_skin_toy"
         ), PetItemDefinitions.dailySkinShopItemIds());
+        Assert.assertTrue(PetItemDefinitions.isDailySkinShopItem("item_gomoku_skin_magic"));
+        Assert.assertFalse(PetItemDefinitions.isDailySkinShopItem("item_gomoku_guard"));
 
         Assert.assertEquals(Integer.valueOf(20), PetItemDefinitions.sellItemPrices().get("item_draw_advance_hint"));
         Assert.assertEquals(Integer.valueOf(80), PetItemDefinitions.sellItemPrices().get("item_turtle_probe"));

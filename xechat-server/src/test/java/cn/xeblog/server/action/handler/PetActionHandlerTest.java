@@ -3,6 +3,7 @@ package cn.xeblog.server.action.handler;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
+import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
 import cn.xeblog.commons.entity.pet.PetCollectionItemDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
 import cn.xeblog.commons.entity.pet.PetFeedDTO;
@@ -29,6 +30,7 @@ import cn.xeblog.commons.enums.PetAction;
 import cn.xeblog.commons.enums.UserStatus;
 import cn.xeblog.server.account.DbInitializer;
 import cn.xeblog.server.config.GlobalConfig;
+import cn.xeblog.server.pet.PetItemDefinitions;
 import cn.xeblog.server.pet.PetProfileService;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -2998,6 +3000,63 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void twentyEighthCheckinRewardsMissingSkinFirst() {
+        User user = user(96005L, "milestone_skin_user");
+        seedTwentySevenHistoricalCheckins(user.getAccountId());
+        IntSupplier originalItemIndexSupplier = setLuckyBagItemIndexSupplier(() -> 2);
+
+        try {
+            PetRequestDTO checkin = new PetRequestDTO();
+            checkin.setPetAction(PetAction.CHECKIN);
+            new PetActionHandler().process(user, checkin);
+
+            PetResponseDTO body = readPetBody(user);
+            Assert.assertTrue(body.isSuccess());
+            PetProfileDTO profile = (PetProfileDTO) body.getContent();
+            PetCheckinMilestoneRewardDTO reward = profile.getCheckinStatus().getLastMilestoneReward();
+            Assert.assertNotNull(reward);
+            Assert.assertEquals(1, reward.getMilestoneIndex());
+            Assert.assertEquals("item_gomoku_skin_magic", reward.getItemId());
+            Assert.assertEquals(0, reward.getOverflowBones());
+            Assert.assertEquals(1, countItem(user.getAccountId(), "item_gomoku_skin_magic"));
+            Assert.assertEquals(28, profile.getCheckinStatus().getTotalCheckins());
+            Assert.assertEquals(28, profile.getCheckinStatus().getMilestoneRemaining());
+        } finally {
+            setLuckyBagItemIndexSupplier(originalItemIndexSupplier);
+        }
+    }
+
+    @Test
+    public void twentyEighthCheckinFallsBackToEpicWhenAllSkinsOwned() {
+        User user = user(96006L, "milestone_epic_user");
+        seedTwentySevenHistoricalCheckins(user.getAccountId());
+        for (String itemId : PetItemDefinitions.dailySkinShopItemIds()) {
+            insertPetItem(user.getAccountId(), itemId, 1);
+        }
+        IntSupplier originalItemIndexSupplier = setLuckyBagItemIndexSupplier(() -> 0);
+
+        try {
+            PetRequestDTO checkin = new PetRequestDTO();
+            checkin.setPetAction(PetAction.CHECKIN);
+            new PetActionHandler().process(user, checkin);
+
+            PetResponseDTO body = readPetBody(user);
+            Assert.assertTrue(body.isSuccess());
+            PetProfileDTO profile = (PetProfileDTO) body.getContent();
+            PetCheckinMilestoneRewardDTO reward = profile.getCheckinStatus().getLastMilestoneReward();
+            Assert.assertNotNull(reward);
+            Assert.assertTrue(epicLuckyBagItemIds().contains(reward.getItemId()));
+            Assert.assertEquals(0, reward.getOverflowBones());
+            Assert.assertEquals(1, countItem(user.getAccountId(), reward.getItemId()));
+            for (String itemId : PetItemDefinitions.dailySkinShopItemIds()) {
+                Assert.assertEquals(1, countItem(user.getAccountId(), itemId));
+            }
+        } finally {
+            setLuckyBagItemIndexSupplier(originalItemIndexSupplier);
+        }
+    }
+
+    @Test
     public void checkinCanOnlyRunOncePerDayAndRewardsFirstDay() {
         User user = user();
         adoptDog(user, "corgi", "小短腿");
@@ -5329,6 +5388,13 @@ public class PetActionHandlerTest {
         LocalDate startDate = LocalDate.now().minusDays(60);
         for (int i = 0; i < 6; i++) {
             insertCheckin(accountId, startDate.plusDays(i).toString(), i + 1);
+        }
+    }
+
+    private static void seedTwentySevenHistoricalCheckins(long accountId) {
+        LocalDate startDate = LocalDate.now().minusDays(90);
+        for (int i = 0; i < 27; i++) {
+            insertCheckin(accountId, startDate.plusDays(i).toString(), i % 7 + 1);
         }
     }
 

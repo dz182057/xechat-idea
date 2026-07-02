@@ -3187,16 +3187,24 @@ public final class PetProfileService {
 
         int milestoneIndex = totalCheckins / CHECKIN_MILESTONE_INTERVAL;
         PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
-        String itemId = pickAvailableLuckyBagItem(LUCKY_BAG_EPIC_ITEM_IDS, luckyBagItemCounts(itemMapper, accountId));
+        String itemId = pickAvailableSkinItem(itemMapper, accountId);
         int overflowBones = 0;
-        if (itemId == null || itemMapper.addItemIfUnderLimit(accountId, itemId, 1, MAX_ITEM_COUNT, now) <= 0) {
-            itemId = null;
-            overflowBones = CHECKIN_MILESTONE_EPIC_ITEM_OVERFLOW_BONES;
-            session.getMapper(PetAssetsMapper.class).addBones(accountId, overflowBones, now);
-        } else {
+
+        if (itemId != null && itemMapper.addItemIfUnderLimit(accountId, itemId, 1, 1, now) > 0) {
             recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, 1,
                     ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_CHECKIN_REWARD,
                     "milestone:" + milestoneIndex, null, now);
+        } else {
+            itemId = pickAvailableLuckyBagItem(LUCKY_BAG_EPIC_ITEM_IDS, luckyBagItemCounts(itemMapper, accountId));
+            if (itemId == null || itemMapper.addItemIfUnderLimit(accountId, itemId, 1, MAX_ITEM_COUNT, now) <= 0) {
+                itemId = null;
+                overflowBones = CHECKIN_MILESTONE_EPIC_ITEM_OVERFLOW_BONES;
+                session.getMapper(PetAssetsMapper.class).addBones(accountId, overflowBones, now);
+            } else {
+                recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, 1,
+                        ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_CHECKIN_REWARD,
+                        "milestone:" + milestoneIndex, null, now);
+            }
         }
 
         return new PetCheckinMilestoneRewardDTO(milestoneIndex, null, itemId, overflowBones);
@@ -3269,6 +3277,25 @@ public final class PetProfileService {
             }
         }
         return counts;
+    }
+
+    private static String pickAvailableSkinItem(PetItemMapper itemMapper, long accountId) {
+        Map<String, Integer> counts = new HashMap<>();
+        for (PetItemRecord item : itemMapper.listPositiveByAccountId(accountId)) {
+            if (DAILY_SKIN_SHOP_ITEM_IDS.contains(item.getItemId())) {
+                counts.put(item.getItemId(), item.getCount());
+            }
+        }
+        List<String> availableItems = new ArrayList<>();
+        for (String itemId : DAILY_SKIN_SHOP_ITEM_IDS) {
+            if (counts.getOrDefault(itemId, 0) < 1) {
+                availableItems.add(itemId);
+            }
+        }
+        if (availableItems.isEmpty()) {
+            return null;
+        }
+        return availableItems.get(nextLuckyBagItemIndex(availableItems.size()));
     }
 
     private static int checkinMilestoneRemaining(int totalCheckins) {

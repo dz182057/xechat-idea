@@ -68,6 +68,39 @@ public class AdminPetResourceGrantServiceTest {
     }
 
     @Test
+    public void grantSkinShouldOnlyAllowSkinAndKeepSingleOwnership() throws Exception {
+        Account target = registerUser("skin");
+
+        AdminPetResourceGrantResultDTO result = AdminPetResourceGrantService.grant(99L,
+                new AdminGrantPetResourceDTO(target.getAccountId(),
+                        AdminPetResourceGrantService.TYPE_SKIN, "item_gomoku_skin_magic", 1, "补皮肤"));
+
+        Assert.assertEquals(Integer.valueOf(0), result.getBeforeAmount());
+        Assert.assertEquals(Integer.valueOf(1), result.getAfterAmount());
+        Assert.assertEquals(1, countItem(target.getAccountId(), "item_gomoku_skin_magic"));
+        Assert.assertEquals(1, countItemLedger(target.getAccountId(), "item_gomoku_skin_magic",
+                "gain", "admin_manual_grant"));
+
+        try {
+            AdminPetResourceGrantService.grant(99L,
+                    new AdminGrantPetResourceDTO(target.getAccountId(),
+                            AdminPetResourceGrantService.TYPE_SKIN, "item_gomoku_skin_magic", 1, null));
+        } catch (AccountException e) {
+            Assert.assertEquals("该皮肤已拥有", e.getMessage());
+            try {
+                AdminPetResourceGrantService.grant(99L,
+                        new AdminGrantPetResourceDTO(target.getAccountId(),
+                                AdminPetResourceGrantService.TYPE_SKIN, "item_gomoku_guard", 1, null));
+            } catch (AccountException invalidItemError) {
+                Assert.assertEquals("皮肤 ID 不存在", invalidItemError.getMessage());
+                return;
+            }
+            throw new AssertionError("非皮肤道具不应按皮肤发放成功");
+        }
+        throw new AssertionError("已拥有的皮肤不应重复发放成功");
+    }
+
+    @Test
     public void grantCollectionShouldDiscoverAndIncreaseCount() throws Exception {
         Account target = registerUser("collection");
 

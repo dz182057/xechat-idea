@@ -82,6 +82,10 @@ public final class PetItemDefinitions {
         return DAILY_SKIN_SHOP_ITEM_IDS;
     }
 
+    public static boolean isDailySkinShopItem(String itemId) {
+        return DAILY_SKIN_SHOP_ITEM_IDS.contains(trimToNull(itemId));
+    }
+
     public static Map<String, Integer> sellItemPrices() {
         return SELL_ITEM_PRICES;
     }

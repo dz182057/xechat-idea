@@ -29,6 +29,7 @@ public final class AdminPetResourceGrantService {
     public static final String TYPE_MAKEUP_CARD = "MAKEUP_CARD";
     public static final String TYPE_ENERGY = "ENERGY";
     public static final String TYPE_ITEM = "ITEM";
+    public static final String TYPE_SKIN = "SKIN";
     public static final String TYPE_COLLECTION = "COLLECTION";
 
     private static final int MAX_GRANT_QUANTITY = 1_000_000;
@@ -45,6 +46,7 @@ public final class AdminPetResourceGrantService {
             TYPE_MAKEUP_CARD,
             TYPE_ENERGY,
             TYPE_ITEM,
+            TYPE_SKIN,
             TYPE_COLLECTION
     )));
     private static final Set<String> COLLECTION_ITEM_IDS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
@@ -124,6 +126,10 @@ public final class AdminPetResourceGrantService {
                         break;
                     case TYPE_ITEM:
                         amounts = grantItem(session, targetAccountId, itemId, quantity, sourceRef,
+                                metadata(adminAccountId, resourceType, itemId, quantity, note), now);
+                        break;
+                    case TYPE_SKIN:
+                        amounts = grantSkinItem(session, targetAccountId, itemId, quantity, sourceRef,
                                 metadata(adminAccountId, resourceType, itemId, quantity, note), now);
                         break;
                     case TYPE_COLLECTION:
@@ -259,8 +265,27 @@ public final class AdminPetResourceGrantService {
         return new GrantAmounts(before, after);
     }
 
+    private static GrantAmounts grantSkinItem(SqlSession session, long accountId, String itemId, int quantity,
+                                              String sourceRef, String metadataJson, long now) {
+        String normalizedItemId = validateSkinItemId(itemId);
+        if (quantity > 1) {
+            throw new AccountException("皮肤数量上限为 1");
+        }
+        PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
+        int before = countItem(itemMapper, accountId, normalizedItemId);
+        if (before >= 1) {
+            throw new AccountException("该皮肤已拥有");
+        }
+        if (itemMapper.addItemIfUnderLimit(accountId, normalizedItemId, quantity, 1, now) <= 0) {
+            throw new AccountException("该皮肤已拥有");
+        }
+        recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, normalizedItemId, quantity,
+                LEDGER_DIRECTION_GAIN, LEDGER_SOURCE_ADMIN_MANUAL_GRANT, sourceRef, metadataJson, now);
+        return new GrantAmounts(before, before + quantity);
+    }
+
     private static GrantAmounts grantCollection(SqlSession session, long accountId, String itemId, int quantity,
-                                                long now) {
+                                                 long now) {
         String normalizedItemId = validateCollectionItemId(itemId);
         PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
         int before = countCollection(collectionMapper, accountId, normalizedItemId);
@@ -278,6 +303,17 @@ public final class AdminPetResourceGrantService {
         }
         if (PetItemDefinitions.byId(normalizedItemId) == null) {
             throw new AccountException("道具 ID 不存在");
+        }
+        return normalizedItemId;
+    }
+
+    private static String validateSkinItemId(String itemId) {
+        String normalizedItemId = StrUtil.trim(itemId);
+        if (StrUtil.isBlank(normalizedItemId)) {
+            throw new AccountException("皮肤 ID 不能为空");
+        }
+        if (!PetItemDefinitions.isDailySkinShopItem(normalizedItemId)) {
+            throw new AccountException("皮肤 ID 不存在");
         }
         return normalizedItemId;
     }

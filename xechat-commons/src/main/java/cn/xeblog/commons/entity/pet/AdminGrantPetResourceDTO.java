@@ -25,12 +25,12 @@ public class AdminGrantPetResourceDTO implements Serializable {
     private Long targetAccountId;
 
     /**
-     * 资源类型：BONES / FOOD / MAKEUP_CARD / ENERGY / ITEM / COLLECTION。
+     * 资源类型：BONES / FOOD / MAKEUP_CARD / ENERGY / ITEM / SKIN / COLLECTION。
      */
     private String resourceType;
 
     /**
-     * 道具或收藏品 ID；资源类型为 ITEM / COLLECTION 时必填。
+     * 道具、皮肤或收藏品 ID；资源类型为 ITEM / SKIN / COLLECTION 时必填。
      */
     private String itemId;
 
