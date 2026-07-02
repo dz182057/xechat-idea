@@ -66,7 +66,62 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.isSuccess());
         Assert.assertEquals(Integer.valueOf(7), response.getX());
         Assert.assertEquals(Integer.valueOf(7), response.getY());
-        Assert.assertTrue(response.getReason().contains("强迫杀"));
+        Assert.assertTrue(response.getReason().contains("VCF"));
+    }
+
+    @Test
+    public void vcfAttackTakesOpenFourEntry() {
+        int[][] board = board();
+        board[7][5] = 1;
+        board[7][6] = 1;
+        board[7][8] = 1;
+        board[6][7] = 2;
+        board[8][7] = 2;
+
+        GobangOracleResponseDTO response = GobangOracleService.suggest(
+                new GobangOracleRequestDTO("req-5", board, 1, 5));
+
+        Assert.assertTrue(response.isSuccess());
+        Assert.assertEquals(Integer.valueOf(7), response.getX());
+        Assert.assertEquals(Integer.valueOf(7), response.getY());
+        Assert.assertTrue(response.getReason().contains("VCF"));
+    }
+
+    @Test
+    public void vcfDefenseOccupiesOpponentForcingEntry() {
+        int[][] board = board();
+        board[7][5] = 2;
+        board[7][6] = 2;
+        board[7][8] = 2;
+        board[6][7] = 1;
+        board[8][7] = 1;
+
+        GobangOracleResponseDTO response = GobangOracleService.suggest(
+                new GobangOracleRequestDTO("req-6", board, 1, 5));
+
+        Assert.assertTrue(response.isSuccess());
+        Assert.assertEquals(Integer.valueOf(7), response.getX());
+        Assert.assertEquals(Integer.valueOf(7), response.getY());
+        Assert.assertTrue(response.getReason().contains("VCF"));
+    }
+
+    @Test
+    public void vctAttackTakesDoubleLiveThreeEntry() {
+        int[][] board = board();
+        board[7][6] = 1;
+        board[7][8] = 1;
+        board[6][7] = 1;
+        board[8][7] = 1;
+        board[5][5] = 2;
+        board[9][9] = 2;
+
+        GobangOracleResponseDTO response = GobangOracleService.suggest(
+                new GobangOracleRequestDTO("req-7", board, 1, 6));
+
+        Assert.assertTrue(response.isSuccess());
+        Assert.assertEquals(Integer.valueOf(7), response.getX());
+        Assert.assertEquals(Integer.valueOf(7), response.getY());
+        Assert.assertTrue(response.getReason().contains("VCT"));
     }
 
     private static int[][] board() {
