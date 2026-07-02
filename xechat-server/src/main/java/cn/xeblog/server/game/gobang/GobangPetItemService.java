@@ -525,7 +525,10 @@ public final class GobangPetItemService {
             return null;
         }
         List<Cell> winningCells = findWinningCells(board, type);
-        int liveThreeCount = countLiveThreeLines(board, type);
+        Set<String> winningLineKeys = winningCells.size() == 1
+                ? winningLineKeys(board, type, winningCells.get(0))
+                : new HashSet<>();
+        int liveThreeCount = countLiveThreeLines(board, type, winningLineKeys);
         List<Cell> criticalCells = findGuardCriticalCells(board, type);
         if (winningCells.size() == 1 && (liveThreeCount > 0 || hasSecondaryForcingMove(board, type, winningCells.get(0)))) {
             return new GuardThreat(winningCells.get(0));
@@ -663,6 +666,10 @@ public final class GobangPetItemService {
     }
 
     private static int countLiveThreeLines(int[][] board, int type) {
+        return countLiveThreeLines(board, type, new HashSet<>());
+    }
+
+    private static int countLiveThreeLines(int[][] board, int type, Set<String> excludedLineKeys) {
         Set<String> lines = new HashSet<>();
         for (int y = 0; y < BOARD_SIZE; y++) {
             for (int x = 0; x < BOARD_SIZE; x++) {
@@ -670,8 +677,12 @@ public final class GobangPetItemService {
                     continue;
                 }
                 for (int i = 0; i < DIRECTIONS.length; i++) {
+                    String lineKey = lineKey(i, x, y);
+                    if (excludedLineKeys.contains(lineKey)) {
+                        continue;
+                    }
                     if (hasOpenThree(lineThrough(board, x, y, type, DIRECTIONS[i][0], DIRECTIONS[i][1]))) {
-                        lines.add(lineKey(i, x, y));
+                        lines.add(lineKey);
                     }
                 }
             }

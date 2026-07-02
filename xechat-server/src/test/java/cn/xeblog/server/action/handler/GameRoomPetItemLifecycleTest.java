@@ -818,6 +818,36 @@ public class GameRoomPetItemLifecycleTest {
     }
 
     @Test
+    public void gobangGuardShouldNotTriggerOnOpponentPlainBlockedFourMove() {
+        User alice = user(2180L);
+        User bob = user(2181L);
+        GameRoom room = room(Game.GOBANG, alice, bob);
+        insertPetItem(alice.getAccountId(), "item_gomoku_guard", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO(null, "item_gomoku_guard"));
+
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 1));
+        new GameActionHandler().process(alice, room, gobangMove(3, 7, 2));
+        new GameActionHandler().process(bob, room, gobangMove(4, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(5, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(1, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(6, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(2, 2, 2));
+        GobangDTO blockedFourMove = gobangMove(7, 7, 1);
+        new GameActionHandler().process(bob, room, blockedFourMove);
+
+        Assert.assertNull(blockedFourMove.getPetItemGuardX());
+        Assert.assertNull(blockedFourMove.getPetItemGuardY());
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
+                "item_gomoku_guard", "interaction", "consumed"));
+        Assert.assertNull(blockedFourMove.getPetItemNotice());
+    }
+
+    @Test
     public void gobangGuardShouldTriggerBeforeLiveFourAndOpenThreeFork() {
         User alice = user(2178L);
         User bob = user(2179L);
