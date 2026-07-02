@@ -34,6 +34,7 @@ public final class GobangPetItemService {
     private static final String ITEM_FINISHER = "item_gomoku_finisher";
     private static final String ITEM_PREDICTION = "item_gomoku_prediction";
     private static final String ITEM_PROPHECY = "item_prophecy";
+    private static final int GUARD_TRIGGER_LIMIT = 3;
     private static final int PREDICTION_REWARD_BONES = 50;
     private static final int PROPHECY_REWARD_BONES = 20;
     private static final Map<String, RoomState> STATES = new ConcurrentHashMap<>();
@@ -449,15 +450,34 @@ public final class GobangPetItemService {
             if (threat == null) {
                 return;
             }
-            PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_GUARD, slot);
-            clearCarriedItem(player, slot);
+            int previousCount = state.guardTriggerCounts.getOrDefault(playerKey, 0);
+            int nextCount = previousCount + 1;
+            if (previousCount == 0) {
+                PetGameItemDeclarationService.settleConsumed(room, playerKey, ITEM_GUARD, slot);
+            }
+            boolean exhausted = nextCount >= GUARD_TRIGGER_LIMIT;
+            if (exhausted) {
+                state.guardTriggerCounts.remove(playerKey);
+                clearCarriedItem(player, slot);
+            } else {
+                state.guardTriggerCounts.put(playerKey, nextCount);
+            }
             dto.setPetItemGuardX(threat.cell.x);
             dto.setPetItemGuardY(threat.cell.y);
+            dto.setPetItemId(ITEM_GUARD);
+            dto.setPetItemSlotIndex(slotIndexForSlot(slot));
+            dto.setPetItemConsumed(exhausted);
+            String suffix = exhausted
+                    ? "本局守护次数已用完，道具已消耗。"
+                    : String.format("本局还可守护 %d 次。", GUARD_TRIGGER_LIMIT - nextCount);
             appendNotice(dto, String.format(
-                    "守门骨触发，已为 %s 高亮对手隐蔽多重威胁点 (%d,%d)，道具已消耗。",
+                    "守门骨第 %d/%d 次守护，已为 %s 高亮对手隐蔽多重威胁点 (%d,%d)，%s",
+                    nextCount,
+                    GUARD_TRIGGER_LIMIT,
                     playerName(player),
                     threat.cell.x,
-                    threat.cell.y));
+                    threat.cell.y,
+                    suffix));
         }
     }
 
@@ -525,21 +545,15 @@ public final class GobangPetItemService {
             return null;
         }
         List<Cell> winningCells = findWinningCells(board, type);
-        Set<String> winningLineKeys = winningCells.size() == 1
-                ? winningLineKeys(board, type, winningCells.get(0))
-                : new HashSet<>();
-        int liveThreeCount = countLiveThreeLines(board, type, winningLineKeys);
-        List<Cell> criticalCells = findGuardCriticalCells(board, type);
-        if (winningCells.size() == 1 && (liveThreeCount > 0 || hasSecondaryForcingMove(board, type, winningCells.get(0)))) {
-            return new GuardThreat(winningCells.get(0));
-        }
         if (!winningCells.isEmpty()) {
             return null;
         }
+        List<Cell> criticalCells = findGuardCriticalCells(board, type);
         if (!criticalCells.isEmpty()) {
             Cell criticalCell = findGuardPreventiveCell(board, type, criticalCells);
             return criticalCell == null ? null : new GuardThreat(criticalCell);
         }
+        int liveThreeCount = countLiveThreeLines(board, type);
         if (liveThreeCount > 1) {
             Cell defenseCell = findGuardDefenseCell(board, type);
             return defenseCell == null ? null : new GuardThreat(defenseCell);
@@ -621,48 +635,6 @@ public final class GobangPetItemService {
     private static Cell findGuardCriticalCell(int[][] board, int type) {
         List<Cell> cells = findGuardCriticalCells(board, type);
         return cells.isEmpty() ? null : cells.get(0);
-    }
-
-    private static boolean hasSecondaryForcingMove(int[][] board, int type, Cell winningCell) {
-        Set<String> winningLineKeys = winningLineKeys(board, type, winningCell);
-        for (int y = 0; y < BOARD_SIZE; y++) {
-            for (int x = 0; x < BOARD_SIZE; x++) {
-                if (board[y][x] != 0) {
-                    continue;
-                }
-                board[y][x] = type;
-                boolean secondaryThreat = false;
-                if (!isWinningMove(board, x, y, type)) {
-                    for (int i = 0; i < DIRECTIONS.length; i++) {
-                        String line = lineThrough(board, x, y, type, DIRECTIONS[i][0], DIRECTIONS[i][1]);
-                        if (!hasLiveFour(line) && hasRushFour(line) && !winningLineKeys.contains(lineKey(i, x, y))) {
-                            secondaryThreat = true;
-                            break;
-                        }
-                    }
-                }
-                board[y][x] = 0;
-                if (secondaryThreat) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static Set<String> winningLineKeys(int[][] board, int type, Cell winningCell) {
-        Set<String> keys = new HashSet<>();
-        if (board[winningCell.y][winningCell.x] != 0) {
-            return keys;
-        }
-        board[winningCell.y][winningCell.x] = type;
-        for (int i = 0; i < DIRECTIONS.length; i++) {
-            if (countLine(board, winningCell.x, winningCell.y, type, DIRECTIONS[i][0], DIRECTIONS[i][1]) >= 5) {
-                keys.add(lineKey(i, winningCell.x, winningCell.y));
-            }
-        }
-        board[winningCell.y][winningCell.x] = 0;
-        return keys;
     }
 
     private static int countLiveThreeLines(int[][] board, int type) {
@@ -979,6 +951,10 @@ public final class GobangPetItemService {
         return slotIndex != null && slotIndex > 0 ? 1 : 0;
     }
 
+    private static int slotIndexForSlot(String slot) {
+        return SLOT_INTERACTION.equals(slot) ? 1 : 0;
+    }
+
     private static void recordHistory(String event, User actor, GameRoom room, GobangDTO request,
                                       GobangDTO response, RoomState state, Map<String, Object> extra) {
         String roomId = room == null ? null : room.getId();
@@ -1144,6 +1120,7 @@ public final class GobangPetItemService {
     private static final class RoomState {
         private final int[][] board = new int[BOARD_SIZE][BOARD_SIZE];
         private final Map<String, PendingPrediction> pendingByTarget = new ConcurrentHashMap<>();
+        private final Map<String, Integer> guardTriggerCounts = new ConcurrentHashMap<>();
         private final Map<String, Integer> playerTypes = new ConcurrentHashMap<>();
         private final List<GobangDTO> moveHistory = new ArrayList<>();
         private final long startedAt;

@@ -874,11 +874,14 @@ public class GameRoomPetItemLifecycleTest {
 
         Assert.assertEquals(Integer.valueOf(7), forkMove.getPetItemGuardX());
         Assert.assertEquals(Integer.valueOf(7), forkMove.getPetItemGuardY());
+        Assert.assertEquals("item_gomoku_guard", forkMove.getPetItemId());
+        Assert.assertEquals(Integer.valueOf(1), forkMove.getPetItemSlotIndex());
+        Assert.assertEquals(Boolean.FALSE, forkMove.getPetItemConsumed());
         Assert.assertEquals(0, countItem(alice.getAccountId(), "item_gomoku_guard"));
-        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
                 "item_gomoku_guard", "interaction", "consumed"));
-        Assert.assertEquals("守门骨触发，已为 玩家2178 高亮对手隐蔽多重威胁点 (7,7)，道具已消耗。",
+        Assert.assertEquals("守门骨第 1/3 次守护，已为 玩家2178 高亮对手隐蔽多重威胁点 (7,7)，本局还可守护 2 次。",
                 forkMove.getPetItemNotice());
     }
 
@@ -905,16 +908,19 @@ public class GameRoomPetItemLifecycleTest {
 
         Assert.assertEquals(Integer.valueOf(7), doubleThreeMove.getPetItemGuardX());
         Assert.assertEquals(Integer.valueOf(7), doubleThreeMove.getPetItemGuardY());
+        Assert.assertEquals("item_gomoku_guard", doubleThreeMove.getPetItemId());
+        Assert.assertEquals(Integer.valueOf(1), doubleThreeMove.getPetItemSlotIndex());
+        Assert.assertEquals(Boolean.FALSE, doubleThreeMove.getPetItemConsumed());
         Assert.assertEquals(0, countItem(alice.getAccountId(), "item_gomoku_guard"));
-        Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
                 "item_gomoku_guard", "interaction", "consumed"));
-        Assert.assertEquals("守门骨触发，已为 玩家2166 高亮对手隐蔽多重威胁点 (7,7)，道具已消耗。",
+        Assert.assertEquals("守门骨第 1/3 次守护，已为 玩家2166 高亮对手隐蔽多重威胁点 (7,7)，本局还可守护 2 次。",
                 doubleThreeMove.getPetItemNotice());
     }
 
     @Test
-    public void gobangGuardShouldBlockWinningCellInRushFourAndOpenThreeCombo() {
+    public void gobangGuardShouldNotTriggerOnObviousRushFourAndOpenThreeCombo() {
         User alice = user(2170L);
         User bob = user(2171L);
         GameRoom room = room(Game.GOBANG, alice, bob);
@@ -941,14 +947,77 @@ public class GameRoomPetItemLifecycleTest {
         GobangDTO comboMove = gobangMove(10, 9, 1);
         new GameActionHandler().process(bob, room, comboMove);
 
-        Assert.assertEquals(Integer.valueOf(10), comboMove.getPetItemGuardX());
-        Assert.assertEquals(Integer.valueOf(10), comboMove.getPetItemGuardY());
-        Assert.assertEquals(0, countItem(alice.getAccountId(), "item_gomoku_guard"));
+        Assert.assertNull(comboMove.getPetItemGuardX());
+        Assert.assertNull(comboMove.getPetItemGuardY());
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(0, countUsages(room.getId(), alice.getAccountId(),
+                "item_gomoku_guard", "interaction", "consumed"));
+        Assert.assertNull(comboMove.getPetItemNotice());
+    }
+
+    @Test
+    public void gobangGuardShouldProtectThreeTimesBeforeClearingItem() {
+        User alice = user(2182L);
+        User bob = user(2183L);
+        GameRoom room = room(Game.GOBANG, alice, bob);
+        insertPetItem(alice.getAccountId(), "item_gomoku_guard", 1);
+        PetGameItemDeclarationService.applyDeclarationForUser(
+                alice,
+                room,
+                new GamePlayerPetItemsDTO(null, "item_gomoku_guard"));
+
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 1));
+        new GameActionHandler().process(bob, room, gobangMove(6, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(8, 7, 1));
+        new GameActionHandler().process(alice, room, gobangMove(2, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(7, 6, 1));
+        new GameActionHandler().process(alice, room, gobangMove(4, 2, 2));
+        GobangDTO firstFork = gobangMove(7, 8, 1);
+        new GameActionHandler().process(bob, room, firstFork);
+
+        Assert.assertEquals(Boolean.FALSE, firstFork.getPetItemConsumed());
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_gomoku_guard", "interaction", "consumed"));
+        Assert.assertEquals("守门骨第 1/3 次守护，已为 玩家2182 高亮对手隐蔽多重威胁点 (7,7)，本局还可守护 2 次。",
+                firstFork.getPetItemNotice());
+
+        new GameActionHandler().process(alice, room, gobangMove(7, 7, 2));
+        new GameActionHandler().process(bob, room, gobangMove(10, 11, 1));
+        new GameActionHandler().process(alice, room, gobangMove(6, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(12, 11, 1));
+        new GameActionHandler().process(alice, room, gobangMove(8, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(11, 10, 1));
+        new GameActionHandler().process(alice, room, gobangMove(10, 2, 2));
+        GobangDTO secondFork = gobangMove(11, 12, 1);
+        new GameActionHandler().process(bob, room, secondFork);
+
+        Assert.assertEquals(Boolean.FALSE, secondFork.getPetItemConsumed());
+        Assert.assertEquals("item_gomoku_guard", room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
+        Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
+                "item_gomoku_guard", "interaction", "consumed"));
+        Assert.assertEquals("守门骨第 2/3 次守护，已为 玩家2182 高亮对手隐蔽多重威胁点 (11,11)，本局还可守护 1 次。",
+                secondFork.getPetItemNotice());
+
+        new GameActionHandler().process(alice, room, gobangMove(11, 11, 2));
+        new GameActionHandler().process(bob, room, gobangMove(2, 11, 1));
+        new GameActionHandler().process(alice, room, gobangMove(12, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(4, 11, 1));
+        new GameActionHandler().process(alice, room, gobangMove(14, 2, 2));
+        new GameActionHandler().process(bob, room, gobangMove(3, 10, 1));
+        new GameActionHandler().process(alice, room, gobangMove(0, 4, 2));
+        GobangDTO thirdFork = gobangMove(3, 12, 1);
+        new GameActionHandler().process(bob, room, thirdFork);
+
+        Assert.assertEquals(Boolean.TRUE, thirdFork.getPetItemConsumed());
+        Assert.assertEquals(Integer.valueOf(3), thirdFork.getPetItemGuardX());
+        Assert.assertEquals(Integer.valueOf(11), thirdFork.getPetItemGuardY());
         Assert.assertNull(room.getUsers().get(alice.getIdentityKey()).getPetInteractionItemId());
         Assert.assertEquals(1, countUsages(room.getId(), alice.getAccountId(),
                 "item_gomoku_guard", "interaction", "consumed"));
-        Assert.assertEquals("守门骨触发，已为 玩家2170 高亮对手隐蔽多重威胁点 (10,10)，道具已消耗。",
-                comboMove.getPetItemNotice());
+        Assert.assertEquals("守门骨第 3/3 次守护，已为 玩家2182 高亮对手隐蔽多重威胁点 (3,11)，本局守护次数已用完，道具已消耗。",
+                thirdFork.getPetItemNotice());
     }
 
     @Test
