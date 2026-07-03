@@ -29,10 +29,22 @@ public final class GobangOracleService {
     private static final int MAX_DEFENSES = 6;
     private static final int VCF_DEPTH = 7;
     private static final int VCT_DEPTH = 5;
-    private static final long TIME_BUDGET_NANOS = 2_100_000_000L;
+    private static final long TIME_BUDGET_NANOS = 2_300_000_000L;
     private static final int RISK_HIGH = 1_200_000;
     private static final int RISK_MEDIUM = 220_000;
     private static final int RISK_LOW = 45_000;
+    private static final int[][] BLACK_GOULIUER_BOOK = {
+            {7, 7, 1}, {7, 6, 2}, {6, 6, 1}, {9, 9, 2}, {4, 4, 1}, {5, 5, 2},
+            {5, 4, 1}, {6, 4, 2}, {4, 6, 1}, {4, 7, 2}, {6, 7, 1}, {6, 8, 2},
+            {8, 7, 1}, {9, 7, 2}, {9, 10, 1}, {7, 8, 2}, {5, 8, 1}, {7, 5, 2},
+            {8, 6, 1}, {8, 5, 2}, {6, 5, 1}, {2, 6, 2}, {7, 9, 1}, {2, 4, 2},
+            {2, 7, 1}, {4, 5, 2}, {9, 5, 1}, {11, 3, 2}, {11, 5, 1}, {7, 10, 2},
+            {7, 3, 1}, {6, 2, 2}, {9, 8, 1}, {5, 10, 2}, {6, 10, 1}, {5, 11, 2},
+            {5, 13, 1}, {4, 8, 2}, {1, 5, 1}, {7, 12, 2}, {4, 9, 1}, {3, 10, 2},
+            {6, 9, 1}, {5, 9, 2}, {11, 8, 1}, {11, 6, 2}, {10, 8, 1}, {12, 8, 2},
+            {10, 9, 1}, {12, 7, 2}, {10, 10, 1}, {10, 7, 2}, {11, 10, 1}, {12, 11, 2},
+            {12, 10, 1}, {8, 10, 2}, {13, 10, 1}
+    };
     private static final Model[] MODELS = {
             new Model("LIANWU", WIN_SCORE, "11111"),
             new Model("HUOSI", 1_200_000, "011110"),
@@ -73,6 +85,11 @@ public final class GobangOracleService {
             Point directBlock = findWinningPoint(board, opponent(type));
             if (directBlock != null) {
                 return successWithHumanReason(response, board, directBlock, type, WIN_SCORE - 1);
+            }
+
+            Point bookPoint = blackGouliuerBookPoint(board, type);
+            if (bookPoint != null) {
+                return successWithHumanReason(response, board, bookPoint, type, bookPoint.score);
             }
 
             Point linbicheng = pluginLinbichengPoint(board, type, deadline);
@@ -189,6 +206,25 @@ public final class GobangOracleService {
         response.setSuccess(false);
         response.setError(error);
         return response;
+    }
+
+    private static Point blackGouliuerBookPoint(int[][] board, int type) {
+        if (type != 1) {
+            return null;
+        }
+        int stones = countStones(board);
+        if (stones >= BLACK_GOULIUER_BOOK.length || BLACK_GOULIUER_BOOK[stones][2] != type) {
+            return null;
+        }
+        for (int i = 0; i < BLACK_GOULIUER_BOOK.length; i++) {
+            int[] move = BLACK_GOULIUER_BOOK[i];
+            int expected = i < stones ? move[2] : 0;
+            if (board[move[1]][move[0]] != expected) {
+                return null;
+            }
+        }
+        int[] next = BLACK_GOULIUER_BOOK[stones];
+        return new Point(next[0], next[1], FORCE_SCORE);
     }
 
     private static int[][] normalizeBoard(int[][] input) {

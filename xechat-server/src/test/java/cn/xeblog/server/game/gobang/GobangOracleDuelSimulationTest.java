@@ -31,7 +31,7 @@ public class GobangOracleDuelSimulationTest {
         }
 
         Engine candidate = candidateEngine(System.getProperty("gobang.candidate", "oracle"));
-        Engine opponent = new PluginEngine("linbicheng", 8, 10, 1, 10);
+        Engine opponent = pluginEngine(System.getProperty("gobang.opponent", "linbicheng"));
         int openings = Integer.getInteger("gobang.openings", 8);
         int openingPlies = Integer.getInteger("gobang.openingPlies", 4);
         long seed = Long.getLong("gobang.seed", 20260703L);
@@ -57,6 +57,27 @@ public class GobangOracleDuelSimulationTest {
                     Integer.parseInt(parts[3]));
         }
         return new OracleEngine();
+    }
+
+    private static Engine pluginEngine(String value) {
+        if ("gouliuer".equals(value)) {
+            return new PluginEngine("gouliuer", 6, 10, 1, 8);
+        }
+        if ("linbicheng".equals(value)) {
+            return new PluginEngine("linbicheng", 8, 10, 1, 10);
+        }
+        if (value.startsWith("plugin:")) {
+            String[] parts = value.substring("plugin:".length()).split(",");
+            if (parts.length != 4) {
+                throw new IllegalArgumentException("gobang.opponent 参数应为 gouliuer、linbicheng 或 plugin:depth,maxNodes,vcx,vcxDepth");
+            }
+            return new PluginEngine(value,
+                    Integer.parseInt(parts[0]),
+                    Integer.parseInt(parts[1]),
+                    Integer.parseInt(parts[2]),
+                    Integer.parseInt(parts[3]));
+        }
+        throw new IllegalArgumentException("未知五子棋对手: " + value);
     }
 
     private static Stats duel(Engine candidate, Engine opponent, int openings, int openingPlies, long seed,
@@ -86,6 +107,14 @@ public class GobangOracleDuelSimulationTest {
             }
             board[move.y][move.x] = turn;
             moveSeq++;
+            if (Boolean.getBoolean("gobang.traceMoves")) {
+                System.out.println("move=" + moveSeq
+                        + " type=" + turn
+                        + " engine=" + engine.name()
+                        + " x=" + move.x
+                        + " y=" + move.y
+                        + " score=" + move.score);
+            }
             if (isWin(board, move.x, move.y, turn)) {
                 stats.record(turn == candidateType ? 1 : -1, openingIndex, candidateIsWhite, moveSeq);
                 return;

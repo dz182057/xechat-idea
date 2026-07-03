@@ -214,6 +214,21 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.getReason().contains("活二"));
     }
 
+    @Test
+    public void blackGouliuerBookKeepsStableWinningBranch() {
+        int[][] board = board();
+        putMoves(board,
+                7, 7, 1, 7, 6, 2, 6, 6, 1, 9, 9, 2, 4, 4, 1, 5, 5, 2,
+                5, 4, 1, 6, 4, 2, 4, 6, 1, 4, 7, 2);
+
+        GobangOracleResponseDTO response = GobangOracleService.suggest(
+                new GobangOracleRequestDTO("req-13", board, 1, 10));
+
+        Assert.assertTrue(response.isSuccess());
+        Assert.assertEquals(Integer.valueOf(6), response.getX());
+        Assert.assertEquals(Integer.valueOf(7), response.getY());
+    }
+
     private static int[][] board() {
         return new int[15][15];
     }
