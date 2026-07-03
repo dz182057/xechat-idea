@@ -212,29 +212,29 @@ public class PetActionHandlerTest {
         Assert.assertEquals(1, status.getDailyFreeRemaining());
         Assert.assertEquals(0, status.getBonusSpins());
         Assert.assertEquals(50, status.getPaidSpinCost());
-        Assert.assertEquals(PetItemDefinitions.ITEM_SKIN_TICKET, status.getSkinTicketItemId());
+        Assert.assertEquals(PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT, status.getSkinTicketItemId());
         Assert.assertEquals(10, status.getSkinTicketsPerSkin());
-        Assert.assertEquals(13, status.getBoneProbabilities().size());
-        Assert.assertEquals(13, status.getExtraProbabilities().size());
+        Assert.assertEquals(14, status.getBoneProbabilities().size());
+        Assert.assertEquals(14, status.getExtraProbabilities().size());
         Assert.assertEquals(10000.0, probabilityTotal(status.getBoneProbabilities()), 0.000001);
-        Assert.assertEquals(266.2588, probabilityTotal(status.getExtraProbabilities()), 0.000001);
+        Assert.assertEquals(10000.0, probabilityTotal(status.getExtraProbabilities()), 0.000001);
         Assert.assertEquals("骨头币 5", status.getBoneProbabilities().get(0).getLabel());
-        Assert.assertEquals(2200.0, status.getBoneProbabilities().get(0).getProbabilityBp(), 0.000001);
-        Assert.assertEquals("骨头币 20", status.getBoneProbabilities().get(2).getLabel());
-        Assert.assertEquals(1500.0, status.getBoneProbabilities().get(2).getProbabilityBp(), 0.000001);
-        Assert.assertEquals("普通道具", status.getBoneProbabilities().get(7).getLabel());
-        Assert.assertEquals(1000.0, status.getBoneProbabilities().get(7).getProbabilityBp(), 0.000001);
-        Assert.assertEquals("普通道具", status.getExtraProbabilities().get(7).getLabel());
-        Assert.assertEquals(10.0, status.getExtraProbabilities().get(7).getProbabilityBp(), 0.000001);
-        Assert.assertEquals("完整皮肤", status.getExtraProbabilities().get(12).getLabel());
-        Assert.assertEquals(0.00125, status.getExtraProbabilities().get(12).getProbabilityBp(), 0.000001);
+        Assert.assertEquals(4531.6, status.getBoneProbabilities().get(0).getProbabilityBp(), 0.000001);
+        Assert.assertEquals("骨头币 15", status.getBoneProbabilities().get(2).getLabel());
+        Assert.assertEquals(1013.1, status.getBoneProbabilities().get(2).getProbabilityBp(), 0.000001);
+        Assert.assertEquals("普通道具", status.getBoneProbabilities().get(6).getLabel());
+        Assert.assertEquals(450.0, status.getBoneProbabilities().get(6).getProbabilityBp(), 0.000001);
+        Assert.assertEquals("稀有皮肤碎片", status.getExtraProbabilities().get(9).getLabel());
+        Assert.assertEquals(250.0, status.getExtraProbabilities().get(9).getProbabilityBp(), 0.000001);
+        Assert.assertEquals("完整传说皮肤", status.getExtraProbabilities().get(13).getLabel());
+        Assert.assertEquals(0.2, status.getExtraProbabilities().get(13).getProbabilityBp(), 0.000001);
     }
 
     @Test
     public void treasureHuntSpinConsumesDailyFreeBeforePaid() {
         User user = user(9061L, "treasure_spin_user");
         IntSupplier originalSlotRollSupplier = setTreasureHuntSlotRollSupplier(
-                sequenceSupplier(0, 2200, 4400, 0, 2200, 4400));
+                sequenceSupplier(0, 45316, 74652, 0, 45316, 74652));
 
         try {
             PetTreasureHuntSpinResultDTO firstResult = parseTreasureHuntSpinResult(
@@ -242,11 +242,11 @@ public class PetActionHandlerTest {
 
             Assert.assertEquals("daily_free", firstResult.getSpinSource());
             Assert.assertEquals(0, firstResult.getPaidCost());
-            Assert.assertEquals(35, firstResult.getBoneReward());
+            Assert.assertEquals(30, firstResult.getBoneReward());
             Assert.assertNull(firstResult.getExtraReward());
             Assert.assertEquals(0, firstResult.getBonusSpinReward());
-            Assert.assertEquals(Arrays.asList("bone_5", "bone_10", "bone_20"), firstResult.getSymbols());
-            Assert.assertEquals(335, firstResult.getProfile().getAssets().getBones());
+            Assert.assertEquals(Arrays.asList("bone_5", "bone_10", "bone_15"), firstResult.getSymbols());
+            Assert.assertEquals(330, firstResult.getProfile().getAssets().getBones());
             Assert.assertEquals(0, firstResult.getProfile().getArcadeStatus()
                     .getTreasureHunt().getDailyFreeRemaining());
             Assert.assertEquals(0, firstResult.getProfile().getArcadeStatus()
@@ -257,9 +257,9 @@ public class PetActionHandlerTest {
 
             Assert.assertEquals("paid", secondResult.getSpinSource());
             Assert.assertEquals(50, secondResult.getPaidCost());
-            Assert.assertEquals(35, secondResult.getBoneReward());
+            Assert.assertEquals(30, secondResult.getBoneReward());
             Assert.assertEquals(0, secondResult.getBonusSpinReward());
-            Assert.assertEquals(320, secondResult.getProfile().getAssets().getBones());
+            Assert.assertEquals(310, secondResult.getProfile().getAssets().getBones());
             Assert.assertEquals(0, secondResult.getProfile().getArcadeStatus()
                     .getTreasureHunt().getDailyFreeRemaining());
         } finally {
@@ -273,7 +273,7 @@ public class PetActionHandlerTest {
         setDailyCounter(user.getAccountId(), "treasure_hunt_free_used", 1);
         PetProfileService.grantTreasureHuntBonusSpins(user.getAccountId(), 2);
         IntSupplier originalSlotRollSupplier = setTreasureHuntSlotRollSupplier(
-                sequenceSupplier(0, 2200, 4400));
+                sequenceSupplier(0, 45316, 74652));
 
         try {
             PetTreasureHuntSpinResultDTO result = parseTreasureHuntSpinResult(
@@ -281,9 +281,9 @@ public class PetActionHandlerTest {
 
             Assert.assertEquals("bonus", result.getSpinSource());
             Assert.assertEquals(0, result.getPaidCost());
-            Assert.assertEquals(35, result.getBoneReward());
+            Assert.assertEquals(30, result.getBoneReward());
             Assert.assertEquals(0, result.getBonusSpinReward());
-            Assert.assertEquals(335, result.getProfile().getAssets().getBones());
+            Assert.assertEquals(330, result.getProfile().getAssets().getBones());
             Assert.assertEquals(1, result.getProfile().getArcadeStatus().getTreasureHunt().getBonusSpins());
             Assert.assertEquals(1, countCounter(user.getAccountId(), "lifetime", "treasure_hunt_bonus_spins"));
         } finally {
@@ -292,10 +292,10 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void treasureHuntTripleBonesStacksBonesAndGrantsBonusSpin() {
+    public void treasureHuntBoneRewardTripleGrantsBonusSpin() {
         User user = user(9064L, "treasure_triple_bones_user");
         IntSupplier originalSlotRollSupplier = setTreasureHuntSlotRollSupplier(
-                sequenceSupplier(0, 0, 0));
+                sequenceSupplier(0));
 
         try {
             PetTreasureHuntSpinResultDTO result = parseTreasureHuntSpinResult(
@@ -313,31 +313,37 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void treasureHuntMixedPrizeSymbolsConvertToBones() {
-        User user = user(9065L, "treasure_convert_user");
+    public void treasureHuntPrizeRewardGrantsItemOnSingleSlot() {
+        User user = user(9065L, "treasure_bonus_spin_reward_user");
         IntSupplier originalSlotRollSupplier = setTreasureHuntSlotRollSupplier(
-                sequenceSupplier(7200, 0, 8200));
+                sequenceSupplier(91798, 0, 45316));
+        IntSupplier originalItemIndexSupplier = setTreasureHuntItemIndexSupplier(() -> 0);
 
         try {
             PetTreasureHuntSpinResultDTO result = parseTreasureHuntSpinResult(
                     handlerProcess(user, treasureHuntSpinRequest(906501L)));
 
-            Assert.assertEquals(35, result.getBoneReward());
-            Assert.assertNull(result.getExtraReward());
+            Assert.assertEquals(15, result.getBoneReward());
+            Assert.assertNotNull(result.getExtraReward());
+            Assert.assertEquals("item", result.getExtraReward().getType());
+            Assert.assertNotNull(result.getExtraReward().getItemId());
+            Assert.assertEquals(1, result.getExtraReward().getQuantity());
             Assert.assertEquals(0, result.getBonusSpinReward());
-            Assert.assertEquals(Arrays.asList("item_normal", "bone_5", "item_rare"), result.getSymbols());
-            Assert.assertEquals(335, result.getProfile().getAssets().getBones());
+            Assert.assertEquals(Arrays.asList("item_normal", "bone_5", "bone_10"), result.getSymbols());
+            Assert.assertEquals(315, result.getProfile().getAssets().getBones());
             Assert.assertEquals(0, result.getProfile().getArcadeStatus().getTreasureHunt().getBonusSpins());
+            Assert.assertEquals(1, countItem(user.getAccountId(), result.getExtraReward().getItemId()));
         } finally {
             setTreasureHuntSlotRollSupplier(originalSlotRollSupplier);
+            setTreasureHuntItemIndexSupplier(originalItemIndexSupplier);
         }
     }
 
     @Test
-    public void treasureHuntTriplePrizeGrantsItemAndBonusSpin() {
+    public void treasureHuntPrizeRewardGrantsMultipleIndependentSlots() {
         User user = user(9066L, "treasure_triple_item_user");
         IntSupplier originalSlotRollSupplier = setTreasureHuntSlotRollSupplier(
-                sequenceSupplier(7200, 7200, 7200));
+                sequenceSupplier(91798, 96298, 96798));
         IntSupplier originalItemIndexSupplier = setTreasureHuntItemIndexSupplier(() -> 0);
 
         try {
@@ -349,10 +355,11 @@ public class PetActionHandlerTest {
             Assert.assertEquals("item", result.getExtraReward().getType());
             Assert.assertNotNull(result.getExtraReward().getItemId());
             Assert.assertEquals(1, result.getExtraReward().getQuantity());
-            Assert.assertEquals(1, result.getBonusSpinReward());
-            Assert.assertEquals(Arrays.asList("item_normal", "item_normal", "item_normal"), result.getSymbols());
+            Assert.assertEquals(3, result.getExtraRewards().size());
+            Assert.assertEquals(0, result.getBonusSpinReward());
+            Assert.assertEquals(Arrays.asList("item_normal", "item_rare", "item_epic"), result.getSymbols());
             Assert.assertEquals(300, result.getProfile().getAssets().getBones());
-            Assert.assertEquals(1, result.getProfile().getArcadeStatus().getTreasureHunt().getBonusSpins());
+            Assert.assertEquals(0, result.getProfile().getArcadeStatus().getTreasureHunt().getBonusSpins());
             Assert.assertEquals(1, countItem(user.getAccountId(), result.getExtraReward().getItemId()));
         } finally {
             setTreasureHuntSlotRollSupplier(originalSlotRollSupplier);
@@ -361,9 +368,9 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void treasureHuntRedeemsSkinWithTenTickets() {
+    public void treasureHuntRedeemsSkinWithTenFragments() {
         User user = user(9063L, "treasure_redeem_user");
-        insertPetItem(user.getAccountId(), PetItemDefinitions.ITEM_SKIN_TICKET, 10);
+        insertPetItem(user.getAccountId(), PetItemDefinitions.ITEM_EPIC_SKIN_FRAGMENT, 10);
 
         PetRequestDTO request = new PetRequestDTO();
         request.setPetAction(PetAction.TREASURE_HUNT_REDEEM_SKIN);
@@ -375,9 +382,9 @@ public class PetActionHandlerTest {
         Assert.assertEquals(Long.valueOf(906301L), body.getRequestId());
         PetProfileDTO profile = parseProfile(body);
 
-        Assert.assertEquals(0, countItem(user.getAccountId(), PetItemDefinitions.ITEM_SKIN_TICKET));
+        Assert.assertEquals(0, countItem(user.getAccountId(), PetItemDefinitions.ITEM_EPIC_SKIN_FRAGMENT));
         Assert.assertEquals(1, countItem(user.getAccountId(), "item_gomoku_skin_magic"));
-        Assert.assertEquals(0, findInventoryCount(profile, PetItemDefinitions.ITEM_SKIN_TICKET));
+        Assert.assertEquals(0, findInventoryCount(profile, PetItemDefinitions.ITEM_EPIC_SKIN_FRAGMENT));
         Assert.assertEquals(1, findInventoryCount(profile, "item_gomoku_skin_magic"));
     }
 

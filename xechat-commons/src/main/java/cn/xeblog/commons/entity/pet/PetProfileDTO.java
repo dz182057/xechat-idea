@@ -82,7 +82,7 @@ public class PetProfileDTO implements Serializable {
                 1,
                 0,
                 50,
-                "item_skin_ticket",
+                "item_rare_skin_fragment",
                 10,
                 new ArrayList<>(),
                 new ArrayList<>())));

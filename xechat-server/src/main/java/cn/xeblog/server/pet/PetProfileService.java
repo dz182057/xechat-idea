@@ -63,6 +63,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -115,9 +116,9 @@ public final class PetProfileService {
     private static final int SHOP_LUCKY_BAG_PRICE = 250;
     private static final int TREASURE_HUNT_DAILY_FREE_LIMIT = 1;
     private static final int TREASURE_HUNT_PAID_COST = 50;
-    private static final int TREASURE_HUNT_SKIN_TICKETS_PER_SKIN = 10;
-    private static final int TREASURE_HUNT_ROLL_SCALE = 10_000;
-    private static final int TREASURE_HUNT_SKIN_TICKET_MAX_GRANT = 10_000;
+    private static final int TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN = 10;
+    private static final int TREASURE_HUNT_ROLL_SCALE = 100_000;
+    private static final int TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT = 10_000;
     private static final long SHOP_SHELF_REFRESH_INTERVAL_MILLIS = 6L * 60L * 60L * 1000L;
     private static final int SHOP_SHELF_NORMAL_ITEM_COUNT = 3;
     private static final int SHOP_SHELF_MAX_PAID_REFRESHES = 3;
@@ -398,23 +399,27 @@ public final class PetProfileService {
     private static final List<String> TREASURE_HUNT_NORMAL_ITEM_IDS = PetItemDefinitions.luckyBagNormalItemIds();
     private static final List<String> TREASURE_HUNT_RARE_ITEM_IDS = PetItemDefinitions.luckyBagRareItemIds();
     private static final List<String> TREASURE_HUNT_EPIC_ITEM_IDS = PetItemDefinitions.luckyBagEpicItemIds();
-    private static final List<String> TREASURE_HUNT_SKIN_ITEM_IDS = PetItemDefinitions.skinItemIds();
+    private static final List<String> TREASURE_HUNT_RARE_SKIN_ITEM_IDS = PetItemDefinitions.rareSkinItemIds();
+    private static final List<String> TREASURE_HUNT_EPIC_SKIN_ITEM_IDS = PetItemDefinitions.epicSkinItemIds();
+    private static final List<String> TREASURE_HUNT_LEGENDARY_SKIN_ITEM_IDS =
+            PetItemDefinitions.legendarySkinItemIds();
     private static final int TREASURE_HUNT_SLOT_COUNT = 3;
     private static final List<TreasureSlotOption> TREASURE_HUNT_SLOT_OPTIONS =
             Collections.unmodifiableList(Arrays.asList(
-                    TreasureSlotOption.bones("bone_5", "骨头币 5", 2200, 5),
-                    TreasureSlotOption.bones("bone_10", "骨头币 10", 2200, 10),
-                    TreasureSlotOption.bones("bone_20", "骨头币 20", 1500, 20),
-                    TreasureSlotOption.bones("bone_30", "骨头币 30", 800, 30),
-                    TreasureSlotOption.bones("bone_50", "骨头币 50", 350, 50),
-                    TreasureSlotOption.bones("bone_100", "骨头币 100", 120, 100),
-                    TreasureSlotOption.bones("bone_200", "骨头币 200", 30, 200),
-                    TreasureSlotOption.prize("item_normal", "normal_item", "普通道具", 1000, 10, 1),
-                    TreasureSlotOption.prize("item_rare", "rare_item", "稀有道具", 500, 20, 1),
-                    TreasureSlotOption.prize("item_epic", "epic_item", "史诗道具", 250, 30, 1),
-                    TreasureSlotOption.prize("bonus_spin", "bonus_spin", "额外寻宝次数", 450, 20, 1),
-                    TreasureSlotOption.prize("skin_ticket", "skin_ticket", "皮肤券", 550, 30, 1),
-                    TreasureSlotOption.prize("skin", "skin", "完整皮肤", 50, 100, 1)
+                    TreasureSlotOption.bones("bone_5", "骨头币 5", 45_316, 5),
+                    TreasureSlotOption.bones("bone_10", "骨头币 10", 29_336, 10),
+                    TreasureSlotOption.bones("bone_15", "骨头币 15", 10_131, 15),
+                    TreasureSlotOption.bones("bone_20", "骨头币 20", 4_956, 20),
+                    TreasureSlotOption.bones("bone_50", "骨头币 50", 759, 50),
+                    TreasureSlotOption.bones("bone_100", "骨头币 100", 1_300, 100),
+                    TreasureSlotOption.prize("item_normal", "normal_item", "普通道具", 4_500, 1),
+                    TreasureSlotOption.prize("item_rare", "rare_item", "稀有道具", 500, 1),
+                    TreasureSlotOption.prize("item_epic", "epic_item", "史诗道具", 40, 1),
+                    TreasureSlotOption.prize("rare_skin_fragment", "rare_skin_fragment", "稀有皮肤碎片", 2_500, 1),
+                    TreasureSlotOption.prize("epic_skin_fragment", "epic_skin_fragment", "史诗皮肤碎片", 600, 1),
+                    TreasureSlotOption.prize("rare_skin", "rare_skin", "完整稀有皮肤", 50, 1),
+                    TreasureSlotOption.prize("epic_skin", "epic_skin", "完整史诗皮肤", 10, 1),
+                    TreasureSlotOption.prize("legend_skin", "legend_skin", "完整传说皮肤", 2, 1)
             ));
     private static final Map<Long, Object> ACCOUNT_LOCKS = new ConcurrentHashMap<>();
     private static IntSupplier exploreRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);
@@ -645,6 +650,7 @@ public final class PetProfileService {
                 findDailyCounterValue(mapper, accountId, today, DAILY_COUNTER_TREASURE_HUNT_FREE_USED)));
         int bonusSpins = Math.max(0,
                 findLifetimeCounterValue(mapper, accountId, COUNTER_TREASURE_HUNT_BONUS_SPINS));
+        List<PetTreasureHuntProbabilityDTO> rewardProbabilities = treasureRewardProbabilityRows();
         return new PetArcadeStatusDTO(new PetTreasureHuntStatusDTO(
                 today,
                 TREASURE_HUNT_DAILY_FREE_LIMIT,
@@ -652,39 +658,22 @@ public final class PetProfileService {
                 Math.max(0, TREASURE_HUNT_DAILY_FREE_LIMIT - dailyFreeUsed),
                 bonusSpins,
                 TREASURE_HUNT_PAID_COST,
-                PetItemDefinitions.ITEM_SKIN_TICKET,
-                TREASURE_HUNT_SKIN_TICKETS_PER_SKIN,
-                treasureSlotProbabilityRows(),
-                treasureTripleRewardProbabilityRows()));
+                PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT,
+                TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN,
+                new ArrayList<>(rewardProbabilities),
+                new ArrayList<>(rewardProbabilities)));
     }
 
-    private static List<PetTreasureHuntProbabilityDTO> treasureSlotProbabilityRows() {
+    private static List<PetTreasureHuntProbabilityDTO> treasureRewardProbabilityRows() {
         List<PetTreasureHuntProbabilityDTO> rows = new ArrayList<>();
         for (TreasureSlotOption option : TREASURE_HUNT_SLOT_OPTIONS) {
             rows.add(new PetTreasureHuntProbabilityDTO(
                     option.type,
                     option.label,
-                    option.probabilityBp,
+                    option.probabilityBp * 10_000D / TREASURE_HUNT_ROLL_SCALE,
                     option.isBones() ? option.boneAmount : option.quantity));
         }
         return rows;
-    }
-
-    private static List<PetTreasureHuntProbabilityDTO> treasureTripleRewardProbabilityRows() {
-        List<PetTreasureHuntProbabilityDTO> rows = new ArrayList<>();
-        for (TreasureSlotOption option : TREASURE_HUNT_SLOT_OPTIONS) {
-            rows.add(new PetTreasureHuntProbabilityDTO(
-                    option.type,
-                    option.label,
-                    treasureTripleProbabilityBp(option),
-                    option.isBones() ? option.boneAmount : option.quantity));
-        }
-        return rows;
-    }
-
-    private static double treasureTripleProbabilityBp(TreasureSlotOption option) {
-        double slotProbability = option.probabilityBp / (double) TREASURE_HUNT_ROLL_SCALE;
-        return Math.pow(slotProbability, TREASURE_HUNT_SLOT_COUNT) * TREASURE_HUNT_ROLL_SCALE;
     }
 
     private static String dailySkinShopItemId(long accountId, long periodIndex, int refreshIndex) {
@@ -1713,9 +1702,11 @@ public final class PetProfileService {
         String spinSource;
         int paidCost = 0;
         int boneReward;
-        int bonusSpinReward;
         PetTreasureHuntExtraRewardDTO extraReward;
+        List<PetTreasureHuntExtraRewardDTO> extraRewards;
+        int bonusSpinReward;
         List<String> symbols;
+        List<String> detailLines;
 
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             ensureAssets(session, accountId);
@@ -1741,9 +1732,11 @@ public final class PetProfileService {
 
             TreasureHuntSettlement settlement = settleTreasureHuntSpin(session, accountId, now);
             boneReward = settlement.boneReward;
+            extraRewards = settlement.extraRewards;
+            extraReward = extraRewards.isEmpty() ? null : extraRewards.get(0);
             bonusSpinReward = settlement.bonusSpinReward;
-            extraReward = settlement.extraReward;
             symbols = settlement.symbols;
+            detailLines = settlement.detailLines;
             if (boneReward > 0 && assetsMapper.addBones(accountId, boneReward, now) <= 0) {
                 throw new IllegalArgumentException("寻宝奖励发放失败");
             }
@@ -1756,14 +1749,20 @@ public final class PetProfileService {
                 paidCost,
                 boneReward,
                 extraReward,
+                extraRewards,
                 bonusSpinReward,
-                symbols);
+                symbols,
+                detailLines);
     }
 
     private static PetProfileDTO treasureHuntRedeemSkinLocked(long accountId, PetTreasureHuntRedeemSkinDTO request) {
         String skinItemId = request == null ? null : StrUtil.trim(request.getSkinItemId());
         if (StrUtil.isBlank(skinItemId) || !PetItemDefinitions.isSkinItem(skinItemId)) {
             throw new IllegalArgumentException("请选择要兑换的皮肤");
+        }
+        String fragmentItemId = treasureHuntSkinFragmentItemId(skinItemId);
+        if (fragmentItemId == null) {
+            throw new IllegalArgumentException("传说皮肤只能通过汪汪寻宝完整抽出");
         }
 
         long now = System.currentTimeMillis();
@@ -1773,14 +1772,14 @@ public final class PetProfileService {
             if (findInventoryCount(itemMapper, accountId, skinItemId) > 0) {
                 throw new IllegalArgumentException("已经拥有该皮肤");
             }
-            if (itemMapper.decrementItemIfEnough(accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
-                    TREASURE_HUNT_SKIN_TICKETS_PER_SKIN, now) <= 0) {
-                throw new IllegalArgumentException("皮肤券不足，10 张皮肤券可兑换 1 个皮肤");
+            if (itemMapper.decrementItemIfEnough(accountId, fragmentItemId,
+                    TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN, now) <= 0) {
+                throw new IllegalArgumentException("皮肤碎片不足，10 个对应等级碎片可兑换 1 个皮肤");
             }
             PetItemLedgerMapper ledgerMapper = session.getMapper(PetItemLedgerMapper.class);
             String sourceRef = "treasure_hunt_redeem:" + UUID.randomUUID();
-            recordItemLedger(ledgerMapper, accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
-                    TREASURE_HUNT_SKIN_TICKETS_PER_SKIN, ITEM_LEDGER_SPEND,
+            recordItemLedger(ledgerMapper, accountId, fragmentItemId,
+                    TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN, ITEM_LEDGER_SPEND,
                     ITEM_LEDGER_SOURCE_TREASURE_HUNT_REDEEM_SKIN, sourceRef, null, now);
             if (itemMapper.addItemIfUnderLimit(accountId, skinItemId, 1, 1, now) <= 0) {
                 throw new IllegalArgumentException("已经拥有该皮肤");
@@ -1790,6 +1789,16 @@ public final class PetProfileService {
             session.commit();
         }
         return profile(accountId);
+    }
+
+    private static String treasureHuntSkinFragmentItemId(String skinItemId) {
+        if (TREASURE_HUNT_RARE_SKIN_ITEM_IDS.contains(skinItemId)) {
+            return PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT;
+        }
+        if (TREASURE_HUNT_EPIC_SKIN_ITEM_IDS.contains(skinItemId)) {
+            return PetItemDefinitions.ITEM_EPIC_SKIN_FRAGMENT;
+        }
+        return null;
     }
 
     private static PetProfileDTO grantTreasureHuntBonusSpinsLocked(long accountId, int quantity) {
@@ -1810,37 +1819,42 @@ public final class PetProfileService {
     }
 
     private static TreasureHuntSettlement settleTreasureHuntSpin(SqlSession session, long accountId, long now) {
-        List<TreasureSlotOption> slots = pickTreasureSlots();
-        TreasureSlotOption tripleOption = isTreasureTriple(slots) ? slots.get(0) : null;
         int boneReward = 0;
         int bonusSpinReward = 0;
-        PetTreasureHuntExtraRewardDTO extraReward = null;
+        List<String> symbols = new ArrayList<>();
+        List<String> detailLines = new ArrayList<>();
+        List<PetTreasureHuntExtraRewardDTO> extraRewards = new ArrayList<>();
 
-        if (tripleOption != null) {
-            if (tripleOption.isBones()) {
-                boneReward = tripleOption.boneAmount * TREASURE_HUNT_SLOT_COUNT;
+        for (int index = 0; index < TREASURE_HUNT_SLOT_COUNT; index++) {
+            TreasureSlotOption rewardOption = pickTreasureRewardOption();
+            symbols.add(rewardOption.symbol);
+            if (rewardOption.isBones()) {
+                boneReward += rewardOption.boneAmount;
+                detailLines.add("第 " + (index + 1) + " 格摇出" + rewardOption.label
+                        + "，获得骨头币 " + rewardOption.boneAmount + "。");
             } else {
-                extraReward = applyTreasurePrizeReward(session, accountId, now, tripleOption);
+                PetTreasureHuntExtraRewardDTO reward =
+                        applyTreasurePrizeReward(session, accountId, now, rewardOption);
+                if (reward != null) {
+                    extraRewards.add(reward);
+                    detailLines.add("第 " + (index + 1) + " 格摇出" + rewardOption.label
+                            + "，获得" + treasureRewardLabel(rewardOption, reward) + "。");
+                } else {
+                    detailLines.add("第 " + (index + 1) + " 格摇出" + rewardOption.label
+                            + "，但当前奖励池暂无可发放内容。");
+                }
             }
+        }
+
+        if (isTreasureTriple(symbols)) {
             bonusSpinReward = grantTreasureHuntBonusSpinsInSession(session, accountId, 1, now);
-        } else {
-            for (TreasureSlotOption option : slots) {
-                boneReward += option.isBones() ? option.boneAmount : option.conversionBoneAmount;
-            }
+            detailLines.add("三格都是" + treasureSymbolLabel(symbols.get(0)) + "，额外附赠一次寻宝机会。");
         }
 
-        return new TreasureHuntSettlement(boneReward, extraReward, bonusSpinReward, treasureHuntSymbols(slots));
+        return new TreasureHuntSettlement(boneReward, extraRewards, bonusSpinReward, symbols, detailLines);
     }
 
-    private static List<TreasureSlotOption> pickTreasureSlots() {
-        List<TreasureSlotOption> slots = new ArrayList<>();
-        for (int i = 0; i < TREASURE_HUNT_SLOT_COUNT; i++) {
-            slots.add(pickTreasureSlotOption());
-        }
-        return slots;
-    }
-
-    private static TreasureSlotOption pickTreasureSlotOption() {
+    private static TreasureSlotOption pickTreasureRewardOption() {
         int roll = Math.floorMod(treasureHuntSlotRollSupplier.getAsInt(), TREASURE_HUNT_ROLL_SCALE);
         int cursor = 0;
         for (TreasureSlotOption option : TREASURE_HUNT_SLOT_OPTIONS) {
@@ -1852,38 +1866,31 @@ public final class PetProfileService {
         return TREASURE_HUNT_SLOT_OPTIONS.get(TREASURE_HUNT_SLOT_OPTIONS.size() - 1);
     }
 
-    private static boolean isTreasureTriple(List<TreasureSlotOption> slots) {
-        if (slots.size() != TREASURE_HUNT_SLOT_COUNT) {
-            return false;
-        }
-        String firstSymbol = slots.get(0).symbol;
-        for (TreasureSlotOption slot : slots) {
-            if (!firstSymbol.equals(slot.symbol)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     private static PetTreasureHuntExtraRewardDTO applyTreasurePrizeReward(SqlSession session, long accountId,
                                                                           long now, TreasureSlotOption option) {
-        if ("bonus_spin".equals(option.type)) {
-            int granted = grantTreasureHuntBonusSpinsInSession(session, accountId, option.quantity, now);
-            return new PetTreasureHuntExtraRewardDTO("bonus_spin", null, "额外寻宝次数", granted);
+        if ("rare_skin_fragment".equals(option.type)) {
+            return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT,
+                    "稀有皮肤碎片", option.quantity, TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT, now,
+                    "rare_skin_fragment");
         }
-        if ("skin_ticket".equals(option.type)) {
-            return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
-                    "皮肤券", option.quantity, TREASURE_HUNT_SKIN_TICKET_MAX_GRANT, now, "skin_ticket");
+        if ("epic_skin_fragment".equals(option.type)) {
+            return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_EPIC_SKIN_FRAGMENT,
+                    "史诗皮肤碎片", option.quantity, TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT, now,
+                    "epic_skin_fragment");
         }
-        if ("skin".equals(option.type)) {
-            String skinItemId = selectUnownedItem(session.getMapper(PetItemMapper.class), accountId,
-                    TREASURE_HUNT_SKIN_ITEM_IDS, option.quantity);
-            if (skinItemId == null) {
-                return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
-                        "皮肤券", TREASURE_HUNT_SKIN_TICKETS_PER_SKIN,
-                        TREASURE_HUNT_SKIN_TICKET_MAX_GRANT, now, "skin_ticket");
-            }
-            return grantTreasureHuntItem(session, accountId, skinItemId, skinItemId, 1, 1, now, "skin");
+        if ("rare_skin".equals(option.type)) {
+            return grantTreasureHuntSkinReward(session, accountId, now, option.type,
+                    TREASURE_HUNT_RARE_SKIN_ITEM_IDS, PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT,
+                    "稀有皮肤碎片");
+        }
+        if ("epic_skin".equals(option.type)) {
+            return grantTreasureHuntSkinReward(session, accountId, now, option.type,
+                    TREASURE_HUNT_EPIC_SKIN_ITEM_IDS, PetItemDefinitions.ITEM_EPIC_SKIN_FRAGMENT,
+                    "史诗皮肤碎片");
+        }
+        if ("legend_skin".equals(option.type)) {
+            return grantTreasureHuntSkinReward(session, accountId, now, option.type,
+                    TREASURE_HUNT_LEGENDARY_SKIN_ITEM_IDS, null, null);
         }
 
         List<String> pool = "rare_item".equals(option.type)
@@ -1893,10 +1900,29 @@ public final class PetProfileService {
                 : TREASURE_HUNT_NORMAL_ITEM_IDS;
         String itemId = selectUnownedItem(session.getMapper(PetItemMapper.class), accountId, pool, MAX_ITEM_COUNT);
         if (itemId == null) {
-            return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
-                    "皮肤券", 1, TREASURE_HUNT_SKIN_TICKET_MAX_GRANT, now, "skin_ticket");
+            return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT,
+                    "稀有皮肤碎片", 1, TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT, now, "rare_skin_fragment");
         }
         return grantTreasureHuntItem(session, accountId, itemId, itemId, 1, MAX_ITEM_COUNT, now, "item");
+    }
+
+    private static PetTreasureHuntExtraRewardDTO grantTreasureHuntSkinReward(SqlSession session, long accountId,
+                                                                             long now, String type,
+                                                                             List<String> skinPool,
+                                                                             String fallbackFragmentItemId,
+                                                                             String fallbackFragmentLabel) {
+        String skinItemId = selectUnownedItem(session.getMapper(PetItemMapper.class), accountId, skinPool, 1);
+        if (skinItemId != null) {
+            return grantTreasureHuntItem(session, accountId, skinItemId, skinItemId, 1, 1, now, type);
+        }
+        if (fallbackFragmentItemId == null) {
+            return null;
+        }
+        return grantTreasureHuntItem(session, accountId, fallbackFragmentItemId, fallbackFragmentLabel,
+                TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN, TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT, now,
+                PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT.equals(fallbackFragmentItemId)
+                        ? "rare_skin_fragment"
+                        : "epic_skin_fragment");
     }
 
     private static int grantTreasureHuntBonusSpinsInSession(SqlSession session, long accountId, int quantity,
@@ -1946,12 +1972,38 @@ public final class PetProfileService {
         return item == null ? 0 : Math.max(0, item.getCount());
     }
 
-    private static List<String> treasureHuntSymbols(List<TreasureSlotOption> slots) {
-        List<String> symbols = new ArrayList<>();
-        for (TreasureSlotOption slot : slots) {
-            symbols.add(slot.symbol);
+    private static boolean isTreasureTriple(List<String> symbols) {
+        if (symbols.size() != TREASURE_HUNT_SLOT_COUNT) {
+            return false;
         }
-        return symbols;
+        String first = symbols.get(0);
+        for (String symbol : symbols) {
+            if (!Objects.equals(first, symbol)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String treasureRewardLabel(TreasureSlotOption option, PetTreasureHuntExtraRewardDTO reward) {
+        if (reward == null) {
+            return option.label;
+        }
+        int quantity = Math.max(1, reward.getQuantity());
+        if (option.type.endsWith("_skin") && reward.getItemId() != null) {
+            return option.label;
+        }
+        String label = StrUtil.blankToDefault(reward.getLabel(), option.label);
+        return quantity > 1 ? label + " ×" + quantity : label;
+    }
+
+    private static String treasureSymbolLabel(String symbol) {
+        for (TreasureSlotOption option : TREASURE_HUNT_SLOT_OPTIONS) {
+            if (Objects.equals(option.symbol, symbol)) {
+                return option.label;
+            }
+        }
+        return symbol;
     }
 
     private static PetProfileDTO changeBonesLocked(long accountId, int delta) {
@@ -4067,27 +4119,24 @@ public final class PetProfileService {
         private final String label;
         private final int probabilityBp;
         private final int boneAmount;
-        private final int conversionBoneAmount;
         private final int quantity;
 
         private TreasureSlotOption(String symbol, String type, String label, int probabilityBp, int boneAmount,
-                                   int conversionBoneAmount, int quantity) {
+                                   int quantity) {
             this.symbol = symbol;
             this.type = type;
             this.label = label;
             this.probabilityBp = probabilityBp;
             this.boneAmount = boneAmount;
-            this.conversionBoneAmount = conversionBoneAmount;
             this.quantity = quantity;
         }
 
         private static TreasureSlotOption bones(String symbol, String label, int probabilityBp, int amount) {
-            return new TreasureSlotOption(symbol, "bones", label, probabilityBp, amount, 0, amount);
+            return new TreasureSlotOption(symbol, "bones", label, probabilityBp, amount, amount);
         }
 
-        private static TreasureSlotOption prize(String symbol, String type, String label, int probabilityBp,
-                                                int conversionBoneAmount, int quantity) {
-            return new TreasureSlotOption(symbol, type, label, probabilityBp, 0, conversionBoneAmount, quantity);
+        private static TreasureSlotOption prize(String symbol, String type, String label, int probabilityBp, int quantity) {
+            return new TreasureSlotOption(symbol, type, label, probabilityBp, 0, quantity);
         }
 
         private boolean isBones() {
@@ -4097,16 +4146,18 @@ public final class PetProfileService {
 
     private static final class TreasureHuntSettlement {
         private final int boneReward;
-        private final PetTreasureHuntExtraRewardDTO extraReward;
+        private final List<PetTreasureHuntExtraRewardDTO> extraRewards;
         private final int bonusSpinReward;
         private final List<String> symbols;
+        private final List<String> detailLines;
 
-        private TreasureHuntSettlement(int boneReward, PetTreasureHuntExtraRewardDTO extraReward,
-                                       int bonusSpinReward, List<String> symbols) {
+        private TreasureHuntSettlement(int boneReward, List<PetTreasureHuntExtraRewardDTO> extraRewards,
+                                       int bonusSpinReward, List<String> symbols, List<String> detailLines) {
             this.boneReward = boneReward;
-            this.extraReward = extraReward;
+            this.extraRewards = extraRewards;
             this.bonusSpinReward = bonusSpinReward;
             this.symbols = symbols;
+            this.detailLines = detailLines;
         }
     }
 

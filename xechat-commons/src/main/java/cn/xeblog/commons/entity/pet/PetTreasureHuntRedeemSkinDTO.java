@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 
 /**
- * 汪汪寻宝皮肤券兑换皮肤请求。
+ * 汪汪寻宝皮肤碎片兑换皮肤请求。
  */
 @Data
 @NoArgsConstructor

@@ -33,8 +33,14 @@ public class PetTreasureHuntStatusDTO implements Serializable {
 
     private int skinTicketsPerSkin;
 
+    /**
+     * 兼容旧客户端，当前与 extraProbabilities 一样表示单格图标概率。
+     */
     private List<PetTreasureHuntProbabilityDTO> boneProbabilities;
 
+    /**
+     * 单格图标概率；三个格子独立抽取，三连只额外赠送一次寻宝。
+     */
     private List<PetTreasureHuntProbabilityDTO> extraProbabilities;
 
 }
