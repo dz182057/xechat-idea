@@ -93,15 +93,15 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             case GAME_OVER:
                 if (gameRoom.isPlayerConnection(user)) {
                     PetGameItemDeclarationService.releaseReservedForRoom(gameRoom);
-                if (gameRoom.getGame() == Game.GOBANG) {
-                    GobangPetItemService.clearRoom(gameRoom);
+                    if (gameRoom.getGame() == Game.GOBANG) {
+                        GobangPetItemService.clearRoom(gameRoom);
+                    }
+                    if (gameRoom.getGame() == Game.DRAW_GUESS) {
+                        DrawGuessService.clearRoom(gameRoom);
+                    }
+                    user.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
                 }
-                if (gameRoom.getGame() == Game.DRAW_GUESS) {
-                    DrawGuessService.clearRoom(gameRoom);
-                }
-                user.send(ResponseBuilder.build(user, body, MessageType.GAME_ROOM));
-            }
-            break;
+                break;
             case PLAYER_GAME_STARTED:
                 if (gameRoom.isPlayerConnection(user)) {
                     if (gameRoom.getGame() == Game.DOG_BATTLE) {
