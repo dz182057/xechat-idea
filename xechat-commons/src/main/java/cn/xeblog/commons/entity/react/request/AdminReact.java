@@ -143,7 +143,11 @@ public class AdminReact extends BaseReact {
         /**
          * 查询用户操作记录
          */
-        QUERY_BEHAVIOR_LOGS
+        QUERY_BEHAVIOR_LOGS,
+        /**
+         * 查询用户狗狗之家资源概览
+         */
+        QUERY_PET_RESOURCES
         ;
     }
 

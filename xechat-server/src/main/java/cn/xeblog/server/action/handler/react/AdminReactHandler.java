@@ -13,6 +13,7 @@ import cn.xeblog.server.behavior.PlayerBehaviorLogService;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.config.GlobalConfig;
+import cn.xeblog.server.pet.AdminPetResourceOverviewService;
 
 /**
  * @author anlingyi
@@ -37,6 +38,10 @@ public class AdminReactHandler extends AbstractReactHandler<AdminReact, AdminRea
             case QUERY_BEHAVIOR_LOGS:
                 result.setSucceed(true);
                 result.setData(PlayerBehaviorLogService.query(body));
+                return;
+            case QUERY_PET_RESOURCES:
+                result.setSucceed(true);
+                result.setData(AdminPetResourceOverviewService.query(body));
                 return;
             case QUERY_PERMIT:
                 break;

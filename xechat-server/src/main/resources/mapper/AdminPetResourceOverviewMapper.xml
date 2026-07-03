@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.AdminPetResourceOverviewMapper">
+
+    <sql id="accountWhere">
+        <where>
+            <if test="account != null and account != ''">
+                AND a.account LIKE '%' || #{account} || '%'
+            </if>
+            <if test="nickname != null and nickname != ''">
+                AND a.nickname LIKE '%' || #{nickname} || '%'
+            </if>
+        </where>
+    </sql>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM accounts a
+        <include refid="accountWhere"/>
+    </select>
+
+    <select id="query" resultType="cn.xeblog.commons.entity.react.result.AdminPetResourceOverviewDTO">
+        SELECT
+            a.account_id,
+            a.account,
+            a.nickname,
+            a.status AS account_status,
+            a.created_at,
+            a.last_login_at,
+            CASE WHEN pa.account_id IS NULL THEN 0 ELSE 1 END AS has_pet_home,
+            COALESCE(pa.bones, 0) AS bones,
+            COALESCE(pa.food, 0) AS food,
+            COALESCE(pa.makeup_cards, 0) AS makeup_cards,
+            COALESCE(pa.dog_slots, 0) AS dog_slots,
+            COALESCE(pa.energy, 0) AS energy,
+            COALESCE(pa.energy_limit, 0) AS energy_limit,
+            pa.energy_date,
+            pa.companion_dog_id,
+            pa.updated_at AS pet_updated_at,
+            COALESCE(d.dog_count, 0) AS dog_count,
+            COALESCE(d.exploring_dog_count, 0) AS exploring_dog_count,
+            d.dog_summary,
+            COALESCE(i.item_kind_count, 0) AS item_kind_count,
+            COALESCE(i.item_total_count, 0) AS item_total_count,
+            i.item_summary,
+            COALESCE(s.skin_kind_count, 0) AS skin_kind_count,
+            COALESCE(s.skin_total_count, 0) AS skin_total_count,
+            s.skin_summary,
+            COALESCE(c.collection_kind_count, 0) AS collection_kind_count,
+            COALESCE(c.collection_total_count, 0) AS collection_total_count,
+            c.collection_summary
+        FROM accounts a
+        LEFT JOIN pet_assets pa ON pa.account_id = a.account_id
+        LEFT JOIN (
+            SELECT
+                owner_id AS account_id,
+                COUNT(*) AS dog_count,
+                SUM(CASE WHEN status = 'exploring' THEN 1 ELSE 0 END) AS exploring_dog_count,
+                GROUP_CONCAT(name || ':' || breed || ':' || stage || ':' || status, '|') AS dog_summary
+            FROM dogs
+            GROUP BY owner_id
+        ) d ON d.account_id = a.account_id
+        LEFT JOIN (
+            SELECT
+                account_id,
+                COUNT(*) AS item_kind_count,
+                SUM(count) AS item_total_count,
+                GROUP_CONCAT(item_id || ':' || count, '|') AS item_summary
+            FROM pet_items
+            WHERE count &gt; 0
+              AND item_id NOT LIKE 'item_minesweeper_skin_%'
+              AND item_id NOT LIKE 'item_gomoku_skin_%'
+            GROUP BY account_id
+        ) i ON i.account_id = a.account_id
+        LEFT JOIN (
+            SELECT
+                account_id,
+                COUNT(*) AS skin_kind_count,
+                SUM(count) AS skin_total_count,
+                GROUP_CONCAT(item_id || ':' || count, '|') AS skin_summary
+            FROM pet_items
+            WHERE count &gt; 0
+              AND (
+                  item_id LIKE 'item_minesweeper_skin_%'
+                  OR item_id LIKE 'item_gomoku_skin_%'
+              )
+            GROUP BY account_id
+        ) s ON s.account_id = a.account_id
+        LEFT JOIN (
+            SELECT
+                account_id,
+                COUNT(*) AS collection_kind_count,
+                SUM(count) AS collection_total_count,
+                GROUP_CONCAT(item_id || ':' || count, '|') AS collection_summary
+            FROM pet_collections
+            WHERE count &gt; 0 AND discovered = 1
+            GROUP BY account_id
+        ) c ON c.account_id = a.account_id
+        <include refid="accountWhere"/>
+        ORDER BY a.created_at DESC, a.account_id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>
