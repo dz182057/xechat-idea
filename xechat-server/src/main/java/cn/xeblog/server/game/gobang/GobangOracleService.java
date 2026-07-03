@@ -29,7 +29,7 @@ public final class GobangOracleService {
     private static final int MAX_DEFENSES = 6;
     private static final int VCF_DEPTH = 7;
     private static final int VCT_DEPTH = 5;
-    private static final long TIME_BUDGET_NANOS = 850_000_000L;
+    private static final long TIME_BUDGET_NANOS = 2_100_000_000L;
     private static final int RISK_HIGH = 1_200_000;
     private static final int RISK_MEDIUM = 220_000;
     private static final int RISK_LOW = 45_000;
@@ -75,6 +75,12 @@ public final class GobangOracleService {
                 return success(response, directBlock, type, WIN_SCORE - 1, "服务端 AI 判断这里是对手下一手成五点，先封住避免立刻输棋。");
             }
 
+            Point linbicheng = pluginLinbichengPoint(board, type, deadline);
+            if (linbicheng != null && !leavesOpponentImmediateWin(board, linbicheng.x, linbicheng.y, type)) {
+                return success(response, linbicheng, type, linbicheng.score,
+                        "服务端 AI 已按别点我会输同源引擎完成 VCX 算杀和 Alpha-Beta 搜索，认为这里的后续局面最好。");
+            }
+
             Point ownVcf = findForcingMove(board, type, ThreatMode.VCF, VCF_DEPTH, deadline, forceCache);
             if (ownVcf != null) {
                 return success(response, ownVcf, type, ownVcf.score,
@@ -94,12 +100,6 @@ public final class GobangOracleService {
             if (opponentVct != null) {
                 return success(response, opponentVct, type, opponentVct.score,
                         "服务端 AI 的 VCT 连续威胁求解器判断对手这里会形成持续强迫攻势，先行压制。");
-            }
-
-            Point pluginHard = pluginHardPoint(board, type, deadline);
-            if (pluginHard != null && !leavesOpponentImmediateWin(board, pluginHard.x, pluginHard.y, type)) {
-                return success(response, pluginHard, type, pluginHard.score,
-                        "服务端 AI 已按插件困难档同源引擎完成 VCX 算杀和 Alpha-Beta 搜索，认为这里的后续局面最好。");
             }
 
             Point ownThreat = findBestThreatPoint(board, type, RISK_MEDIUM);
@@ -272,8 +272,8 @@ public final class GobangOracleService {
         return points;
     }
 
-    private static Point pluginHardPoint(int[][] board, int type, long deadline) {
-        PluginHardAiEngine engine = new PluginHardAiEngine(board, type, deadline);
+    private static Point pluginLinbichengPoint(int[][] board, int type, long deadline) {
+        PluginHardAiEngine engine = new PluginHardAiEngine(board, type, deadline, 8, 10, 1, 10);
         return engine.getPoint();
     }
 
@@ -803,10 +803,6 @@ public final class GobangOracleService {
 
     private static final class PluginHardAiEngine {
         private static final int INFINITY = 999_999_999;
-        private static final int DEPTH = 6;
-        private static final int MAX_NODES = 10;
-        private static final int VCX = 1;
-        private static final int VCX_DEPTH = 8;
         private static final int HIGH_RISK = 800_000;
         private static final int MEDIUM_RISK = 500_000;
         private static final int LOW_RISK = 100_000;
@@ -827,15 +823,24 @@ public final class GobangOracleService {
         private final int[][] chessData = new int[SIZE][SIZE];
         private final int ai;
         private final long deadline;
+        private final int depth;
+        private final int maxNodes;
+        private final int vcx;
+        private final int vcxDepth;
         private final float attack;
         private final int rounds;
         private long hashcode;
         private Point bestPoint;
         private Map<Long, PluginCache> situationCacheMap = new HashMap<>();
 
-        private PluginHardAiEngine(int[][] board, int type, long deadline) {
+        private PluginHardAiEngine(int[][] board, int type, long deadline,
+                                   int depth, int maxNodes, int vcx, int vcxDepth) {
             this.ai = type;
             this.deadline = deadline;
+            this.depth = depth;
+            this.maxNodes = maxNodes;
+            this.vcx = vcx;
+            this.vcxDepth = vcxDepth;
             this.attack = type == 1 ? 1.8f : 0.5f;
             int total = 0;
             for (int y = 0; y < SIZE; y++) {
@@ -856,15 +861,15 @@ public final class GobangOracleService {
                 return new Point(SIZE / 2, SIZE / 2, 0);
             }
 
-            if (VCX > 0) {
-                PluginPoint vcxPoint = deepeningVcx(true, VCX_DEPTH, VCX == 2);
+            if (vcx > 0) {
+                PluginPoint vcxPoint = deepeningVcx(true, vcxDepth, vcx == 2);
                 if (vcxPoint != null && chessData[vcxPoint.x][vcxPoint.y] == 0) {
                     return toPoint(vcxPoint);
                 }
             }
 
             situationCacheMap = new HashMap<>();
-            PluginPoint minimaxPoint = deepeningMinimax(2, rounds < 4 ? 4 : DEPTH);
+            PluginPoint minimaxPoint = deepeningMinimax(2, rounds < 4 ? 4 : depth);
             if (minimaxPoint != null && chessData[minimaxPoint.x][minimaxPoint.y] == 0) {
                 return toPoint(minimaxPoint);
             }
@@ -1161,7 +1166,7 @@ public final class GobangOracleService {
             }
 
             sortPluginPoints(pointList);
-            return new ArrayList<>(pointList.subList(0, Math.min(pointList.size(), MAX_NODES)));
+            return new ArrayList<>(pointList.subList(0, Math.min(pointList.size(), maxNodes)));
         }
 
         private PluginPoint getBestPoint(List<PluginPoint> pointList) {
