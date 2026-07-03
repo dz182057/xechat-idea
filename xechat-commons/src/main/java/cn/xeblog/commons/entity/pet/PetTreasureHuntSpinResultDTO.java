@@ -27,6 +27,8 @@ public class PetTreasureHuntSpinResultDTO implements Serializable {
 
     private PetTreasureHuntExtraRewardDTO extraReward;
 
+    private int bonusSpinReward;
+
     private List<String> symbols;
 
 }
