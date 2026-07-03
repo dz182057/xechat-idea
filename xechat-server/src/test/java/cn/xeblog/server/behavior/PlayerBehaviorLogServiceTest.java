@@ -119,6 +119,36 @@ public class PlayerBehaviorLogServiceTest {
     }
 
     @Test
+    public void recordShouldSkipLowValueListActions() throws Exception {
+        Path root = Files.createTempDirectory("xechat-behavior-log-skip-list-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());
+        GlobalConfig.initDataPath(null);
+        resetFactory();
+        DbInitializer.initIfNeeded();
+
+        User user = new User();
+        user.setAccountId(1001L);
+        user.setAccount("alice");
+        user.setNickname("小爱");
+        user.setUuid("client-uuid-1");
+        user.setPlatform(Platform.DESKTOP);
+        user.setIp("127.0.0.1");
+
+        PlayerBehaviorLogService.record(user, new Request<>(null, Action.LIST_USERS), "HANDLED", null);
+        PlayerBehaviorLogService.record(user, new Request<>(null, Action.LIST_FRIENDS), "HANDLED", null);
+        PlayerBehaviorLogService.record(user, new Request<>(null, Action.LIST_FRIEND_REQUESTS), "HANDLED", null);
+        PlayerBehaviorLogService.record(user, new Request<>(null, Action.PULL_HISTORY), "HANDLED", null);
+        PlayerBehaviorLogService.record(user, new Request<>(null, Action.COUNT_HISTORY), "HANDLED", null);
+
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + GlobalConfig.DB_PATH);
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM player_behavior_logs")) {
+            assertTrue(rs.next());
+            assertEquals(0, rs.getLong(1));
+        }
+    }
+
+    @Test
     public void queryShouldFilterBehaviorLogsForAdmin() throws Exception {
         Path root = Files.createTempDirectory("xechat-behavior-log-query-test");
         System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());

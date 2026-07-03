@@ -14,7 +14,9 @@ import cn.xeblog.server.util.IpUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,6 +34,13 @@ public final class PlayerBehaviorLogService {
     private static final int MAX_BODY_JSON_LENGTH = 8000;
     private static final int MAX_ERROR_MESSAGE_LENGTH = 500;
     private static final String MASKED_VALUE = "[已脱敏]";
+    private static final Set<Action> IGNORED_ACTIONS = EnumSet.of(
+            Action.LIST_USERS,
+            Action.LIST_FRIENDS,
+            Action.LIST_FRIEND_REQUESTS,
+            Action.PULL_HISTORY,
+            Action.COUNT_HISTORY
+    );
     private static final Pattern SENSITIVE_JSON_FIELD_PATTERN = Pattern.compile(
             "(?i)(\"(?:password|oldPassword|newPassword|token|accessToken|refreshToken|"
                     + "identityPrivKeyEnvelope|newIdentityPrivKeyEnvelope|privateKey|secret|"
@@ -46,6 +55,9 @@ public final class PlayerBehaviorLogService {
 
     public static void record(User user, String ip, Request<?> request, String resultStatus, String errorMessage) {
         if (request == null || request.getAction() == null) {
+            return;
+        }
+        if (IGNORED_ACTIONS.contains(request.getAction())) {
             return;
         }
 
