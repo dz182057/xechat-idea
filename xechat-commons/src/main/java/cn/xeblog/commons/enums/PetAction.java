@@ -27,6 +27,7 @@ public enum PetAction {
     USE_ITEM,
     RACE_RESULT,
     DAILY_SAYING_GET,
+    DAILY_SAYING_VIEW,
     DAILY_SAYING_READ,
     PET_PROFILE
 }

@@ -89,6 +89,10 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 PetProfileDTO dailySayingProfile = PetDailySayingService.dailySaying(user.getAccountId());
                 sendProfileResult(user, petAction, requestId, dailySayingProfile);
                 break;
+            case DAILY_SAYING_VIEW:
+                PetProfileDTO viewedDailySayingProfile = PetProfileService.profile(user.getAccountId());
+                send(user, PetResponseDTO.ok(petAction, requestId, viewedDailySayingProfile));
+                break;
             case DAILY_SAYING_READ:
                 try {
                     PetProfileDTO readDailySayingProfile = PetDailySayingService.readDailySaying(

@@ -130,6 +130,24 @@ public class PetActionHandlerTest {
     }
 
     @Test
+    public void dailySayingViewReturnsProfile() {
+        User user = user(9050L, "daily_saying_view");
+
+        Map<String, Object> content = new HashMap<>();
+        content.put("assignmentId", "assignment-view-1");
+        PetRequestDTO viewRequest = new PetRequestDTO();
+        viewRequest.setPetAction(PetAction.DAILY_SAYING_VIEW);
+        viewRequest.setRequestId(905002L);
+        viewRequest.setContent(content);
+
+        PetResponseDTO viewResponse = handlerProcess(user, viewRequest);
+        Assert.assertEquals(PetAction.DAILY_SAYING_VIEW, viewResponse.getPetAction());
+        Assert.assertEquals(Long.valueOf(905002L), viewResponse.getRequestId());
+        PetProfileDTO viewedProfile = parseProfile(viewResponse);
+        Assert.assertEquals(9050L, viewedProfile.getAccountId());
+    }
+
+    @Test
     public void petProfileIncludesExploreStatusFromDailyCounters() {
         User user = user(9010L, "explore_status_user");
         setDailyCounter(user.getAccountId(), "explore_start", 2);
