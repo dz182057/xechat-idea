@@ -101,6 +101,21 @@ public class AdminPetResourceGrantServiceTest {
     }
 
     @Test
+    public void grantStarryGomokuSkinShouldSucceed() throws Exception {
+        Account target = registerUser("starry-skin");
+
+        AdminPetResourceGrantResultDTO result = AdminPetResourceGrantService.grant(99L,
+                new AdminGrantPetResourceDTO(target.getAccountId(),
+                        AdminPetResourceGrantService.TYPE_SKIN, "item_gomoku_skin_starry", 1, "补星空幻境"));
+
+        Assert.assertEquals(Integer.valueOf(0), result.getBeforeAmount());
+        Assert.assertEquals(Integer.valueOf(1), result.getAfterAmount());
+        Assert.assertEquals(1, countItem(target.getAccountId(), "item_gomoku_skin_starry"));
+        Assert.assertEquals(1, countItemLedger(target.getAccountId(), "item_gomoku_skin_starry",
+                "gain", "admin_manual_grant"));
+    }
+
+    @Test
     public void grantCollectionShouldDiscoverAndIncreaseCount() throws Exception {
         Account target = registerUser("collection");
 
