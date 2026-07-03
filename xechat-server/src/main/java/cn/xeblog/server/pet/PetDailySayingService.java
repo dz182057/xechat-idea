@@ -49,6 +49,9 @@ public final class PetDailySayingService {
     private static final String REVIEW_REMOVED = "下架";
     private static final String DEFAULT_CONTENT_VERSION = "pet-daily-saying-v1-2026-06-24";
     private static final int RECENT_EXCLUDE_LIMIT = 180;
+    private static final String COUNTER_DATE_LIFETIME = "lifetime";
+    private static final String DAILY_SAYING_VIEW_REWARD_COUNTER_PREFIX = "daily_saying_view_bones:";
+    private static final int DAILY_SAYING_VIEW_REWARD_BONES = 50;
     private static final List<Integer> RELAXED_EXCLUDE_LIMITS = Collections.unmodifiableList(
             Arrays.asList(180, 120, 60, 30, 0));
     private static final int MAX_ADMIN_PAGE_SIZE = 100;
@@ -72,6 +75,35 @@ public final class PetDailySayingService {
             long now = System.currentTimeMillis();
             try (SqlSession session = DbInitializer.factory().openSession(false)) {
                 ensureDailySayingAssignment(session, accountId, today, now);
+                session.commit();
+            }
+            return PetProfileService.profileLocked(accountId);
+        }
+    }
+
+    public static PetProfileDTO viewDailySaying(long accountId, PetDailySayingReadDTO request) {
+        String assignmentId = request == null ? null : StrUtil.trim(request.getAssignmentId());
+        if (StrUtil.isBlank(assignmentId)) {
+            throw new IllegalArgumentException("缺少要查看的狗狗问候");
+        }
+
+        synchronized (PetProfileService.accountLock(accountId)) {
+            long now = System.currentTimeMillis();
+            try (SqlSession session = DbInitializer.factory().openSession(false)) {
+                PetDailySayingAssignmentRecord assignment =
+                        session.getMapper(PetDailySayingAssignmentMapper.class).findById(accountId, assignmentId);
+                if (assignment == null) {
+                    throw new IllegalArgumentException("这条狗狗问候不存在");
+                }
+                if (STATUS_UNREAD.equals(assignment.getStatus())) {
+                    PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+                    String counter = DAILY_SAYING_VIEW_REWARD_COUNTER_PREFIX + assignmentId;
+                    if (counterMapper.incrementIfUnderLimit(accountId, COUNTER_DATE_LIFETIME, counter, 1, now) > 0
+                            && session.getMapper(PetAssetsMapper.class)
+                            .addBones(accountId, DAILY_SAYING_VIEW_REWARD_BONES, now) <= 0) {
+                        throw new IllegalArgumentException("狗狗资料更新失败");
+                    }
+                }
                 session.commit();
             }
             return PetProfileService.profileLocked(accountId);

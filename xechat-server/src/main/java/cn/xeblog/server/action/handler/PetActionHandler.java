@@ -90,8 +90,13 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 sendProfileResult(user, petAction, requestId, dailySayingProfile);
                 break;
             case DAILY_SAYING_VIEW:
-                PetProfileDTO viewedDailySayingProfile = PetProfileService.profile(user.getAccountId());
-                send(user, PetResponseDTO.ok(petAction, requestId, viewedDailySayingProfile));
+                try {
+                    PetProfileDTO viewedDailySayingProfile = PetDailySayingService.viewDailySaying(
+                            user.getAccountId(), toBean(body.getContent(), PetDailySayingReadDTO.class));
+                    sendProfileResult(user, petAction, requestId, viewedDailySayingProfile);
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
                 break;
             case DAILY_SAYING_READ:
                 try {

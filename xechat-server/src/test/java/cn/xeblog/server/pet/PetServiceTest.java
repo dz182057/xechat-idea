@@ -182,6 +182,27 @@ public class PetServiceTest {
     }
 
     @Test
+    public void dailySayingViewShouldRewardBonesOnlyOnce() throws Exception {
+        upsertDailySayingContent("view-reward-message", "今天也想陪{dog_name}晒太阳。");
+        User user = accountUser(990106L);
+        PetService.adopt(user, adopt("corgi", "奖励狗"));
+
+        PetDailySayingDTO saying = PetDailySayingService.dailySaying(user.getAccountId()).getDailySaying();
+        PetDailySayingReadDTO viewRequest = new PetDailySayingReadDTO();
+        viewRequest.setAssignmentId(saying.getAssignmentId());
+
+        PetProfileDTO viewed = PetDailySayingService.viewDailySaying(user.getAccountId(), viewRequest);
+        PetProfileDTO viewedAgain = PetDailySayingService.viewDailySaying(user.getAccountId(), viewRequest);
+        PetProfileDTO read = PetDailySayingService.readDailySaying(user.getAccountId(), viewRequest);
+
+        Assert.assertEquals(350, viewed.getAssets().getBones());
+        Assert.assertEquals(350, viewedAgain.getAssets().getBones());
+        Assert.assertEquals(350, read.getAssets().getBones());
+        Assert.assertEquals("UNREAD", viewedAgain.getDailySaying().getState());
+        Assert.assertEquals("READ_TODAY", read.getDailySaying().getState());
+    }
+
+    @Test
     public void profileShouldExposeV5TrainerManualSkillPool() {
         PetProfileDTO profile = PetService.profile(accountUser(990015L));
 
