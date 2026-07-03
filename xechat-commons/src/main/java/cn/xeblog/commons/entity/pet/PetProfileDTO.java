@@ -48,6 +48,8 @@ public class PetProfileDTO implements Serializable {
 
     private PetShopStatusDTO shopStatus;
 
+    private PetArcadeStatusDTO arcadeStatus;
+
     private PetDailySayingDTO dailySaying;
 
     private List<PetRecentSayingDTO> recentSayings;
@@ -73,6 +75,17 @@ public class PetProfileDTO implements Serializable {
                 new ArrayList<>(), new ArrayList<>(), false));
         profile.setShopStatus(new PetShopStatusDTO(null, new ArrayList<>(), null, 0L, 0L,
                 0, 3, java.util.Arrays.asList(30, 50, 70), 30));
+        profile.setArcadeStatus(new PetArcadeStatusDTO(new PetTreasureHuntStatusDTO(
+                java.time.LocalDate.now().toString(),
+                1,
+                0,
+                1,
+                0,
+                50,
+                "item_skin_ticket",
+                10,
+                new ArrayList<>(),
+                new ArrayList<>())));
         profile.setDailySaying(PetDailySayingDTO.none());
         profile.setRecentSayings(new ArrayList<>());
         return profile;

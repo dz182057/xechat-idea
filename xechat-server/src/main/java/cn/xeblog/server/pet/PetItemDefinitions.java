@@ -19,6 +19,7 @@ public final class PetItemDefinitions {
     private static final int RARE_SELL_PRICE = 80;
     private static final int EPIC_SELL_PRICE = 200;
     private static final int LEGENDARY_SELL_PRICE = 500;
+    public static final String ITEM_SKIN_TICKET = "item_skin_ticket";
     private static final String ITEM_WILD_COMMON = "item_wild_common";
     private static final String ITEM_PARTY_EQUALIZER = "item_party_equalizer";
     private static final Set<String> TEMPORARILY_DISABLED_ITEM_IDS = Collections.unmodifiableSet(
@@ -206,6 +207,7 @@ public final class PetItemDefinitions {
         utility(items, ITEM_WILD_COMMON, Rarity.EPIC);
         utility(items, ITEM_PARTY_EQUALIZER, Rarity.EPIC);
         utility(items, "item_gift_pack", Rarity.EPIC, ReleaseStage.EXPANSION);
+        utility(items, ITEM_SKIN_TICKET, Rarity.EPIC, ReleaseStage.EXPANSION, COMMON_SELL_PRICE);
         utility(items, "item_express", Rarity.EPIC);
         utility(items, "item_lucky_day", Rarity.EPIC);
         play(items, "item_gomoku_oracle", Rarity.LEGENDARY, false, Game.GOBANG);
@@ -240,7 +242,12 @@ public final class PetItemDefinitions {
 
     private static void utility(List<PetItemDefinition> items, String itemId, Rarity rarity,
                                 ReleaseStage releaseStage, Game... games) {
-        items.add(new PetItemDefinition(itemId, rarity, releaseStage, Slot.UTILITY, sellPrice(rarity),
+        utility(items, itemId, rarity, releaseStage, sellPrice(rarity), games);
+    }
+
+    private static void utility(List<PetItemDefinition> items, String itemId, Rarity rarity,
+                                ReleaseStage releaseStage, int sellPrice, Game... games) {
+        items.add(new PetItemDefinition(itemId, rarity, releaseStage, Slot.UTILITY, sellPrice,
                 null, true, false, games));
     }
 

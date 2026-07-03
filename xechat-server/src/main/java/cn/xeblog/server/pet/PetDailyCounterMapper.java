@@ -26,6 +26,12 @@ public interface PetDailyCounterMapper {
                                 @Param("limit") int limit,
                                 @Param("updatedAt") long updatedAt);
 
+    int decrementIfEnough(@Param("accountId") long accountId,
+                          @Param("counterDate") String counterDate,
+                          @Param("counter") String counter,
+                          @Param("amount") int amount,
+                          @Param("updatedAt") long updatedAt);
+
     List<String> listCountersByPrefix(@Param("accountId") long accountId,
                                       @Param("counterDate") String counterDate,
                                       @Param("prefix") String prefix);

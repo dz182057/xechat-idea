@@ -2,6 +2,7 @@ package cn.xeblog.server.pet;
 
 import cn.hutool.core.util.StrUtil;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
+import cn.xeblog.commons.entity.pet.PetArcadeStatusDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
 import cn.xeblog.commons.entity.pet.PetAssetsDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinStatusDTO;
@@ -32,6 +33,11 @@ import cn.xeblog.commons.entity.pet.PetTrainingSkillActionDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDefinitionDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingStatusDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntExtraRewardDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntProbabilityDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntRedeemSkinDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinResultDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntStatusDTO;
 import cn.xeblog.commons.entity.pet.PetUseItemDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
 import cn.xeblog.commons.enums.Game;
@@ -107,6 +113,11 @@ public final class PetProfileService {
     private static final int SHOP_DAILY_RARE_ITEM_PRICE = 320;
     private static final int SHOP_DAILY_SKIN_ITEM_PRICE = 1680;
     private static final int SHOP_LUCKY_BAG_PRICE = 250;
+    private static final int TREASURE_HUNT_DAILY_FREE_LIMIT = 1;
+    private static final int TREASURE_HUNT_PAID_COST = 50;
+    private static final int TREASURE_HUNT_SKIN_TICKETS_PER_SKIN = 10;
+    private static final int TREASURE_HUNT_ROLL_SCALE = 10_000;
+    private static final int TREASURE_HUNT_SKIN_TICKET_MAX_GRANT = 10_000;
     private static final long SHOP_SHELF_REFRESH_INTERVAL_MILLIS = 6L * 60L * 60L * 1000L;
     private static final int SHOP_SHELF_NORMAL_ITEM_COUNT = 3;
     private static final int SHOP_SHELF_MAX_PAID_REFRESHES = 3;
@@ -158,6 +169,8 @@ public final class PetProfileService {
     private static final String ITEM_LEDGER_SPEND = "spend";
     private static final String ITEM_LEDGER_SOURCE_EXPLORE_RETURN_CHEST = "explore_return_chest";
     private static final String ITEM_LEDGER_SOURCE_OPEN_EXPLORE_CHEST = "open_explore_chest";
+    private static final String ITEM_LEDGER_SOURCE_TREASURE_HUNT = "treasure_hunt";
+    private static final String ITEM_LEDGER_SOURCE_TREASURE_HUNT_REDEEM_SKIN = "treasure_hunt_redeem_skin";
     private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_NORMAL = "shop_buy_normal";
     private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_DAILY_RARE = "shop_buy_daily_rare";
     private static final String ITEM_LEDGER_SOURCE_SHOP_BUY_DAILY_SKIN = "shop_buy_daily_skin";
@@ -241,6 +254,8 @@ public final class PetProfileService {
     private static final String DAILY_COUNTER_SHOP_DAILY_SKIN_ITEM_BUY = "shop_daily_skin_item_buy";
     private static final String DAILY_COUNTER_SHOP_LUCKY_BAG_BUY = "shop_lucky_bag_buy";
     private static final String COUNTER_SHOP_SHELF_PAID_REFRESH = "shop_shelf_paid_refresh";
+    private static final String DAILY_COUNTER_TREASURE_HUNT_FREE_USED = "treasure_hunt_free_used";
+    private static final String COUNTER_TREASURE_HUNT_BONUS_SPINS = "treasure_hunt_bonus_spins";
     private static final String DAILY_COUNTER_EXPLORE_START = "explore_start";
     private static final String DAILY_COUNTER_EXPLORE_ITEM_GAIN = "explore_item_gain";
     private static final String DAILY_COUNTER_MINI_GAME_COMPLETE = "mini_game_complete";
@@ -380,12 +395,41 @@ public final class PetProfileService {
     private static final List<String> LUCKY_BAG_ITEM_IDS = PetItemDefinitions.luckyBagAllItemIds();
     private static final Set<String> SHOP_NORMAL_ITEM_IDS = PetItemDefinitions.shopNormalItemIds();
     private static final Map<String, Integer> SELL_ITEM_PRICES = PetItemDefinitions.sellItemPrices();
+    private static final List<String> TREASURE_HUNT_NORMAL_ITEM_IDS = PetItemDefinitions.luckyBagNormalItemIds();
+    private static final List<String> TREASURE_HUNT_RARE_ITEM_IDS = PetItemDefinitions.luckyBagRareItemIds();
+    private static final List<String> TREASURE_HUNT_EPIC_ITEM_IDS = PetItemDefinitions.luckyBagEpicItemIds();
+    private static final List<String> TREASURE_HUNT_SKIN_ITEM_IDS = PetItemDefinitions.skinItemIds();
+    private static final List<TreasureBoneRewardOption> TREASURE_HUNT_BONE_REWARDS =
+            Collections.unmodifiableList(Arrays.asList(
+                    new TreasureBoneRewardOption(5, 2000),
+                    new TreasureBoneRewardOption(10, 3000),
+                    new TreasureBoneRewardOption(20, 2500),
+                    new TreasureBoneRewardOption(30, 1500),
+                    new TreasureBoneRewardOption(50, 700),
+                    new TreasureBoneRewardOption(100, 250),
+                    new TreasureBoneRewardOption(200, 50)
+            ));
+    private static final List<TreasureExtraRewardOption> TREASURE_HUNT_EXTRA_REWARDS =
+            Collections.unmodifiableList(Arrays.asList(
+                    new TreasureExtraRewardOption("none", "无追加奖励", 8635, null),
+                    new TreasureExtraRewardOption("normal_item", "普通道具", 480, 1),
+                    new TreasureExtraRewardOption("rare_item", "稀有道具", 180, 1),
+                    new TreasureExtraRewardOption("epic_item", "史诗道具", 80, 1),
+                    new TreasureExtraRewardOption("bonus_spin", "额外寻宝次数", 250, 1),
+                    new TreasureExtraRewardOption("skin_ticket", "皮肤券", 370, 1),
+                    new TreasureExtraRewardOption("skin", "完整皮肤", 5, 1)
+            ));
     private static final Map<Long, Object> ACCOUNT_LOCKS = new ConcurrentHashMap<>();
     private static IntSupplier exploreRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);
     private static IntSupplier exploreEasterEventSupplier = () -> ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
     private static IntSupplier luckyBagRarityRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);
     private static IntSupplier luckyBagItemIndexSupplier = () -> ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
     private static IntSupplier shibaCheckinRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);
+    private static IntSupplier treasureHuntBoneRollSupplier =
+            () -> ThreadLocalRandom.current().nextInt(TREASURE_HUNT_ROLL_SCALE);
+    private static IntSupplier treasureHuntExtraRollSupplier =
+            () -> ThreadLocalRandom.current().nextInt(TREASURE_HUNT_ROLL_SCALE);
+    private static IntSupplier treasureHuntItemIndexSupplier = () -> ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
 
     private PetProfileService() {
     }
@@ -546,6 +590,7 @@ public final class PetProfileService {
             profile.setRecentSayings(PetDailySayingService.recentSayings(session, accountId));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             profile.setShopStatus(buildShopStatus(dailyCounterMapper, accountId, now));
+            profile.setArcadeStatus(buildArcadeStatus(dailyCounterMapper, accountId, todayText));
             if (energyRefreshed || legacyChestMigrated || exploreSettled || dogStageChanged) {
                 session.commit();
             }
@@ -598,6 +643,48 @@ public final class PetProfileService {
                 SHOP_SHELF_MAX_PAID_REFRESHES,
                 new ArrayList<>(SHOP_SHELF_PAID_REFRESH_COSTS),
                 nextPaidRefreshCost);
+    }
+
+    private static PetArcadeStatusDTO buildArcadeStatus(PetDailyCounterMapper mapper, long accountId, String today) {
+        int dailyFreeUsed = Math.min(TREASURE_HUNT_DAILY_FREE_LIMIT, Math.max(0,
+                findDailyCounterValue(mapper, accountId, today, DAILY_COUNTER_TREASURE_HUNT_FREE_USED)));
+        int bonusSpins = Math.max(0,
+                findLifetimeCounterValue(mapper, accountId, COUNTER_TREASURE_HUNT_BONUS_SPINS));
+        return new PetArcadeStatusDTO(new PetTreasureHuntStatusDTO(
+                today,
+                TREASURE_HUNT_DAILY_FREE_LIMIT,
+                dailyFreeUsed,
+                Math.max(0, TREASURE_HUNT_DAILY_FREE_LIMIT - dailyFreeUsed),
+                bonusSpins,
+                TREASURE_HUNT_PAID_COST,
+                PetItemDefinitions.ITEM_SKIN_TICKET,
+                TREASURE_HUNT_SKIN_TICKETS_PER_SKIN,
+                treasureBoneProbabilityRows(),
+                treasureExtraProbabilityRows()));
+    }
+
+    private static List<PetTreasureHuntProbabilityDTO> treasureBoneProbabilityRows() {
+        List<PetTreasureHuntProbabilityDTO> rows = new ArrayList<>();
+        for (TreasureBoneRewardOption option : TREASURE_HUNT_BONE_REWARDS) {
+            rows.add(new PetTreasureHuntProbabilityDTO(
+                    "bones",
+                    "骨头币 " + option.amount,
+                    option.probabilityBp,
+                    option.amount));
+        }
+        return rows;
+    }
+
+    private static List<PetTreasureHuntProbabilityDTO> treasureExtraProbabilityRows() {
+        List<PetTreasureHuntProbabilityDTO> rows = new ArrayList<>();
+        for (TreasureExtraRewardOption option : TREASURE_HUNT_EXTRA_REWARDS) {
+            rows.add(new PetTreasureHuntProbabilityDTO(
+                    option.type,
+                    option.label,
+                    option.probabilityBp,
+                    option.quantity));
+        }
+        return rows;
     }
 
     private static String dailySkinShopItemId(long accountId, long periodIndex, int refreshIndex) {
@@ -1042,6 +1129,24 @@ public final class PetProfileService {
     public static PetProfileDTO recordRaceResult(long accountId, PetRaceResultDTO request) {
         synchronized (accountLock(accountId)) {
             return recordRaceResultLocked(accountId, request);
+        }
+    }
+
+    public static PetTreasureHuntSpinResultDTO treasureHuntSpin(long accountId) {
+        synchronized (accountLock(accountId)) {
+            return treasureHuntSpinLocked(accountId);
+        }
+    }
+
+    public static PetProfileDTO treasureHuntRedeemSkin(long accountId, PetTreasureHuntRedeemSkinDTO request) {
+        synchronized (accountLock(accountId)) {
+            return treasureHuntRedeemSkinLocked(accountId, request);
+        }
+    }
+
+    public static PetProfileDTO grantTreasureHuntBonusSpins(long accountId, int quantity) {
+        synchronized (accountLock(accountId)) {
+            return grantTreasureHuntBonusSpinsLocked(accountId, quantity);
         }
     }
 
@@ -1600,6 +1705,221 @@ public final class PetProfileService {
         }
 
         return profile(accountId);
+    }
+
+    private static PetTreasureHuntSpinResultDTO treasureHuntSpinLocked(long accountId) {
+        long now = System.currentTimeMillis();
+        String today = LocalDate.now().toString();
+        String spinSource;
+        int paidCost = 0;
+        int boneReward = pickTreasureBoneReward();
+        PetTreasureHuntExtraRewardDTO extraReward;
+        List<String> symbols;
+
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            ensureAssets(session, accountId);
+            PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            int freeUsed = findDailyCounterValue(counterMapper, accountId, today,
+                    DAILY_COUNTER_TREASURE_HUNT_FREE_USED);
+            if (freeUsed < TREASURE_HUNT_DAILY_FREE_LIMIT
+                    && counterMapper.incrementIfUnderLimit(accountId, today,
+                    DAILY_COUNTER_TREASURE_HUNT_FREE_USED, TREASURE_HUNT_DAILY_FREE_LIMIT, now) > 0) {
+                spinSource = "daily_free";
+            } else if (findLifetimeCounterValue(counterMapper, accountId, COUNTER_TREASURE_HUNT_BONUS_SPINS) > 0
+                    && counterMapper.decrementIfEnough(accountId, COUNTER_DATE_LIFETIME,
+                    COUNTER_TREASURE_HUNT_BONUS_SPINS, 1, now) > 0) {
+                spinSource = "bonus";
+            } else {
+                if (assetsMapper.decrementBonesIfEnough(accountId, TREASURE_HUNT_PAID_COST, now) <= 0) {
+                    throw new IllegalArgumentException("骨头币不足，暂时不能继续寻宝");
+                }
+                spinSource = "paid";
+                paidCost = TREASURE_HUNT_PAID_COST;
+            }
+
+            if (assetsMapper.addBones(accountId, boneReward, now) <= 0) {
+                throw new IllegalArgumentException("寻宝奖励发放失败");
+            }
+            extraReward = applyTreasureExtraReward(session, accountId, now);
+            symbols = treasureHuntSymbols(boneReward, extraReward);
+            session.commit();
+        }
+
+        return new PetTreasureHuntSpinResultDTO(
+                profileLocked(accountId),
+                spinSource,
+                paidCost,
+                boneReward,
+                extraReward,
+                symbols);
+    }
+
+    private static PetProfileDTO treasureHuntRedeemSkinLocked(long accountId, PetTreasureHuntRedeemSkinDTO request) {
+        String skinItemId = request == null ? null : StrUtil.trim(request.getSkinItemId());
+        if (StrUtil.isBlank(skinItemId) || !PetItemDefinitions.isSkinItem(skinItemId)) {
+            throw new IllegalArgumentException("请选择要兑换的皮肤");
+        }
+
+        long now = System.currentTimeMillis();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            ensureAssets(session, accountId);
+            PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
+            if (findInventoryCount(itemMapper, accountId, skinItemId) > 0) {
+                throw new IllegalArgumentException("已经拥有该皮肤");
+            }
+            if (itemMapper.decrementItemIfEnough(accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
+                    TREASURE_HUNT_SKIN_TICKETS_PER_SKIN, now) <= 0) {
+                throw new IllegalArgumentException("皮肤券不足，10 张皮肤券可兑换 1 个皮肤");
+            }
+            PetItemLedgerMapper ledgerMapper = session.getMapper(PetItemLedgerMapper.class);
+            String sourceRef = "treasure_hunt_redeem:" + UUID.randomUUID();
+            recordItemLedger(ledgerMapper, accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
+                    TREASURE_HUNT_SKIN_TICKETS_PER_SKIN, ITEM_LEDGER_SPEND,
+                    ITEM_LEDGER_SOURCE_TREASURE_HUNT_REDEEM_SKIN, sourceRef, null, now);
+            if (itemMapper.addItemIfUnderLimit(accountId, skinItemId, 1, 1, now) <= 0) {
+                throw new IllegalArgumentException("已经拥有该皮肤");
+            }
+            recordItemLedger(ledgerMapper, accountId, skinItemId, 1, ITEM_LEDGER_GAIN,
+                    ITEM_LEDGER_SOURCE_TREASURE_HUNT_REDEEM_SKIN, sourceRef, null, now);
+            session.commit();
+        }
+        return profile(accountId);
+    }
+
+    private static PetProfileDTO grantTreasureHuntBonusSpinsLocked(long accountId, int quantity) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("寻宝次数必须为正整数");
+        }
+        long now = System.currentTimeMillis();
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            ensureAssets(session, accountId);
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            if (counterMapper.incrementByIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
+                    COUNTER_TREASURE_HUNT_BONUS_SPINS, quantity, Integer.MAX_VALUE, now) <= 0) {
+                throw new IllegalArgumentException("发放寻宝次数失败");
+            }
+            session.commit();
+        }
+        return profile(accountId);
+    }
+
+    private static int pickTreasureBoneReward() {
+        int roll = Math.floorMod(treasureHuntBoneRollSupplier.getAsInt(), TREASURE_HUNT_ROLL_SCALE);
+        int cursor = 0;
+        for (TreasureBoneRewardOption option : TREASURE_HUNT_BONE_REWARDS) {
+            cursor += option.probabilityBp;
+            if (roll < cursor) {
+                return option.amount;
+            }
+        }
+        return TREASURE_HUNT_BONE_REWARDS.get(TREASURE_HUNT_BONE_REWARDS.size() - 1).amount;
+    }
+
+    private static PetTreasureHuntExtraRewardDTO applyTreasureExtraReward(SqlSession session, long accountId,
+                                                                          long now) {
+        TreasureExtraRewardOption option = pickTreasureExtraReward();
+        if ("none".equals(option.type)) {
+            return null;
+        }
+        if ("bonus_spin".equals(option.type)) {
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            if (counterMapper.incrementByIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
+                    COUNTER_TREASURE_HUNT_BONUS_SPINS, 1, Integer.MAX_VALUE, now) <= 0) {
+                return null;
+            }
+            return new PetTreasureHuntExtraRewardDTO("bonus_spin", null, "额外寻宝次数", 1);
+        }
+        if ("skin_ticket".equals(option.type)) {
+            return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
+                    "皮肤券", 1, TREASURE_HUNT_SKIN_TICKET_MAX_GRANT, now, "skin_ticket");
+        }
+        if ("skin".equals(option.type)) {
+            String skinItemId = selectUnownedItem(session.getMapper(PetItemMapper.class), accountId,
+                    TREASURE_HUNT_SKIN_ITEM_IDS, 1);
+            if (skinItemId == null) {
+                return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
+                        "皮肤券", TREASURE_HUNT_SKIN_TICKETS_PER_SKIN,
+                        TREASURE_HUNT_SKIN_TICKET_MAX_GRANT, now, "skin_ticket");
+            }
+            return grantTreasureHuntItem(session, accountId, skinItemId, skinItemId, 1, 1, now, "skin");
+        }
+
+        List<String> pool = "rare_item".equals(option.type)
+                ? TREASURE_HUNT_RARE_ITEM_IDS
+                : "epic_item".equals(option.type)
+                ? TREASURE_HUNT_EPIC_ITEM_IDS
+                : TREASURE_HUNT_NORMAL_ITEM_IDS;
+        String itemId = selectUnownedItem(session.getMapper(PetItemMapper.class), accountId, pool, MAX_ITEM_COUNT);
+        if (itemId == null) {
+            return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_SKIN_TICKET,
+                    "皮肤券", 1, TREASURE_HUNT_SKIN_TICKET_MAX_GRANT, now, "skin_ticket");
+        }
+        return grantTreasureHuntItem(session, accountId, itemId, itemId, 1, MAX_ITEM_COUNT, now, "item");
+    }
+
+    private static TreasureExtraRewardOption pickTreasureExtraReward() {
+        int roll = Math.floorMod(treasureHuntExtraRollSupplier.getAsInt(), TREASURE_HUNT_ROLL_SCALE);
+        int cursor = 0;
+        for (TreasureExtraRewardOption option : TREASURE_HUNT_EXTRA_REWARDS) {
+            cursor += option.probabilityBp;
+            if (roll < cursor) {
+                return option;
+            }
+        }
+        return TREASURE_HUNT_EXTRA_REWARDS.get(0);
+    }
+
+    private static PetTreasureHuntExtraRewardDTO grantTreasureHuntItem(SqlSession session, long accountId,
+                                                                       String itemId, String label, int quantity,
+                                                                       int maxCount, long now, String type) {
+        PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
+        int updated = PetItemDefinitions.ITEM_SKIN_TICKET.equals(itemId)
+                ? itemMapper.addItem(accountId, itemId, quantity, now)
+                : itemMapper.addItemIfUnderLimit(accountId, itemId, quantity, maxCount, now);
+        if (updated <= 0) {
+            return null;
+        }
+        recordItemLedger(session.getMapper(PetItemLedgerMapper.class), accountId, itemId, quantity,
+                ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_TREASURE_HUNT, "treasure_hunt:" + UUID.randomUUID(),
+                null, now);
+        return new PetTreasureHuntExtraRewardDTO(type, itemId, label, quantity);
+    }
+
+    private static String selectUnownedItem(PetItemMapper mapper, long accountId, List<String> itemIds, int maxCount) {
+        List<String> candidates = new ArrayList<>();
+        for (String itemId : itemIds) {
+            if (findInventoryCount(mapper, accountId, itemId) < maxCount) {
+                candidates.add(itemId);
+            }
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.get(Math.floorMod(treasureHuntItemIndexSupplier.getAsInt(), candidates.size()));
+    }
+
+    private static int findInventoryCount(PetItemMapper mapper, long accountId, String itemId) {
+        PetItemRecord item = mapper.findByAccountIdAndItemId(accountId, itemId);
+        return item == null ? 0 : Math.max(0, item.getCount());
+    }
+
+    private static List<String> treasureHuntSymbols(int boneReward, PetTreasureHuntExtraRewardDTO extraReward) {
+        List<String> symbols = new ArrayList<>();
+        symbols.add("bone");
+        if (extraReward == null) {
+            symbols.add(boneReward >= 50 ? "coin" : "paw");
+        } else if ("skin".equals(extraReward.getType())) {
+            symbols.add("skin");
+        } else if ("skin_ticket".equals(extraReward.getType())) {
+            symbols.add("ticket");
+        } else if ("bonus_spin".equals(extraReward.getType())) {
+            symbols.add("spark");
+        } else {
+            symbols.add("gift");
+        }
+        symbols.add(boneReward >= 100 ? "star" : "bone");
+        return symbols;
     }
 
     private static PetProfileDTO changeBonesLocked(long accountId, int delta) {
@@ -3706,6 +4026,30 @@ public final class PetProfileService {
                 return new BreedConfig(true);
             }
             return null;
+        }
+    }
+
+    private static final class TreasureBoneRewardOption {
+        private final int amount;
+        private final int probabilityBp;
+
+        private TreasureBoneRewardOption(int amount, int probabilityBp) {
+            this.amount = amount;
+            this.probabilityBp = probabilityBp;
+        }
+    }
+
+    private static final class TreasureExtraRewardOption {
+        private final String type;
+        private final String label;
+        private final int probabilityBp;
+        private final Integer quantity;
+
+        private TreasureExtraRewardOption(String type, String label, int probabilityBp, Integer quantity) {
+            this.type = type;
+            this.label = label;
+            this.probabilityBp = probabilityBp;
+            this.quantity = quantity;
         }
     }
 

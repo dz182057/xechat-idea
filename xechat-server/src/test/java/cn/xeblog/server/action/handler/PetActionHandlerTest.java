@@ -3,6 +3,7 @@ package cn.xeblog.server.action.handler;
 import cn.xeblog.commons.entity.Response;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
+import cn.xeblog.commons.entity.pet.PetArcadeStatusDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
 import cn.xeblog.commons.entity.pet.PetCollectionItemDTO;
 import cn.xeblog.commons.entity.pet.PetDogDTO;
@@ -20,6 +21,10 @@ import cn.xeblog.commons.entity.pet.PetResponseDTO;
 import cn.xeblog.commons.entity.pet.PetShopStatusDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDefinitionDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntProbabilityDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntRedeemSkinDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinResultDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntStatusDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
@@ -188,6 +193,110 @@ public class PetActionHandlerTest {
         Assert.assertEquals(Integer.valueOf(1), status.getItemRemainingRewardCounts().get("item_quiz_duel"));
         Assert.assertEquals(Integer.valueOf(2), status.getItemRewardCounts().get("item_sync_prophecy"));
         Assert.assertEquals(Integer.valueOf(0), status.getItemRemainingRewardCounts().get("item_sync_prophecy"));
+    }
+
+    @Test
+    public void petProfileIncludesTreasureHuntStatusAndProbabilities() {
+        User user = user(9060L, "treasure_status_user");
+
+        PetProfileDTO profile = requestProfile(user);
+
+        PetArcadeStatusDTO arcadeStatus = profile.getArcadeStatus();
+        Assert.assertNotNull(arcadeStatus);
+        PetTreasureHuntStatusDTO status = arcadeStatus.getTreasureHunt();
+        Assert.assertNotNull(status);
+        Assert.assertEquals(LocalDate.now().toString(), status.getServerDate());
+        Assert.assertEquals(1, status.getDailyFreeLimit());
+        Assert.assertEquals(0, status.getDailyFreeUsed());
+        Assert.assertEquals(1, status.getDailyFreeRemaining());
+        Assert.assertEquals(0, status.getBonusSpins());
+        Assert.assertEquals(50, status.getPaidSpinCost());
+        Assert.assertEquals(PetItemDefinitions.ITEM_SKIN_TICKET, status.getSkinTicketItemId());
+        Assert.assertEquals(10, status.getSkinTicketsPerSkin());
+        Assert.assertEquals(7, status.getBoneProbabilities().size());
+        Assert.assertEquals(7, status.getExtraProbabilities().size());
+        Assert.assertEquals(10000, probabilityTotal(status.getBoneProbabilities()));
+        Assert.assertEquals(10000, probabilityTotal(status.getExtraProbabilities()));
+        Assert.assertEquals("骨头币 5", status.getBoneProbabilities().get(0).getLabel());
+        Assert.assertEquals("完整皮肤", status.getExtraProbabilities().get(6).getLabel());
+    }
+
+    @Test
+    public void treasureHuntSpinConsumesDailyFreeBeforePaid() {
+        User user = user(9061L, "treasure_spin_user");
+        IntSupplier originalBoneRollSupplier = setTreasureHuntBoneRollSupplier(() -> 0);
+        IntSupplier originalExtraRollSupplier = setTreasureHuntExtraRollSupplier(() -> 0);
+
+        try {
+            PetTreasureHuntSpinResultDTO firstResult = parseTreasureHuntSpinResult(
+                    handlerProcess(user, treasureHuntSpinRequest(906101L)));
+
+            Assert.assertEquals("daily_free", firstResult.getSpinSource());
+            Assert.assertEquals(0, firstResult.getPaidCost());
+            Assert.assertEquals(5, firstResult.getBoneReward());
+            Assert.assertNull(firstResult.getExtraReward());
+            Assert.assertEquals(305, firstResult.getProfile().getAssets().getBones());
+            Assert.assertEquals(0, firstResult.getProfile().getArcadeStatus()
+                    .getTreasureHunt().getDailyFreeRemaining());
+
+            PetTreasureHuntSpinResultDTO secondResult = parseTreasureHuntSpinResult(
+                    handlerProcess(user, treasureHuntSpinRequest(906102L)));
+
+            Assert.assertEquals("paid", secondResult.getSpinSource());
+            Assert.assertEquals(50, secondResult.getPaidCost());
+            Assert.assertEquals(5, secondResult.getBoneReward());
+            Assert.assertEquals(260, secondResult.getProfile().getAssets().getBones());
+            Assert.assertEquals(0, secondResult.getProfile().getArcadeStatus()
+                    .getTreasureHunt().getDailyFreeRemaining());
+        } finally {
+            setTreasureHuntBoneRollSupplier(originalBoneRollSupplier);
+            setTreasureHuntExtraRollSupplier(originalExtraRollSupplier);
+        }
+    }
+
+    @Test
+    public void treasureHuntSpinConsumesBonusBeforePaid() {
+        User user = user(9062L, "treasure_bonus_user");
+        setDailyCounter(user.getAccountId(), "treasure_hunt_free_used", 1);
+        PetProfileService.grantTreasureHuntBonusSpins(user.getAccountId(), 2);
+        IntSupplier originalBoneRollSupplier = setTreasureHuntBoneRollSupplier(() -> 0);
+        IntSupplier originalExtraRollSupplier = setTreasureHuntExtraRollSupplier(() -> 0);
+
+        try {
+            PetTreasureHuntSpinResultDTO result = parseTreasureHuntSpinResult(
+                    handlerProcess(user, treasureHuntSpinRequest(906201L)));
+
+            Assert.assertEquals("bonus", result.getSpinSource());
+            Assert.assertEquals(0, result.getPaidCost());
+            Assert.assertEquals(5, result.getBoneReward());
+            Assert.assertEquals(305, result.getProfile().getAssets().getBones());
+            Assert.assertEquals(1, result.getProfile().getArcadeStatus().getTreasureHunt().getBonusSpins());
+            Assert.assertEquals(1, countCounter(user.getAccountId(), "lifetime", "treasure_hunt_bonus_spins"));
+        } finally {
+            setTreasureHuntBoneRollSupplier(originalBoneRollSupplier);
+            setTreasureHuntExtraRollSupplier(originalExtraRollSupplier);
+        }
+    }
+
+    @Test
+    public void treasureHuntRedeemsSkinWithTenTickets() {
+        User user = user(9063L, "treasure_redeem_user");
+        insertPetItem(user.getAccountId(), PetItemDefinitions.ITEM_SKIN_TICKET, 10);
+
+        PetRequestDTO request = new PetRequestDTO();
+        request.setPetAction(PetAction.TREASURE_HUNT_REDEEM_SKIN);
+        request.setRequestId(906301L);
+        request.setContent(new PetTreasureHuntRedeemSkinDTO("item_gomoku_skin_magic"));
+
+        PetResponseDTO body = handlerProcess(user, request);
+        Assert.assertEquals(PetAction.TREASURE_HUNT_REDEEM_SKIN, body.getPetAction());
+        Assert.assertEquals(Long.valueOf(906301L), body.getRequestId());
+        PetProfileDTO profile = parseProfile(body);
+
+        Assert.assertEquals(0, countItem(user.getAccountId(), PetItemDefinitions.ITEM_SKIN_TICKET));
+        Assert.assertEquals(1, countItem(user.getAccountId(), "item_gomoku_skin_magic"));
+        Assert.assertEquals(0, findInventoryCount(profile, PetItemDefinitions.ITEM_SKIN_TICKET));
+        Assert.assertEquals(1, findInventoryCount(profile, "item_gomoku_skin_magic"));
     }
 
     @Test
@@ -4560,6 +4669,13 @@ public class PetActionHandlerTest {
         return request;
     }
 
+    private static PetRequestDTO treasureHuntSpinRequest(long requestId) {
+        PetRequestDTO request = new PetRequestDTO();
+        request.setPetAction(PetAction.TREASURE_HUNT_SPIN);
+        request.setRequestId(requestId);
+        return request;
+    }
+
     private static PetRequestDTO resolveOldTennisBallRequest(String choice, long requestId) {
         Map<String, Object> content = new HashMap<>();
         content.put("choice", choice);
@@ -4585,6 +4701,15 @@ public class PetActionHandlerTest {
             return (PetExploreOpenResultDTO) content;
         }
         return JSONUtil.toBean(JSONUtil.toJsonStr(content), PetExploreOpenResultDTO.class);
+    }
+
+    private static PetTreasureHuntSpinResultDTO parseTreasureHuntSpinResult(PetResponseDTO body) {
+        Assert.assertTrue(body.isSuccess());
+        Assert.assertEquals(PetAction.TREASURE_HUNT_SPIN, body.getPetAction());
+        if (body.getContent() instanceof PetTreasureHuntSpinResultDTO) {
+            return (PetTreasureHuntSpinResultDTO) body.getContent();
+        }
+        return JSONUtil.toBean(JSONUtil.toJsonStr(body.getContent()), PetTreasureHuntSpinResultDTO.class);
     }
 
     private static void openEndedOneHourExplore(User user, String dogId, long startRequestId, long openRequestId) {
@@ -4655,6 +4780,14 @@ public class PetActionHandlerTest {
             }
         }
         return null;
+    }
+
+    private static int probabilityTotal(List<PetTreasureHuntProbabilityDTO> rows) {
+        int total = 0;
+        for (PetTreasureHuntProbabilityDTO row : rows) {
+            total += row.getProbabilityBp();
+        }
+        return total;
     }
 
     private static PetTrainingSkillDefinitionDTO findTrainingDefinition(PetProfileDTO profile, String skillId) {
@@ -5471,6 +5604,42 @@ public class PetActionHandlerTest {
     private static IntSupplier setLuckyBagItemIndexSupplier(IntSupplier supplier) {
         try {
             Field field = PetProfileService.class.getDeclaredField("luckyBagItemIndexSupplier");
+            field.setAccessible(true);
+            IntSupplier original = (IntSupplier) field.get(null);
+            field.set(null, supplier);
+            return original;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static IntSupplier setTreasureHuntBoneRollSupplier(IntSupplier supplier) {
+        try {
+            Field field = PetProfileService.class.getDeclaredField("treasureHuntBoneRollSupplier");
+            field.setAccessible(true);
+            IntSupplier original = (IntSupplier) field.get(null);
+            field.set(null, supplier);
+            return original;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static IntSupplier setTreasureHuntExtraRollSupplier(IntSupplier supplier) {
+        try {
+            Field field = PetProfileService.class.getDeclaredField("treasureHuntExtraRollSupplier");
+            field.setAccessible(true);
+            IntSupplier original = (IntSupplier) field.get(null);
+            field.set(null, supplier);
+            return original;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static IntSupplier setTreasureHuntItemIndexSupplier(IntSupplier supplier) {
+        try {
+            Field field = PetProfileService.class.getDeclaredField("treasureHuntItemIndexSupplier");
             field.setAccessible(true);
             IntSupplier original = (IntSupplier) field.get(null);
             field.set(null, supplier);

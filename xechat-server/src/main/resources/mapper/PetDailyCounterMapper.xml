@@ -36,6 +36,16 @@
         WHERE value + #{amount} &lt;= #{limit}
     </insert>
 
+    <update id="decrementIfEnough">
+        UPDATE pet_daily_counters
+        SET value = value - #{amount},
+            updated_at = #{updatedAt}
+        WHERE account_id = #{accountId}
+          AND counter_date = #{counterDate}
+          AND counter = #{counter}
+          AND value &gt;= #{amount}
+    </update>
+
     <select id="listCountersByPrefix" resultType="string">
         SELECT counter
         FROM pet_daily_counters

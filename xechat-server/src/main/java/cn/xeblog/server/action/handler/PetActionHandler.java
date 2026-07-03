@@ -19,6 +19,8 @@ import cn.xeblog.commons.entity.pet.PetSellItemDTO;
 import cn.xeblog.commons.entity.pet.PetSetCompanionDTO;
 import cn.xeblog.commons.entity.pet.PetShopBuyDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillActionDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntRedeemSkinDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinResultDTO;
 import cn.xeblog.commons.entity.pet.PetUseItemDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
 import cn.xeblog.commons.enums.Action;
@@ -261,6 +263,24 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                         PetProfileDTO useItemProfile = PetProfileService.useItem(user.getAccountId(), useItemRequest);
                         sendProfileResult(user, petAction, requestId, useItemProfile);
                     }
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
+            case TREASURE_HUNT_SPIN:
+                try {
+                    PetTreasureHuntSpinResultDTO spinResult = PetProfileService.treasureHuntSpin(user.getAccountId());
+                    send(user, PetResponseDTO.ok(petAction, requestId, spinResult));
+                    pushProfileUpdateToOtherConnections(user, spinResult.getProfile());
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
+            case TREASURE_HUNT_REDEEM_SKIN:
+                try {
+                    PetProfileDTO redeemedProfile = PetProfileService.treasureHuntRedeemSkin(user.getAccountId(),
+                            toBean(body.getContent(), PetTreasureHuntRedeemSkinDTO.class));
+                    sendProfileResult(user, petAction, requestId, redeemedProfile);
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }

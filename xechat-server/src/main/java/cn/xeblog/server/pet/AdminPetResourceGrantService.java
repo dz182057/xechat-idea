@@ -31,6 +31,7 @@ public final class AdminPetResourceGrantService {
     public static final String TYPE_ITEM = "ITEM";
     public static final String TYPE_SKIN = "SKIN";
     public static final String TYPE_COLLECTION = "COLLECTION";
+    public static final String TYPE_TREASURE_SPIN = "TREASURE_SPIN";
 
     private static final int MAX_GRANT_QUANTITY = 1_000_000;
     private static final int DEFAULT_BONES = 300;
@@ -47,7 +48,8 @@ public final class AdminPetResourceGrantService {
             TYPE_ENERGY,
             TYPE_ITEM,
             TYPE_SKIN,
-            TYPE_COLLECTION
+            TYPE_COLLECTION,
+            TYPE_TREASURE_SPIN
     )));
     private static final Set<String> COLLECTION_ITEM_IDS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "back_hill_ball",
@@ -134,6 +136,9 @@ public final class AdminPetResourceGrantService {
                         break;
                     case TYPE_COLLECTION:
                         amounts = grantCollection(session, targetAccountId, itemId, quantity, now);
+                        break;
+                    case TYPE_TREASURE_SPIN:
+                        amounts = grantTreasureSpin(session, targetAccountId, quantity, now);
                         break;
                     default:
                         throw new AccountException("资源类型不合法");
@@ -296,6 +301,17 @@ public final class AdminPetResourceGrantService {
         return new GrantAmounts(before, after);
     }
 
+    private static GrantAmounts grantTreasureSpin(SqlSession session, long accountId, int quantity, long now) {
+        PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+        int before = countTreasureSpin(counterMapper, accountId);
+        int after = checkedAdd(before, quantity);
+        if (counterMapper.incrementByIfUnderLimit(accountId, "lifetime",
+                "treasure_hunt_bonus_spins", quantity, after, now) <= 0) {
+            throw new AccountException("发放寻宝次数失败");
+        }
+        return new GrantAmounts(before, after);
+    }
+
     private static String validateItemId(String itemId) {
         String normalizedItemId = StrUtil.trim(itemId);
         if (StrUtil.isBlank(normalizedItemId)) {
@@ -336,6 +352,11 @@ public final class AdminPetResourceGrantService {
 
     private static int countCollection(PetCollectionMapper mapper, long accountId, String itemId) {
         Integer count = mapper.findCount(accountId, itemId);
+        return count == null ? 0 : Math.max(0, count);
+    }
+
+    private static int countTreasureSpin(PetDailyCounterMapper mapper, long accountId) {
+        Integer count = mapper.findValue(accountId, "lifetime", "treasure_hunt_bonus_spins");
         return count == null ? 0 : Math.max(0, count);
     }
 
