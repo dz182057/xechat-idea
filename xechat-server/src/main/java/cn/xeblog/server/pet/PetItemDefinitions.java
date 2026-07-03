@@ -42,6 +42,7 @@ public final class PetItemDefinitions {
             "item_minesweeper_skin_ink_wash",
             "item_minesweeper_skin_toy",
             "item_gomoku_skin_magic",
+            "item_gomoku_skin_starry",
             "item_gomoku_skin_fairy",
             "item_gomoku_skin_ink",
             "item_gomoku_skin_toy"
@@ -181,6 +182,7 @@ public final class PetItemDefinitions {
         utility(items, "item_minesweeper_skin_ink_wash", Rarity.LEGENDARY, Game.MINESWEEPER);
         utility(items, "item_minesweeper_skin_toy", Rarity.LEGENDARY, Game.MINESWEEPER);
         utility(items, "item_gomoku_skin_magic", Rarity.LEGENDARY, Game.GOBANG);
+        utility(items, "item_gomoku_skin_starry", Rarity.LEGENDARY, Game.GOBANG);
         utility(items, "item_gomoku_skin_fairy", Rarity.LEGENDARY, Game.GOBANG);
         utility(items, "item_gomoku_skin_ink", Rarity.LEGENDARY, Game.GOBANG);
         utility(items, "item_gomoku_skin_toy", Rarity.LEGENDARY, Game.GOBANG);
