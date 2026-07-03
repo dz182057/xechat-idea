@@ -68,61 +68,52 @@ public final class GobangOracleService {
 
             Point directWin = findWinningPoint(board, type);
             if (directWin != null) {
-                return success(response, directWin, type, WIN_SCORE, "服务端 AI 判断这一步可以直接连成五子，优先取胜。");
+                return successWithHumanReason(response, board, directWin, type, WIN_SCORE);
             }
             Point directBlock = findWinningPoint(board, opponent(type));
             if (directBlock != null) {
-                return success(response, directBlock, type, WIN_SCORE - 1, "服务端 AI 判断这里是对手下一手成五点，先封住避免立刻输棋。");
+                return successWithHumanReason(response, board, directBlock, type, WIN_SCORE - 1);
             }
 
             Point linbicheng = pluginLinbichengPoint(board, type, deadline);
             if (linbicheng != null && !leavesOpponentImmediateWin(board, linbicheng.x, linbicheng.y, type)) {
-                return success(response, linbicheng, type, linbicheng.score,
-                        "服务端 AI 已按别点我会输同源引擎完成 VCX 算杀和 Alpha-Beta 搜索，认为这里的后续局面最好。");
+                return successWithHumanReason(response, board, linbicheng, type, linbicheng.score);
             }
 
             Point ownVcf = findForcingMove(board, type, ThreatMode.VCF, VCF_DEPTH, deadline, forceCache);
             if (ownVcf != null) {
-                return success(response, ownVcf, type, ownVcf.score,
-                        "服务端 AI 的 VCF 连续冲四求解器判断这一步可以进入强迫取胜序列。");
+                return successWithHumanReason(response, board, ownVcf, type, ownVcf.score);
             }
             Point opponentVcf = findForcingMove(board, opponent(type), ThreatMode.VCF, VCF_DEPTH, deadline, forceCache);
             if (opponentVcf != null) {
-                return success(response, opponentVcf, type, opponentVcf.score,
-                        "服务端 AI 的 VCF 连续冲四求解器判断对手这里有强迫取胜点，先占住关键点。");
+                return successWithHumanReason(response, board, opponentVcf, type, opponentVcf.score);
             }
             Point ownVct = findForcingMove(board, type, ThreatMode.VCT, VCT_DEPTH, deadline, forceCache);
             if (ownVct != null) {
-                return success(response, ownVct, type, ownVct.score,
-                        "服务端 AI 的 VCT 连续威胁求解器判断这一步可以形成持续强迫攻势。");
+                return successWithHumanReason(response, board, ownVct, type, ownVct.score);
             }
             Point opponentVct = findForcingMove(board, opponent(type), ThreatMode.VCT, VCT_DEPTH, deadline, forceCache);
             if (opponentVct != null) {
-                return success(response, opponentVct, type, opponentVct.score,
-                        "服务端 AI 的 VCT 连续威胁求解器判断对手这里会形成持续强迫攻势，先行压制。");
+                return successWithHumanReason(response, board, opponentVct, type, opponentVct.score);
             }
 
             Point ownThreat = findBestThreatPoint(board, type, RISK_MEDIUM);
             Point opponentHighThreat = findBestThreatPoint(board, opponent(type), RISK_HIGH);
             if (ownThreat != null && (opponentHighThreat == null || ownThreat.score >= opponentHighThreat.score)) {
-                return success(response, ownThreat, type, ownThreat.score,
-                        "服务端 AI 判断这一步能形成强威胁，优先扩大胜势。");
+                return successWithHumanReason(response, board, ownThreat, type, ownThreat.score);
             }
             if (opponentHighThreat != null) {
-                return success(response, opponentHighThreat, type, opponentHighThreat.score,
-                        "服务端 AI 判断对手下一手会形成强威胁，先占住关键点。");
+                return successWithHumanReason(response, board, opponentHighThreat, type, opponentHighThreat.score);
             }
             Point opponentMediumThreat = findBestThreatPoint(board, opponent(type), RISK_MEDIUM);
             if (opponentMediumThreat != null && (ownThreat == null || opponentMediumThreat.score > ownThreat.score)) {
-                return success(response, opponentMediumThreat, type, opponentMediumThreat.score,
-                        "服务端 AI 判断对手这里威胁过强，先行压制。");
+                return successWithHumanReason(response, board, opponentMediumThreat, type, opponentMediumThreat.score);
             }
             Point best = searchBestPoint(board, type, deadline);
             if (best == null) {
                 return fail(response, "暂未找到可推荐的落点");
             }
-            return success(response, best, type, best.score,
-                    "服务端 AI 已按全局线势、连接空间、威胁画像和 Alpha-Beta 剪枝评估，认为这里的后续局面最好。");
+            return successWithHumanReason(response, board, best, type, best.score);
         } catch (IllegalArgumentException e) {
             return fail(response, e.getMessage());
         }
@@ -138,6 +129,60 @@ public final class GobangOracleService {
         response.setSuccess(true);
         response.setError(null);
         return response;
+    }
+
+    private static GobangOracleResponseDTO successWithHumanReason(GobangOracleResponseDTO response, int[][] board,
+                                                                  Point point, int type, int score) {
+        return success(response, point, type, score, buildHumanReason(board, point, type));
+    }
+
+    private static String buildHumanReason(int[][] board, Point point, int type) {
+        if (isEmptyBoard(board)) {
+            return "下在这里可以先占住天元，四个方向都保留较好的连接空间。";
+        }
+
+        ThreatProfile own = analyzeMove(board, point.x, point.y, type);
+        ThreatProfile defense = analyzeMove(board, point.x, point.y, opponent(type));
+        List<String> parts = new ArrayList<>();
+        List<String> defenseLabels = threatLabels(defense, true);
+        List<String> ownLabels = threatLabels(own, false);
+        if (!defenseLabels.isEmpty()) {
+            parts.add("可以堵住对手的" + joinLabels(defenseLabels));
+        }
+        if (!ownLabels.isEmpty()) {
+            parts.add("自己能形成" + joinLabels(ownLabels));
+        }
+        if (parts.isEmpty()) {
+            return "下在这里可以靠近已有棋子，增加后续连线和进攻空间。";
+        }
+        return "下在这里" + String.join("，同时", parts) + "。";
+    }
+
+    private static List<String> threatLabels(ThreatProfile profile, boolean defense) {
+        List<String> labels = new ArrayList<>();
+        addThreatLabel(labels, profile.five, defense ? "成五点" : "连五取胜");
+        addThreatLabel(labels, profile.liveFour, "活四");
+        addThreatLabel(labels, profile.rushFour, "冲四");
+        addThreatLabel(labels, profile.liveThree, "活三");
+        if (!defense || labels.isEmpty()) {
+            addThreatLabel(labels, profile.sleepThree, "眠三");
+            addThreatLabel(labels, profile.liveTwo, "活二");
+        }
+        return labels;
+    }
+
+    private static void addThreatLabel(List<String> labels, int count, String label) {
+        if (count <= 0) {
+            return;
+        }
+        labels.add(count > 1 ? count + "个" + label : label);
+    }
+
+    private static String joinLabels(List<String> labels) {
+        if (labels.size() <= 1) {
+            return labels.isEmpty() ? "" : labels.get(0);
+        }
+        return String.join("、", labels);
     }
 
     private static GobangOracleResponseDTO fail(GobangOracleResponseDTO response, String error) {

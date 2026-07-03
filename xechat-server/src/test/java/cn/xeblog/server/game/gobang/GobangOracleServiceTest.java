@@ -31,7 +31,7 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.isSuccess());
         Assert.assertTrue(response.getX() == 3 || response.getX() == 8);
         Assert.assertEquals(Integer.valueOf(7), response.getY());
-        Assert.assertTrue(response.getReason().contains("直接连成五子"));
+        Assert.assertTrue(response.getReason().contains("连五取胜"));
     }
 
     @Test
@@ -48,7 +48,7 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.isSuccess());
         Assert.assertTrue(response.getX() == 3 || response.getX() == 8);
         Assert.assertEquals(Integer.valueOf(7), response.getY());
-        Assert.assertTrue(response.getReason().contains("对手下一手成五点"));
+        Assert.assertTrue(response.getReason().contains("堵住对手的成五点"));
     }
 
     @Test
@@ -66,7 +66,8 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.isSuccess());
         Assert.assertEquals(Integer.valueOf(7), response.getX());
         Assert.assertEquals(Integer.valueOf(7), response.getY());
-        Assert.assertTrue(response.getReason().contains("别点我会输"));
+        Assert.assertTrue(response.getReason().contains("堵住对手的活四"));
+        Assert.assertTrue(response.getReason().contains("自己能形成活三"));
     }
 
     @Test
@@ -84,7 +85,7 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.isSuccess());
         Assert.assertEquals(Integer.valueOf(7), response.getX());
         Assert.assertEquals(Integer.valueOf(7), response.getY());
-        Assert.assertTrue(response.getReason().contains("别点我会输"));
+        Assert.assertTrue(response.getReason().contains("自己能形成活四"));
     }
 
     @Test
@@ -102,7 +103,7 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.isSuccess());
         Assert.assertEquals(Integer.valueOf(7), response.getX());
         Assert.assertEquals(Integer.valueOf(7), response.getY());
-        Assert.assertTrue(response.getReason().contains("别点我会输"));
+        Assert.assertTrue(response.getReason().contains("堵住对手的活四"));
     }
 
     @Test
@@ -121,7 +122,7 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.isSuccess());
         Assert.assertEquals(Integer.valueOf(7), response.getX());
         Assert.assertEquals(Integer.valueOf(7), response.getY());
-        Assert.assertTrue(response.getReason().contains("别点我会输"));
+        Assert.assertTrue(response.getReason().contains("2个活三"));
     }
 
     @Test
@@ -136,7 +137,7 @@ public class GobangOracleServiceTest {
                 new GobangOracleRequestDTO("req-8", board, 1, 4));
 
         Assert.assertTrue(response.isSuccess());
-        Assert.assertTrue(response.getReason().contains("别点我会输"));
+        Assert.assertTrue(response.getReason().contains("活二"));
     }
 
     @Test
@@ -176,7 +177,7 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.isSuccess());
         Assert.assertEquals(Integer.valueOf(5), response.getX());
         Assert.assertEquals(Integer.valueOf(9), response.getY());
-        Assert.assertTrue(response.getReason().contains("别点我会输"));
+        Assert.assertTrue(response.getReason().contains("堵住对手的活四"));
     }
 
     @Test
@@ -210,7 +211,7 @@ public class GobangOracleServiceTest {
         Assert.assertTrue(response.isSuccess());
         Assert.assertEquals(Integer.valueOf(7), response.getX());
         Assert.assertEquals(Integer.valueOf(5), response.getY());
-        Assert.assertTrue(response.getReason().contains("别点我会输"));
+        Assert.assertTrue(response.getReason().contains("活二"));
     }
 
     private static int[][] board() {
