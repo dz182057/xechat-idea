@@ -26,6 +26,7 @@ public final class GobangOracleService {
     private static final int SEARCH_DEPTH = 5;
     private static final int MAX_CANDIDATES = 12;
     private static final int MAX_TACTICAL_CANDIDATES = 8;
+    private static final int PLUGIN_MAX_NODES = 16;
     private static final int MAX_DEFENSES = 6;
     private static final int VCF_DEPTH = 7;
     private static final int VCT_DEPTH = 5;
@@ -75,15 +76,16 @@ public final class GobangOracleService {
                 return successWithHumanReason(response, board, directBlock, type, WIN_SCORE - 1);
             }
 
+            Point ownVcf = findForcingMove(board, type, ThreatMode.VCF, VCF_DEPTH, deadline, forceCache);
+            if (ownVcf != null) {
+                return successWithHumanReason(response, board, ownVcf, type, ownVcf.score);
+            }
+
             Point linbicheng = pluginLinbichengPoint(board, type, deadline);
             if (linbicheng != null && !leavesOpponentImmediateWin(board, linbicheng.x, linbicheng.y, type)) {
                 return successWithHumanReason(response, board, linbicheng, type, linbicheng.score);
             }
 
-            Point ownVcf = findForcingMove(board, type, ThreatMode.VCF, VCF_DEPTH, deadline, forceCache);
-            if (ownVcf != null) {
-                return successWithHumanReason(response, board, ownVcf, type, ownVcf.score);
-            }
             Point opponentVcf = findForcingMove(board, opponent(type), ThreatMode.VCF, VCF_DEPTH, deadline, forceCache);
             if (opponentVcf != null) {
                 return successWithHumanReason(response, board, opponentVcf, type, opponentVcf.score);
@@ -318,7 +320,7 @@ public final class GobangOracleService {
     }
 
     private static Point pluginLinbichengPoint(int[][] board, int type, long deadline) {
-        PluginHardAiEngine engine = new PluginHardAiEngine(board, type, deadline, 8, 10, 1, 10);
+        PluginHardAiEngine engine = new PluginHardAiEngine(board, type, deadline, 8, PLUGIN_MAX_NODES, 1, 10);
         return engine.getPoint();
     }
 
