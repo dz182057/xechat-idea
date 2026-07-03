@@ -46,7 +46,8 @@ public final class PetItemDefinitions {
             "item_gomoku_skin_starry",
             "item_gomoku_skin_fairy",
             "item_gomoku_skin_ink",
-            "item_gomoku_skin_toy"
+            "item_gomoku_skin_toy",
+            "item_gomoku_skin_deepsea"
     ));
     private static final List<String> DAILY_SKIN_SHOP_ITEM_IDS = SKIN_ITEM_IDS;
     private static final Set<String> SHOP_NORMAL_ITEM_IDS = Collections.unmodifiableSet(
@@ -187,6 +188,7 @@ public final class PetItemDefinitions {
         utility(items, "item_gomoku_skin_fairy", Rarity.LEGENDARY, Game.GOBANG);
         utility(items, "item_gomoku_skin_ink", Rarity.LEGENDARY, Game.GOBANG);
         utility(items, "item_gomoku_skin_toy", Rarity.LEGENDARY, Game.GOBANG);
+        utility(items, "item_gomoku_skin_deepsea", Rarity.LEGENDARY, Game.GOBANG);
 
         play(items, "item_mine_shield", Rarity.RARE, false, Game.MINESWEEPER);
         play(items, "item_mine_detector", Rarity.RARE, false, Game.MINESWEEPER);

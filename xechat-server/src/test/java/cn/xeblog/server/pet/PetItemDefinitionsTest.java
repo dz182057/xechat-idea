@@ -53,14 +53,17 @@ public class PetItemDefinitionsTest {
                 "item_gomoku_skin_starry",
                 "item_gomoku_skin_fairy",
                 "item_gomoku_skin_ink",
-                "item_gomoku_skin_toy"
+                "item_gomoku_skin_toy",
+                "item_gomoku_skin_deepsea"
         ), PetItemDefinitions.skinItemIds());
         Assert.assertEquals(PetItemDefinitions.skinItemIds(), PetItemDefinitions.dailySkinShopItemIds());
         Assert.assertTrue(PetItemDefinitions.isSkinItem("item_gomoku_skin_magic"));
         Assert.assertTrue(PetItemDefinitions.isSkinItem("item_gomoku_skin_starry"));
+        Assert.assertTrue(PetItemDefinitions.isSkinItem("item_gomoku_skin_deepsea"));
         Assert.assertFalse(PetItemDefinitions.isSkinItem("item_gomoku_guard"));
         Assert.assertTrue(PetItemDefinitions.isDailySkinShopItem("item_gomoku_skin_magic"));
         Assert.assertTrue(PetItemDefinitions.isDailySkinShopItem("item_gomoku_skin_starry"));
+        Assert.assertTrue(PetItemDefinitions.isDailySkinShopItem("item_gomoku_skin_deepsea"));
         Assert.assertFalse(PetItemDefinitions.isDailySkinShopItem("item_gomoku_guard"));
 
         Assert.assertEquals(Integer.valueOf(20), PetItemDefinitions.sellItemPrices().get("item_draw_advance_hint"));
@@ -70,6 +73,7 @@ public class PetItemDefinitionsTest {
         Assert.assertEquals(Integer.valueOf(500), PetItemDefinitions.sellItemPrices().get("item_gomoku_oracle"));
         Assert.assertEquals(Integer.valueOf(500), PetItemDefinitions.sellItemPrices().get("item_gomoku_skin_magic"));
         Assert.assertEquals(Integer.valueOf(500), PetItemDefinitions.sellItemPrices().get("item_gomoku_skin_starry"));
+        Assert.assertEquals(Integer.valueOf(500), PetItemDefinitions.sellItemPrices().get("item_gomoku_skin_deepsea"));
 
         Assert.assertEquals(ReleaseStage.EXPANSION,
                 PetItemDefinitions.byId("item_race_knee").getReleaseStage());
