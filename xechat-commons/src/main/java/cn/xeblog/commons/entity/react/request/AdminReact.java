@@ -56,6 +56,21 @@ public class AdminReact extends BaseReact {
     private String platform;
 
     /**
+     * 行为主动作筛选
+     */
+    private String action;
+
+    /**
+     * 行为子动作筛选
+     */
+    private String subAction;
+
+    /**
+     * 行为处理结果筛选
+     */
+    private String resultStatus;
+
+    /**
      * 登录结果筛选
      */
     private Boolean success;
@@ -124,7 +139,11 @@ public class AdminReact extends BaseReact {
         /**
          * 查询用户登录记录
          */
-        QUERY_LOGIN_LOGS
+        QUERY_LOGIN_LOGS,
+        /**
+         * 查询用户操作记录
+         */
+        QUERY_BEHAVIOR_LOGS
         ;
     }
 

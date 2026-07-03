@@ -24,12 +24,12 @@ public class AdminReactResult {
     private int maxFileSize;
 
     /**
-     * 登录记录
+     * 分页记录
      */
-    private List<AdminLoginLogDTO> records;
+    private List<?> records;
 
     /**
-     * 登录记录总数
+     * 分页记录总数
      */
     private long total;
 
@@ -48,7 +48,7 @@ public class AdminReactResult {
         this.maxFileSize = maxFileSize;
     }
 
-    public AdminReactResult(List<AdminLoginLogDTO> records, long total, int page, int pageSize) {
+    public AdminReactResult(List<?> records, long total, int page, int pageSize) {
         this.records = records;
         this.total = total;
         this.page = page;

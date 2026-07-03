@@ -3,6 +3,9 @@ package cn.xeblog.server.behavior;
 import cn.xeblog.commons.entity.Request;
 import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.pet.PetRequestDTO;
+import cn.xeblog.commons.entity.react.request.AdminReact;
+import cn.xeblog.commons.entity.react.result.AdminBehaviorLogDTO;
+import cn.xeblog.commons.entity.react.result.AdminReactResult;
 import cn.xeblog.commons.enums.Action;
 import cn.xeblog.commons.enums.PetAction;
 import cn.xeblog.commons.enums.Platform;
@@ -21,6 +24,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
@@ -112,6 +116,62 @@ public class PlayerBehaviorLogServiceTest {
             assertFalse(json.contains("session-token"));
             assertFalse(json.contains("large-avatar-body"));
         }
+    }
+
+    @Test
+    public void queryShouldFilterBehaviorLogsForAdmin() throws Exception {
+        Path root = Files.createTempDirectory("xechat-behavior-log-query-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());
+        GlobalConfig.initDataPath(null);
+        resetFactory();
+        DbInitializer.initIfNeeded();
+
+        User alice = new User();
+        alice.setAccountId(1001L);
+        alice.setAccount("alice");
+        alice.setNickname("小爱");
+        alice.setUuid("client-uuid-1");
+        alice.setPlatform(Platform.WEB);
+        alice.setIp("127.0.0.1");
+
+        Map<String, Object> content = new LinkedHashMap<>();
+        content.put("dogId", "dog-1");
+        PetRequestDTO petBody = new PetRequestDTO(PetAction.FEED, 7L, content);
+        Request<PetRequestDTO> petRequest = new Request<>(petBody, Action.PET);
+        petRequest.setProtocol(Protocol.DEFAULT);
+        PlayerBehaviorLogService.record(alice, petRequest, "OK", null);
+
+        User bob = new User();
+        bob.setAccountId(1002L);
+        bob.setAccount("bob");
+        bob.setNickname("小波");
+        bob.setUuid("client-uuid-2");
+        bob.setPlatform(Platform.DESKTOP);
+        bob.setIp("127.0.0.1");
+        Request<String> chatRequest = new Request<>("hello", Action.CHAT);
+        chatRequest.setProtocol(Protocol.DEFAULT);
+        PlayerBehaviorLogService.record(bob, chatRequest, "OK", null);
+
+        AdminReact query = new AdminReact();
+        query.setAccount("ali");
+        query.setAction("PET");
+        query.setSubAction("FEED");
+        query.setResultStatus("OK");
+        query.setPage(1);
+        query.setPageSize(10);
+
+        AdminReactResult result = PlayerBehaviorLogService.query(query);
+        assertEquals(1, result.getTotal());
+        List<?> records = result.getRecords();
+        assertEquals(1, records.size());
+        AdminBehaviorLogDTO item = (AdminBehaviorLogDTO) records.get(0);
+        assertEquals(Long.valueOf(1001L), item.getAccountId());
+        assertEquals("alice", item.getAccount());
+        assertEquals("WEB", item.getPlatform());
+        assertEquals("PET", item.getAction());
+        assertEquals("FEED", item.getSubAction());
+        assertEquals("OK", item.getResultStatus());
+        assertTrue(item.getRequestBodyJson().contains("\"dogId\":\"dog-1\""));
     }
 
     private static void resetFactory() throws Exception {

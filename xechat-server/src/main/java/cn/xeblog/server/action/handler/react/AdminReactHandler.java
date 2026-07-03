@@ -9,6 +9,7 @@ import cn.xeblog.commons.enums.MessageType;
 import cn.xeblog.server.action.ChannelAction;
 import cn.xeblog.server.annotation.DoReact;
 import cn.xeblog.server.account.LoginLogService;
+import cn.xeblog.server.behavior.PlayerBehaviorLogService;
 import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.config.GlobalConfig;
@@ -32,6 +33,10 @@ public class AdminReactHandler extends AbstractReactHandler<AdminReact, AdminRea
             case QUERY_LOGIN_LOGS:
                 result.setSucceed(true);
                 result.setData(LoginLogService.query(body));
+                return;
+            case QUERY_BEHAVIOR_LOGS:
+                result.setSucceed(true);
+                result.setData(PlayerBehaviorLogService.query(body));
                 return;
             case QUERY_PERMIT:
                 break;

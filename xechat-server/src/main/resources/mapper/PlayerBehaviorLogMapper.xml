@@ -16,4 +16,68 @@
         )
     </insert>
 
+    <sql id="queryWhere">
+        <where>
+            <if test="account != null and account != ''">
+                AND account LIKE '%' || #{account} || '%'
+            </if>
+            <if test="nickname != null and nickname != ''">
+                AND nickname LIKE '%' || #{nickname} || '%'
+            </if>
+            <if test="ip != null and ip != ''">
+                AND ip LIKE '%' || #{ip} || '%'
+            </if>
+            <if test="platform != null and platform != ''">
+                AND platform = #{platform}
+            </if>
+            <if test="action != null and action != ''">
+                AND action = #{action}
+            </if>
+            <if test="subAction != null and subAction != ''">
+                AND sub_action LIKE '%' || #{subAction} || '%'
+            </if>
+            <if test="resultStatus != null and resultStatus != ''">
+                AND result_status = #{resultStatus}
+            </if>
+            <if test="startAt != null">
+                AND created_at &gt;= #{startAt}
+            </if>
+            <if test="endAt != null">
+                AND created_at &lt;= #{endAt}
+            </if>
+        </where>
+    </sql>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM player_behavior_logs
+        <include refid="queryWhere"/>
+    </select>
+
+    <select id="query" resultType="cn.xeblog.commons.entity.react.result.AdminBehaviorLogDTO">
+        SELECT
+            id,
+            account_id,
+            account,
+            nickname,
+            guest,
+            platform,
+            client_uuid,
+            ip,
+            region,
+            action,
+            sub_action,
+            protocol,
+            result_status,
+            error_message,
+            request_body_json,
+            related_type,
+            related_id,
+            created_at
+        FROM player_behavior_logs
+        <include refid="queryWhere"/>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
 </mapper>
