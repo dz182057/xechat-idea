@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 
 /**
- * 汪汪寻宝概率展示项，probabilityBp 为万分比。
+ * 汪汪寻宝概率展示项，probabilityBp 为万分比，可包含小数。
  */
 @Data
 @NoArgsConstructor
@@ -20,7 +20,7 @@ public class PetTreasureHuntProbabilityDTO implements Serializable {
 
     private String label;
 
-    private int probabilityBp;
+    private double probabilityBp;
 
     private Integer value;
 

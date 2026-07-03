@@ -402,19 +402,19 @@ public final class PetProfileService {
     private static final int TREASURE_HUNT_SLOT_COUNT = 3;
     private static final List<TreasureSlotOption> TREASURE_HUNT_SLOT_OPTIONS =
             Collections.unmodifiableList(Arrays.asList(
-                    TreasureSlotOption.bones("bone_5", "骨头币 5", 1727, 5),
-                    TreasureSlotOption.bones("bone_10", "骨头币 10", 2591, 10),
-                    TreasureSlotOption.bones("bone_20", "骨头币 20", 2159, 20),
-                    TreasureSlotOption.bones("bone_30", "骨头币 30", 1295, 30),
-                    TreasureSlotOption.bones("bone_50", "骨头币 50", 604, 50),
-                    TreasureSlotOption.bones("bone_100", "骨头币 100", 216, 100),
-                    TreasureSlotOption.bones("bone_200", "骨头币 200", 43, 200),
-                    TreasureSlotOption.prize("item_normal", "normal_item", "普通道具", 480, 10, 1),
-                    TreasureSlotOption.prize("item_rare", "rare_item", "稀有道具", 180, 20, 1),
-                    TreasureSlotOption.prize("item_epic", "epic_item", "史诗道具", 80, 30, 1),
-                    TreasureSlotOption.prize("bonus_spin", "bonus_spin", "额外寻宝次数", 250, 20, 1),
-                    TreasureSlotOption.prize("skin_ticket", "skin_ticket", "皮肤券", 370, 30, 1),
-                    TreasureSlotOption.prize("skin", "skin", "完整皮肤", 5, 100, 1)
+                    TreasureSlotOption.bones("bone_5", "骨头币 5", 2200, 5),
+                    TreasureSlotOption.bones("bone_10", "骨头币 10", 2200, 10),
+                    TreasureSlotOption.bones("bone_20", "骨头币 20", 1500, 20),
+                    TreasureSlotOption.bones("bone_30", "骨头币 30", 800, 30),
+                    TreasureSlotOption.bones("bone_50", "骨头币 50", 350, 50),
+                    TreasureSlotOption.bones("bone_100", "骨头币 100", 120, 100),
+                    TreasureSlotOption.bones("bone_200", "骨头币 200", 30, 200),
+                    TreasureSlotOption.prize("item_normal", "normal_item", "普通道具", 1000, 10, 1),
+                    TreasureSlotOption.prize("item_rare", "rare_item", "稀有道具", 500, 20, 1),
+                    TreasureSlotOption.prize("item_epic", "epic_item", "史诗道具", 250, 30, 1),
+                    TreasureSlotOption.prize("bonus_spin", "bonus_spin", "额外寻宝次数", 450, 20, 1),
+                    TreasureSlotOption.prize("skin_ticket", "skin_ticket", "皮肤券", 550, 30, 1),
+                    TreasureSlotOption.prize("skin", "skin", "完整皮肤", 50, 100, 1)
             ));
     private static final Map<Long, Object> ACCOUNT_LOCKS = new ConcurrentHashMap<>();
     private static IntSupplier exploreRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);
@@ -654,38 +654,37 @@ public final class PetProfileService {
                 TREASURE_HUNT_PAID_COST,
                 PetItemDefinitions.ITEM_SKIN_TICKET,
                 TREASURE_HUNT_SKIN_TICKETS_PER_SKIN,
-                treasureBoneProbabilityRows(),
-                treasureExtraProbabilityRows()));
+                treasureSlotProbabilityRows(),
+                treasureTripleRewardProbabilityRows()));
     }
 
-    private static List<PetTreasureHuntProbabilityDTO> treasureBoneProbabilityRows() {
+    private static List<PetTreasureHuntProbabilityDTO> treasureSlotProbabilityRows() {
         List<PetTreasureHuntProbabilityDTO> rows = new ArrayList<>();
         for (TreasureSlotOption option : TREASURE_HUNT_SLOT_OPTIONS) {
-            if (!option.isBones()) {
-                continue;
-            }
-            rows.add(new PetTreasureHuntProbabilityDTO(
-                    "bones",
-                    option.label,
-                    option.probabilityBp,
-                    option.boneAmount));
-        }
-        return rows;
-    }
-
-    private static List<PetTreasureHuntProbabilityDTO> treasureExtraProbabilityRows() {
-        List<PetTreasureHuntProbabilityDTO> rows = new ArrayList<>();
-        for (TreasureSlotOption option : TREASURE_HUNT_SLOT_OPTIONS) {
-            if (option.isBones()) {
-                continue;
-            }
             rows.add(new PetTreasureHuntProbabilityDTO(
                     option.type,
                     option.label,
                     option.probabilityBp,
-                    option.quantity));
+                    option.isBones() ? option.boneAmount : option.quantity));
         }
         return rows;
+    }
+
+    private static List<PetTreasureHuntProbabilityDTO> treasureTripleRewardProbabilityRows() {
+        List<PetTreasureHuntProbabilityDTO> rows = new ArrayList<>();
+        for (TreasureSlotOption option : TREASURE_HUNT_SLOT_OPTIONS) {
+            rows.add(new PetTreasureHuntProbabilityDTO(
+                    option.type,
+                    option.label,
+                    treasureTripleProbabilityBp(option),
+                    option.isBones() ? option.boneAmount : option.quantity));
+        }
+        return rows;
+    }
+
+    private static double treasureTripleProbabilityBp(TreasureSlotOption option) {
+        double slotProbability = option.probabilityBp / (double) TREASURE_HUNT_ROLL_SCALE;
+        return Math.pow(slotProbability, TREASURE_HUNT_SLOT_COUNT) * TREASURE_HUNT_ROLL_SCALE;
     }
 
     private static String dailySkinShopItemId(long accountId, long periodIndex, int refreshIndex) {
