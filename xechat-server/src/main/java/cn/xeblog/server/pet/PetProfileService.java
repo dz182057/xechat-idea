@@ -401,23 +401,23 @@ public final class PetProfileService {
     private static final List<String> TREASURE_HUNT_SKIN_ITEM_IDS = PetItemDefinitions.skinItemIds();
     private static final List<TreasureBoneRewardOption> TREASURE_HUNT_BONE_REWARDS =
             Collections.unmodifiableList(Arrays.asList(
-                    new TreasureBoneRewardOption(5, 2000),
-                    new TreasureBoneRewardOption(10, 3000),
-                    new TreasureBoneRewardOption(20, 2500),
-                    new TreasureBoneRewardOption(30, 1500),
-                    new TreasureBoneRewardOption(50, 700),
-                    new TreasureBoneRewardOption(100, 250),
+                    new TreasureBoneRewardOption(20, 3000),
+                    new TreasureBoneRewardOption(30, 2800),
+                    new TreasureBoneRewardOption(40, 2000),
+                    new TreasureBoneRewardOption(50, 1200),
+                    new TreasureBoneRewardOption(80, 700),
+                    new TreasureBoneRewardOption(120, 250),
                     new TreasureBoneRewardOption(200, 50)
             ));
     private static final List<TreasureExtraRewardOption> TREASURE_HUNT_EXTRA_REWARDS =
             Collections.unmodifiableList(Arrays.asList(
-                    new TreasureExtraRewardOption("none", "无追加奖励", 8635, null),
-                    new TreasureExtraRewardOption("normal_item", "普通道具", 480, 1),
-                    new TreasureExtraRewardOption("rare_item", "稀有道具", 180, 1),
-                    new TreasureExtraRewardOption("epic_item", "史诗道具", 80, 1),
-                    new TreasureExtraRewardOption("bonus_spin", "额外寻宝次数", 250, 1),
-                    new TreasureExtraRewardOption("skin_ticket", "皮肤券", 370, 1),
-                    new TreasureExtraRewardOption("skin", "完整皮肤", 5, 1)
+                    new TreasureExtraRewardOption("none", "无追加奖励", 8000, null),
+                    new TreasureExtraRewardOption("normal_item", "普通道具", 600, 1),
+                    new TreasureExtraRewardOption("rare_item", "稀有道具", 300, 1),
+                    new TreasureExtraRewardOption("epic_item", "史诗道具", 100, 1),
+                    new TreasureExtraRewardOption("bonus_spin", "额外寻宝次数", 500, 1),
+                    new TreasureExtraRewardOption("skin_ticket", "皮肤券", 480, 1),
+                    new TreasureExtraRewardOption("skin", "完整皮肤", 20, 1)
             ));
     private static final Map<Long, Object> ACCOUNT_LOCKS = new ConcurrentHashMap<>();
     private static IntSupplier exploreRollSupplier = () -> ThreadLocalRandom.current().nextInt(100);

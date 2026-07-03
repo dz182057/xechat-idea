@@ -217,8 +217,16 @@ public class PetActionHandlerTest {
         Assert.assertEquals(7, status.getExtraProbabilities().size());
         Assert.assertEquals(10000, probabilityTotal(status.getBoneProbabilities()));
         Assert.assertEquals(10000, probabilityTotal(status.getExtraProbabilities()));
-        Assert.assertEquals("骨头币 5", status.getBoneProbabilities().get(0).getLabel());
+        Assert.assertEquals("骨头币 20", status.getBoneProbabilities().get(0).getLabel());
+        Assert.assertEquals(3000, status.getBoneProbabilities().get(0).getProbabilityBp());
+        Assert.assertEquals("骨头币 40", status.getBoneProbabilities().get(2).getLabel());
+        Assert.assertEquals(2000, status.getBoneProbabilities().get(2).getProbabilityBp());
+        Assert.assertEquals("无追加奖励", status.getExtraProbabilities().get(0).getLabel());
+        Assert.assertEquals(8000, status.getExtraProbabilities().get(0).getProbabilityBp());
+        Assert.assertEquals("史诗道具", status.getExtraProbabilities().get(3).getLabel());
+        Assert.assertEquals(100, status.getExtraProbabilities().get(3).getProbabilityBp());
         Assert.assertEquals("完整皮肤", status.getExtraProbabilities().get(6).getLabel());
+        Assert.assertEquals(20, status.getExtraProbabilities().get(6).getProbabilityBp());
     }
 
     @Test
@@ -233,9 +241,9 @@ public class PetActionHandlerTest {
 
             Assert.assertEquals("daily_free", firstResult.getSpinSource());
             Assert.assertEquals(0, firstResult.getPaidCost());
-            Assert.assertEquals(5, firstResult.getBoneReward());
+            Assert.assertEquals(20, firstResult.getBoneReward());
             Assert.assertNull(firstResult.getExtraReward());
-            Assert.assertEquals(305, firstResult.getProfile().getAssets().getBones());
+            Assert.assertEquals(320, firstResult.getProfile().getAssets().getBones());
             Assert.assertEquals(0, firstResult.getProfile().getArcadeStatus()
                     .getTreasureHunt().getDailyFreeRemaining());
 
@@ -244,8 +252,8 @@ public class PetActionHandlerTest {
 
             Assert.assertEquals("paid", secondResult.getSpinSource());
             Assert.assertEquals(50, secondResult.getPaidCost());
-            Assert.assertEquals(5, secondResult.getBoneReward());
-            Assert.assertEquals(260, secondResult.getProfile().getAssets().getBones());
+            Assert.assertEquals(20, secondResult.getBoneReward());
+            Assert.assertEquals(290, secondResult.getProfile().getAssets().getBones());
             Assert.assertEquals(0, secondResult.getProfile().getArcadeStatus()
                     .getTreasureHunt().getDailyFreeRemaining());
         } finally {
@@ -268,8 +276,8 @@ public class PetActionHandlerTest {
 
             Assert.assertEquals("bonus", result.getSpinSource());
             Assert.assertEquals(0, result.getPaidCost());
-            Assert.assertEquals(5, result.getBoneReward());
-            Assert.assertEquals(305, result.getProfile().getAssets().getBones());
+            Assert.assertEquals(20, result.getBoneReward());
+            Assert.assertEquals(320, result.getProfile().getAssets().getBones());
             Assert.assertEquals(1, result.getProfile().getArcadeStatus().getTreasureHunt().getBonusSpins());
             Assert.assertEquals(1, countCounter(user.getAccountId(), "lifetime", "treasure_hunt_bonus_spins"));
         } finally {
