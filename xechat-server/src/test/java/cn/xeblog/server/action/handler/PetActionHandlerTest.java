@@ -11,7 +11,8 @@ import cn.xeblog.commons.entity.pet.PetFeedDTO;
 import cn.xeblog.commons.entity.pet.PetExploreChestDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenResultDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStatusDTO;
-import cn.xeblog.commons.entity.pet.PetFlip7PlayResultDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7ActionResultDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7CardCountDTO;
 import cn.xeblog.commons.entity.pet.PetFlip7StatusDTO;
 import cn.xeblog.commons.entity.pet.PetInventoryItemDTO;
 import cn.xeblog.commons.entity.pet.PetInteractionStatusDTO;
@@ -405,10 +406,17 @@ public class PetActionHandlerTest {
         Assert.assertEquals(0, status.getDailyFreeUsed());
         Assert.assertEquals(1, status.getDailyFreeRemaining());
         Assert.assertEquals(50, status.getPaidPlayCost());
+        Assert.assertEquals(94, status.getDeckRemaining());
+        Assert.assertEquals(0, status.getDiscardCount());
+        Assert.assertNull(status.getActiveRound());
+        Assert.assertEquals(1, findFlip7Count(status, "number", "0").getTotal());
+        Assert.assertEquals(7, findFlip7Count(status, "number", "7").getTotal());
+        Assert.assertEquals(3, findFlip7Count(status, "action", "Freeze").getTotal());
+        Assert.assertEquals(7, findFlip7Count(status, "number", "7").getRemaining());
     }
 
     @Test
-    public void flip7PlayConsumesDailyFreeThenPaidAndPaysScore() {
+    public void flip7StartDrawAndStandConsumesFreeThenPaid() {
         User user = user(9071L, "flip7_play_user");
         Supplier<List<Object>> originalDeckSupplier = setFlip7DeckSupplier(flip7Deck(
                 flip7Number(1),
@@ -422,27 +430,47 @@ public class PetActionHandlerTest {
         ));
 
         try {
-            PetFlip7PlayResultDTO firstResult = parseFlip7PlayResult(
-                    handlerProcess(user, flip7PlayRequest(907101L)));
+            PetFlip7ActionResultDTO start = parseFlip7ActionResult(
+                    handlerProcess(user, flip7PlayRequest(907101L)), PetAction.FLIP7_PLAY);
+            Assert.assertEquals("started", start.getEvent());
+            Assert.assertEquals("daily_free", start.getRound().getPlaySource());
+            Assert.assertTrue(start.getRound().getCards().isEmpty());
+            Assert.assertEquals(8, start.getStatus().getDeckRemaining());
+            Assert.assertEquals(0, start.getStatus().getDiscardCount());
+            Assert.assertEquals(0, start.getStatus().getDailyFreeRemaining());
 
-            Assert.assertEquals("daily_free", firstResult.getPlaySource());
-            Assert.assertEquals(0, firstResult.getPaidCost());
-            Assert.assertEquals("flip7", firstResult.getResult());
-            Assert.assertEquals(28, firstResult.getNumberSum());
-            Assert.assertEquals(10, firstResult.getModifierBonus());
-            Assert.assertEquals(15, firstResult.getFlip7Bonus());
-            Assert.assertEquals(53, firstResult.getScore());
-            Assert.assertEquals(53, firstResult.getBoneReward());
-            Assert.assertEquals(353, firstResult.getProfile().getAssets().getBones());
-            Assert.assertEquals(0, firstResult.getProfile().getArcadeStatus().getFlip7().getDailyFreeRemaining());
+            PetFlip7ActionResultDTO firstDraw = parseFlip7ActionResult(
+                    handlerProcess(user, flip7DrawRequest(907102L)), PetAction.FLIP7_DRAW);
+            Assert.assertEquals("drawn", firstDraw.getEvent());
+            Assert.assertEquals("1", firstDraw.getDrawnCard().getLabel());
+            Assert.assertEquals(1, firstDraw.getRound().getScorePreview());
+            Assert.assertTrue(firstDraw.getRound().isCanStand());
+            Assert.assertEquals(7, firstDraw.getStatus().getDeckRemaining());
+            Assert.assertEquals(1, firstDraw.getStatus().getDiscardCount());
+            Assert.assertEquals(0, findFlip7Count(firstDraw.getStatus(), "number", "1").getRemaining());
 
-            PetFlip7PlayResultDTO secondResult = parseFlip7PlayResult(
-                    handlerProcess(user, flip7PlayRequest(907102L)));
+            PetFlip7ActionResultDTO secondDraw = parseFlip7ActionResult(
+                    handlerProcess(user, flip7DrawRequest(907103L)), PetAction.FLIP7_DRAW);
+            Assert.assertEquals("+10", secondDraw.getDrawnCard().getLabel());
+            Assert.assertEquals(11, secondDraw.getRound().getScorePreview());
+            Assert.assertEquals(6, secondDraw.getStatus().getDeckRemaining());
+            Assert.assertEquals(2, secondDraw.getStatus().getDiscardCount());
 
-            Assert.assertEquals("paid", secondResult.getPlaySource());
-            Assert.assertEquals(50, secondResult.getPaidCost());
-            Assert.assertEquals(53, secondResult.getBoneReward());
-            Assert.assertEquals(356, secondResult.getProfile().getAssets().getBones());
+            PetFlip7ActionResultDTO stand = parseFlip7ActionResult(
+                    handlerProcess(user, flip7StandRequest(907104L)), PetAction.FLIP7_STAND);
+            Assert.assertEquals("stood", stand.getRound().getState());
+            Assert.assertEquals(11, stand.getRound().getScore());
+            Assert.assertEquals(11, stand.getRound().getBoneReward());
+            Assert.assertEquals(311, stand.getProfile().getAssets().getBones());
+            Assert.assertEquals(6, stand.getStatus().getDeckRemaining());
+            Assert.assertEquals(2, stand.getStatus().getDiscardCount());
+            Assert.assertNull(stand.getStatus().getActiveRound());
+
+            PetFlip7ActionResultDTO paidStart = parseFlip7ActionResult(
+                    handlerProcess(user, flip7PlayRequest(907105L)), PetAction.FLIP7_PLAY);
+            Assert.assertEquals("paid", paidStart.getRound().getPlaySource());
+            Assert.assertEquals(50, paidStart.getRound().getPaidCost());
+            Assert.assertEquals(261, paidStart.getProfile().getAssets().getBones());
         } finally {
             setFlip7DeckSupplier(originalDeckSupplier);
         }
@@ -458,14 +486,19 @@ public class PetActionHandlerTest {
         ));
 
         try {
-            PetFlip7PlayResultDTO result = parseFlip7PlayResult(
-                    handlerProcess(user, flip7PlayRequest(907201L)));
+            parseFlip7ActionResult(handlerProcess(user, flip7PlayRequest(907201L)), PetAction.FLIP7_PLAY);
+            parseFlip7ActionResult(handlerProcess(user, flip7DrawRequest(907202L)), PetAction.FLIP7_DRAW);
+            parseFlip7ActionResult(handlerProcess(user, flip7DrawRequest(907203L)), PetAction.FLIP7_DRAW);
+            PetFlip7ActionResultDTO result = parseFlip7ActionResult(
+                    handlerProcess(user, flip7DrawRequest(907204L)), PetAction.FLIP7_DRAW);
 
-            Assert.assertEquals("bust", result.getResult());
-            Assert.assertEquals(0, result.getScore());
-            Assert.assertEquals(0, result.getBoneReward());
+            Assert.assertEquals("bust", result.getRound().getState());
+            Assert.assertEquals(0, result.getRound().getScore());
+            Assert.assertEquals(0, result.getRound().getBoneReward());
             Assert.assertEquals(300, result.getProfile().getAssets().getBones());
-            Assert.assertTrue(result.getCards().get(2).isBust());
+            Assert.assertTrue(result.getRound().getCards().get(2).isBust());
+            Assert.assertEquals(3, result.getStatus().getDeckRemaining());
+            Assert.assertEquals(0, result.getStatus().getDiscardCount());
         } finally {
             setFlip7DeckSupplier(originalDeckSupplier);
         }
@@ -487,15 +520,20 @@ public class PetActionHandlerTest {
         ));
 
         try {
-            PetFlip7PlayResultDTO result = parseFlip7PlayResult(
-                    handlerProcess(user, flip7PlayRequest(907301L)));
+            parseFlip7ActionResult(handlerProcess(user, flip7PlayRequest(907301L)), PetAction.FLIP7_PLAY);
+            PetFlip7ActionResultDTO result = null;
+            for (int index = 0; index < 9; index++) {
+                result = parseFlip7ActionResult(
+                        handlerProcess(user, flip7DrawRequest(907302L + index)), PetAction.FLIP7_DRAW);
+            }
 
-            Assert.assertEquals("flip7", result.getResult());
-            Assert.assertEquals(56, result.getNumberSum());
-            Assert.assertEquals(71, result.getScore());
-            Assert.assertEquals(71, result.getBoneReward());
-            Assert.assertTrue(result.getCards().get(2).isUsedSecondChance());
-            Assert.assertFalse(result.getCards().get(2).isBust());
+            Assert.assertNotNull(result);
+            Assert.assertEquals("flip7", result.getRound().getState());
+            Assert.assertEquals(56, result.getRound().getNumberSum());
+            Assert.assertEquals(71, result.getRound().getScore());
+            Assert.assertEquals(71, result.getRound().getBoneReward());
+            Assert.assertTrue(result.getRound().getCards().get(2).isUsedSecondChance());
+            Assert.assertFalse(result.getRound().getCards().get(2).isBust());
             Assert.assertEquals(371, result.getProfile().getAssets().getBones());
         } finally {
             setFlip7DeckSupplier(originalDeckSupplier);
@@ -513,14 +551,70 @@ public class PetActionHandlerTest {
         ));
 
         try {
-            PetFlip7PlayResultDTO result = parseFlip7PlayResult(
-                    handlerProcess(user, flip7PlayRequest(907401L)));
+            parseFlip7ActionResult(handlerProcess(user, flip7PlayRequest(907401L)), PetAction.FLIP7_PLAY);
+            parseFlip7ActionResult(handlerProcess(user, flip7DrawRequest(907402L)), PetAction.FLIP7_DRAW);
+            parseFlip7ActionResult(handlerProcess(user, flip7DrawRequest(907403L)), PetAction.FLIP7_DRAW);
+            PetFlip7ActionResultDTO result = parseFlip7ActionResult(
+                    handlerProcess(user, flip7DrawRequest(907404L)), PetAction.FLIP7_DRAW);
 
-            Assert.assertEquals("frozen", result.getResult());
-            Assert.assertEquals(15, result.getScore());
-            Assert.assertEquals(15, result.getBoneReward());
-            Assert.assertEquals(3, result.getCards().size());
+            Assert.assertEquals("frozen", result.getRound().getState());
+            Assert.assertEquals(15, result.getRound().getScore());
+            Assert.assertEquals(15, result.getRound().getBoneReward());
+            Assert.assertEquals(3, result.getRound().getCards().size());
             Assert.assertEquals(315, result.getProfile().getAssets().getBones());
+        } finally {
+            setFlip7DeckSupplier(originalDeckSupplier);
+        }
+    }
+
+    @Test
+    public void flip7FlipThreeForcesDrawBeforeStanding() {
+        User user = user(9076L, "flip7_flip_three_user");
+        Supplier<List<Object>> originalDeckSupplier = setFlip7DeckSupplier(flip7Deck(
+                flip7Action("Flip Three", "flip_three"),
+                flip7Number(1),
+                flip7Number(2),
+                flip7Number(3),
+                flip7Number(4)
+        ));
+
+        try {
+            parseFlip7ActionResult(handlerProcess(user, flip7PlayRequest(907601L)), PetAction.FLIP7_PLAY);
+            PetFlip7ActionResultDTO flipThree = parseFlip7ActionResult(
+                    handlerProcess(user, flip7DrawRequest(907602L)), PetAction.FLIP7_DRAW);
+            Assert.assertEquals(3, flipThree.getRound().getForcedDrawsRemaining());
+            Assert.assertFalse(flipThree.getRound().isCanStand());
+
+            PetResponseDTO standTooEarly = handlerProcess(user, flip7StandRequest(907603L));
+            Assert.assertFalse(standTooEarly.isSuccess());
+            Assert.assertEquals("Flip Three 还需要继续翻牌，暂时不能停牌", standTooEarly.getError());
+
+            parseFlip7ActionResult(handlerProcess(user, flip7DrawRequest(907604L)), PetAction.FLIP7_DRAW);
+            parseFlip7ActionResult(handlerProcess(user, flip7DrawRequest(907605L)), PetAction.FLIP7_DRAW);
+            PetFlip7ActionResultDTO thirdForced = parseFlip7ActionResult(
+                    handlerProcess(user, flip7DrawRequest(907606L)), PetAction.FLIP7_DRAW);
+            Assert.assertEquals(0, thirdForced.getRound().getForcedDrawsRemaining());
+            Assert.assertTrue(thirdForced.getRound().isCanStand());
+        } finally {
+            setFlip7DeckSupplier(originalDeckSupplier);
+        }
+    }
+
+    @Test
+    public void flip7ReshufflesOnlyAfterDeckIsExhausted() {
+        User user = user(9077L, "flip7_deck_empty_user");
+        Supplier<List<Object>> originalDeckSupplier = setFlip7DeckSupplier(flip7Deck(flip7Number(1)));
+
+        try {
+            parseFlip7ActionResult(handlerProcess(user, flip7PlayRequest(907701L)), PetAction.FLIP7_PLAY);
+            PetFlip7ActionResultDTO result = parseFlip7ActionResult(
+                    handlerProcess(user, flip7DrawRequest(907702L)), PetAction.FLIP7_DRAW);
+
+            Assert.assertEquals("deck_empty", result.getRound().getState());
+            Assert.assertEquals(1, result.getRound().getScore());
+            Assert.assertEquals(301, result.getProfile().getAssets().getBones());
+            Assert.assertEquals(1, result.getStatus().getDeckRemaining());
+            Assert.assertEquals(0, result.getStatus().getDiscardCount());
         } finally {
             setFlip7DeckSupplier(originalDeckSupplier);
         }
@@ -4923,6 +5017,20 @@ public class PetActionHandlerTest {
         return request;
     }
 
+    private static PetRequestDTO flip7DrawRequest(long requestId) {
+        PetRequestDTO request = new PetRequestDTO();
+        request.setPetAction(PetAction.FLIP7_DRAW);
+        request.setRequestId(requestId);
+        return request;
+    }
+
+    private static PetRequestDTO flip7StandRequest(long requestId) {
+        PetRequestDTO request = new PetRequestDTO();
+        request.setPetAction(PetAction.FLIP7_STAND);
+        request.setRequestId(requestId);
+        return request;
+    }
+
     private static PetRequestDTO resolveOldTennisBallRequest(String choice, long requestId) {
         Map<String, Object> content = new HashMap<>();
         content.put("choice", choice);
@@ -4959,13 +5067,23 @@ public class PetActionHandlerTest {
         return JSONUtil.toBean(JSONUtil.toJsonStr(body.getContent()), PetTreasureHuntSpinResultDTO.class);
     }
 
-    private static PetFlip7PlayResultDTO parseFlip7PlayResult(PetResponseDTO body) {
+    private static PetFlip7ActionResultDTO parseFlip7ActionResult(PetResponseDTO body, PetAction action) {
         Assert.assertTrue(body.isSuccess());
-        Assert.assertEquals(PetAction.FLIP7_PLAY, body.getPetAction());
-        if (body.getContent() instanceof PetFlip7PlayResultDTO) {
-            return (PetFlip7PlayResultDTO) body.getContent();
+        Assert.assertEquals(action, body.getPetAction());
+        if (body.getContent() instanceof PetFlip7ActionResultDTO) {
+            return (PetFlip7ActionResultDTO) body.getContent();
         }
-        return JSONUtil.toBean(JSONUtil.toJsonStr(body.getContent()), PetFlip7PlayResultDTO.class);
+        return JSONUtil.toBean(JSONUtil.toJsonStr(body.getContent()), PetFlip7ActionResultDTO.class);
+    }
+
+    private static PetFlip7CardCountDTO findFlip7Count(PetFlip7StatusDTO status, String type, String label) {
+        for (PetFlip7CardCountDTO item : status.getRemainingCards()) {
+            if (type.equals(item.getType()) && label.equals(item.getLabel())) {
+                return item;
+            }
+        }
+        Assert.fail("未找到翻转7卡牌数量: " + type + " " + label);
+        return null;
     }
 
     private static void openEndedOneHourExplore(User user, String dogId, long startRequestId, long openRequestId) {

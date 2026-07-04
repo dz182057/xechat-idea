@@ -339,3 +339,14 @@ CREATE TABLE IF NOT EXISTS pet_daily_counters (
     updated_at   INTEGER NOT NULL,
     PRIMARY KEY (account_id, counter_date, counter)
 );
+
+CREATE TABLE IF NOT EXISTS pet_flip7_states (
+    account_id        INTEGER PRIMARY KEY,
+    state_date        TEXT NOT NULL,
+    draw_pile_json    TEXT NOT NULL,
+    discard_pile_json TEXT NOT NULL,
+    active_round_json TEXT,
+    updated_at        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pet_flip7_states_date
+    ON pet_flip7_states(state_date);

@@ -46,6 +46,7 @@
         <mapper resource="mapper/PetCollectionMapper.xml"/>
         <mapper resource="mapper/PetCheckinMapper.xml"/>
         <mapper resource="mapper/PetDailyCounterMapper.xml"/>
+        <mapper resource="mapper/PetFlip7StateMapper.xml"/>
         <mapper resource="mapper/PetDailySayingContentMapper.xml"/>
         <mapper resource="mapper/PetDailySayingAssignmentMapper.xml"/>
         <mapper resource="mapper/PetTrainingMapper.xml"/>

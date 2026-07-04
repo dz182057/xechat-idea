@@ -8,7 +8,7 @@ import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenResultDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStartDTO;
 import cn.xeblog.commons.entity.pet.PetFeedDTO;
-import cn.xeblog.commons.entity.pet.PetFlip7PlayResultDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7ActionResultDTO;
 import cn.xeblog.commons.entity.pet.PetMakeupCheckinDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
@@ -288,9 +288,27 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 break;
             case FLIP7_PLAY:
                 try {
-                    PetFlip7PlayResultDTO playResult = PetProfileService.flip7Play(user.getAccountId());
+                    PetFlip7ActionResultDTO playResult = PetProfileService.flip7Play(user.getAccountId());
                     send(user, PetResponseDTO.ok(petAction, requestId, playResult));
                     pushProfileUpdateToOtherConnections(user, playResult.getProfile());
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
+            case FLIP7_DRAW:
+                try {
+                    PetFlip7ActionResultDTO drawResult = PetProfileService.flip7Draw(user.getAccountId());
+                    send(user, PetResponseDTO.ok(petAction, requestId, drawResult));
+                    pushProfileUpdateToOtherConnections(user, drawResult.getProfile());
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
+            case FLIP7_STAND:
+                try {
+                    PetFlip7ActionResultDTO standResult = PetProfileService.flip7Stand(user.getAccountId());
+                    send(user, PetResponseDTO.ok(petAction, requestId, standResult));
+                    pushProfileUpdateToOtherConnections(user, standResult.getProfile());
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }

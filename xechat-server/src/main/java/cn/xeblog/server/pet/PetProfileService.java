@@ -1,6 +1,8 @@
 package cn.xeblog.server.pet;
 
+import cn.hutool.core.lang.TypeReference;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import cn.xeblog.commons.entity.pet.PetAdoptDTO;
 import cn.xeblog.commons.entity.pet.PetArcadeStatusDTO;
 import cn.xeblog.commons.entity.pet.PetCheckinMilestoneRewardDTO;
@@ -17,8 +19,10 @@ import cn.xeblog.commons.entity.pet.PetExploreRewardDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStartDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStatusDTO;
 import cn.xeblog.commons.entity.pet.PetFeedDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7ActionResultDTO;
 import cn.xeblog.commons.entity.pet.PetFlip7CardDTO;
-import cn.xeblog.commons.entity.pet.PetFlip7PlayResultDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7CardCountDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7RoundDTO;
 import cn.xeblog.commons.entity.pet.PetFlip7StatusDTO;
 import cn.xeblog.commons.entity.pet.PetInventoryItemDTO;
 import cn.xeblog.commons.entity.pet.PetInteractionStatusDTO;
@@ -128,6 +132,20 @@ public final class PetProfileService {
     private static final int FLIP7_UNIQUE_TARGET = 7;
     private static final int FLIP7_BONUS = 15;
     private static final int FLIP7_FLIP_THREE_COUNT = 3;
+    private static final String FLIP7_STATE_ACTIVE = "active";
+    private static final String FLIP7_STATE_STOOD = "stood";
+    private static final String FLIP7_STATE_BUST = "bust";
+    private static final String FLIP7_STATE_FROZEN = "frozen";
+    private static final String FLIP7_STATE_FLIP7 = "flip7";
+    private static final String FLIP7_STATE_DECK_EMPTY = "deck_empty";
+    private static final String FLIP7_EVENT_STARTED = "started";
+    private static final String FLIP7_EVENT_RESUMED = "resumed";
+    private static final String FLIP7_EVENT_DRAWN = "drawn";
+    private static final String FLIP7_EVENT_SETTLED = "settled";
+    private static final String FLIP7_EVENT_STOOD = "stood";
+    private static final String FLIP7_CARD_NUMBER_PREFIX = "N:";
+    private static final String FLIP7_CARD_MODIFIER_PREFIX = "M:";
+    private static final String FLIP7_CARD_ACTION_PREFIX = "A:";
     private static final long SHOP_SHELF_REFRESH_INTERVAL_MILLIS = 6L * 60L * 60L * 1000L;
     private static final int SHOP_SHELF_NORMAL_ITEM_COUNT = 3;
     private static final int SHOP_SHELF_MAX_PAID_REFRESHES = 3;
@@ -501,6 +519,8 @@ public final class PetProfileService {
             PetItemLedgerMapper ledgerMapper = session.getMapper(PetItemLedgerMapper.class);
             PetTrainingMapper trainingMapper = session.getMapper(PetTrainingMapper.class);
             PetDailyCounterMapper dailyCounterMapper = session.getMapper(PetDailyCounterMapper.class);
+            Flip7GameState flip7State = ensureFlip7State(session.getMapper(PetFlip7StateMapper.class),
+                    accountId, todayText, now);
             boolean legacyChestMigrated = migrateLegacyExploreChests(accountId, itemMapper, chestMapper,
                     ledgerMapper, now);
             boolean exploreSettled = settleEndedExploresAsChests(accountId, dogMapper, chestMapper,
@@ -601,8 +621,8 @@ public final class PetProfileService {
             profile.setRecentSayings(PetDailySayingService.recentSayings(session, accountId));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             profile.setShopStatus(buildShopStatus(dailyCounterMapper, accountId, now));
-            profile.setArcadeStatus(buildArcadeStatus(dailyCounterMapper, accountId, todayText));
-            if (energyRefreshed || legacyChestMigrated || exploreSettled || dogStageChanged) {
+            profile.setArcadeStatus(buildArcadeStatus(dailyCounterMapper, accountId, todayText, flip7State));
+            if (energyRefreshed || legacyChestMigrated || exploreSettled || dogStageChanged || flip7State.changed) {
                 session.commit();
             }
             return profile;
@@ -656,7 +676,8 @@ public final class PetProfileService {
                 nextPaidRefreshCost);
     }
 
-    private static PetArcadeStatusDTO buildArcadeStatus(PetDailyCounterMapper mapper, long accountId, String today) {
+    private static PetArcadeStatusDTO buildArcadeStatus(PetDailyCounterMapper mapper, long accountId, String today,
+                                                        Flip7GameState flip7State) {
         int dailyFreeUsed = Math.min(TREASURE_HUNT_DAILY_FREE_LIMIT, Math.max(0,
                 findDailyCounterValue(mapper, accountId, today, DAILY_COUNTER_TREASURE_HUNT_FREE_USED)));
         int bonusSpins = Math.max(0,
@@ -680,7 +701,12 @@ public final class PetProfileService {
                         FLIP7_DAILY_FREE_LIMIT,
                         flip7DailyFreeUsed,
                         Math.max(0, FLIP7_DAILY_FREE_LIMIT - flip7DailyFreeUsed),
-                        FLIP7_PAID_COST));
+                        FLIP7_PAID_COST,
+                        flip7State.drawPile.size(),
+                        flip7State.discardPile.size(),
+                        buildFlip7CardCounts(createOrderedFlip7DeckKeys(), createOrderedFlip7DeckKeys()),
+                        buildFlip7CardCounts(createOrderedFlip7DeckKeys(), flip7State.drawPile),
+                        copyFlip7RoundForClient(flip7State.activeRound, flip7State.drawPile.size())));
     }
 
     private static List<PetTreasureHuntProbabilityDTO> treasureRewardProbabilityRows() {
@@ -1146,9 +1172,21 @@ public final class PetProfileService {
         }
     }
 
-    public static PetFlip7PlayResultDTO flip7Play(long accountId) {
+    public static PetFlip7ActionResultDTO flip7Play(long accountId) {
         synchronized (accountLock(accountId)) {
             return flip7PlayLocked(accountId);
+        }
+    }
+
+    public static PetFlip7ActionResultDTO flip7Draw(long accountId) {
+        synchronized (accountLock(accountId)) {
+            return flip7DrawLocked(accountId);
+        }
+    }
+
+    public static PetFlip7ActionResultDTO flip7Stand(long accountId) {
+        synchronized (accountLock(accountId)) {
+            return flip7StandLocked(accountId);
         }
     }
 
@@ -1780,17 +1818,32 @@ public final class PetProfileService {
                 detailLines);
     }
 
-    private static PetFlip7PlayResultDTO flip7PlayLocked(long accountId) {
+    private static PetFlip7ActionResultDTO flip7PlayLocked(long accountId) {
         long now = System.currentTimeMillis();
         String today = LocalDate.now().toString();
         String playSource;
         int paidCost = 0;
+        PetFlip7RoundDTO round;
+        String event = FLIP7_EVENT_STARTED;
 
-        Flip7Settlement settlement;
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             ensureAssets(session, accountId);
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
             PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            PetFlip7StateMapper stateMapper = session.getMapper(PetFlip7StateMapper.class);
+            Flip7GameState state = ensureFlip7State(stateMapper, accountId, today, now);
+
+            if (state.activeRound != null && FLIP7_STATE_ACTIVE.equals(state.activeRound.getState())) {
+                round = copyFlip7RoundForClient(state.activeRound, state.drawPile.size());
+                updateFlip7RoundControls(round, state.drawPile.size());
+                event = FLIP7_EVENT_RESUMED;
+                if (state.changed) {
+                    saveFlip7State(stateMapper, state, now);
+                    session.commit();
+                }
+                return buildFlip7ActionResult(accountId, event, round, null, "本轮翻转7继续进行中");
+            }
+
             int freeUsed = findDailyCounterValue(counterMapper, accountId, today, DAILY_COUNTER_FLIP7_FREE_USED);
             if (freeUsed < FLIP7_DAILY_FREE_LIMIT
                     && counterMapper.incrementIfUnderLimit(accountId, today,
@@ -1804,127 +1857,501 @@ public final class PetProfileService {
                 paidCost = FLIP7_PAID_COST;
             }
 
-            settlement = settleFlip7Play();
-            if (settlement.boneReward > 0 && assetsMapper.addBones(accountId, settlement.boneReward, now) <= 0) {
-                throw new IllegalArgumentException("翻转7奖励发放失败");
-            }
+            round = new PetFlip7RoundDTO(
+                    UUID.randomUUID().toString(),
+                    FLIP7_STATE_ACTIVE,
+                    playSource,
+                    paidCost,
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    !state.drawPile.isEmpty(),
+                    false,
+                    false,
+                    now,
+                    null);
+            round.getDetailLines().add(playSource.equals("daily_free")
+                    ? "本轮使用今日免费次数开始。"
+                    : "本轮消耗 " + paidCost + " 骨头币开始。");
+            state.activeRound = round;
+            saveFlip7State(stateMapper, state, now);
             session.commit();
         }
 
-        return new PetFlip7PlayResultDTO(
-                profileLocked(accountId),
-                playSource,
-                paidCost,
-                settlement.score,
-                settlement.boneReward,
-                settlement.result,
-                settlement.cards,
-                settlement.detailLines,
-                settlement.numberSum,
-                settlement.modifierBonus,
-                settlement.multiplier,
-                settlement.flip7Bonus);
+        return buildFlip7ActionResult(accountId, event, round, null, "本轮翻转7已开始");
     }
 
-    private static Flip7Settlement settleFlip7Play() {
+    private static PetFlip7ActionResultDTO flip7DrawLocked(long accountId) {
+        long now = System.currentTimeMillis();
+        String today = LocalDate.now().toString();
+        PetFlip7RoundDTO round;
+        PetFlip7CardDTO drawnCard = null;
+
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            ensureAssets(session, accountId);
+            PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            PetFlip7StateMapper stateMapper = session.getMapper(PetFlip7StateMapper.class);
+            Flip7GameState state = ensureFlip7State(stateMapper, accountId, today, now);
+            round = requireActiveFlip7Round(state.activeRound);
+
+            if (state.drawPile.isEmpty()) {
+                finishFlip7Round(round, FLIP7_STATE_DECK_EMPTY, now);
+                grantFlip7RewardIfNeeded(assetsMapper, accountId, round, now);
+                state.activeRound = null;
+                saveFlip7State(stateMapper, state, now);
+                session.commit();
+                return buildFlip7ActionResult(accountId, FLIP7_EVENT_SETTLED, round, null, "牌堆已经翻完，本轮结算完成");
+            }
+
+            String cardKey = state.drawPile.remove(0);
+            state.discardPile.add(cardKey);
+            Flip7Card card = flip7CardFromKey(cardKey);
+            drawnCard = applyFlip7Card(round, card, state.drawPile.size(), now);
+
+            if (FLIP7_STATE_ACTIVE.equals(round.getState())) {
+                state.activeRound = round;
+            } else {
+                grantFlip7RewardIfNeeded(assetsMapper, accountId, round, now);
+                state.activeRound = null;
+            }
+            saveFlip7State(stateMapper, state, now);
+            session.commit();
+        }
+
+        String event = FLIP7_STATE_ACTIVE.equals(round.getState()) ? FLIP7_EVENT_DRAWN : FLIP7_EVENT_SETTLED;
+        return buildFlip7ActionResult(accountId, event, round, drawnCard, formatFlip7RoundMessage(round));
+    }
+
+    private static PetFlip7ActionResultDTO flip7StandLocked(long accountId) {
+        long now = System.currentTimeMillis();
+        String today = LocalDate.now().toString();
+        PetFlip7RoundDTO round;
+
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            ensureAssets(session, accountId);
+            PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            PetFlip7StateMapper stateMapper = session.getMapper(PetFlip7StateMapper.class);
+            Flip7GameState state = ensureFlip7State(stateMapper, accountId, today, now);
+            round = requireActiveFlip7Round(state.activeRound);
+            if (round.getCards() == null || round.getCards().isEmpty()) {
+                throw new IllegalArgumentException("请先翻一张牌再停牌");
+            }
+            if (round.getForcedDrawsRemaining() > 0) {
+                throw new IllegalArgumentException("Flip Three 还需要继续翻牌，暂时不能停牌");
+            }
+
+            finishFlip7Round(round, FLIP7_STATE_STOOD, now);
+            grantFlip7RewardIfNeeded(assetsMapper, accountId, round, now);
+            state.activeRound = null;
+            saveFlip7State(stateMapper, state, now);
+            session.commit();
+        }
+
+        return buildFlip7ActionResult(accountId, FLIP7_EVENT_STOOD, round, null, formatFlip7RoundMessage(round));
+    }
+
+    private static PetFlip7ActionResultDTO buildFlip7ActionResult(long accountId,
+                                                                  String event,
+                                                                  PetFlip7RoundDTO round,
+                                                                  PetFlip7CardDTO drawnCard,
+                                                                  String message) {
+        PetProfileDTO profile = profileLocked(accountId);
+        PetFlip7StatusDTO status = profile.getArcadeStatus() == null ? null : profile.getArcadeStatus().getFlip7();
+        int deckRemaining = status == null ? 0 : status.getDeckRemaining();
+        return new PetFlip7ActionResultDTO(
+                profile,
+                status,
+                copyFlip7RoundForClient(round, deckRemaining),
+                event,
+                drawnCard,
+                message);
+    }
+
+    private static PetFlip7RoundDTO requireActiveFlip7Round(PetFlip7RoundDTO round) {
+        if (round == null || !FLIP7_STATE_ACTIVE.equals(round.getState())) {
+            throw new IllegalArgumentException("请先开始一轮翻转7");
+        }
+        normalizeFlip7Round(round);
+        return round;
+    }
+
+    private static PetFlip7CardDTO applyFlip7Card(PetFlip7RoundDTO round,
+                                                  Flip7Card card,
+                                                  int deckRemaining,
+                                                  long now) {
+        normalizeFlip7Round(round);
+        if (round.getForcedDrawsRemaining() > 0) {
+            round.setForcedDrawsRemaining(round.getForcedDrawsRemaining() - 1);
+        }
+
+        boolean usedSecondChance = false;
+        boolean bust = false;
+        Set<Integer> uniqueNumbers = flip7UniqueNumbers(round);
+        List<String> detailLines = round.getDetailLines();
+
+        if (card.isNumber()) {
+            int value = card.value;
+            if (uniqueNumbers.contains(value)) {
+                if (round.isHasSecondChance()) {
+                    round.setHasSecondChance(false);
+                    usedSecondChance = true;
+                    detailLines.add("翻出重复数字 " + value + "，Second Chance 抵消，本张进入弃牌堆。");
+                } else {
+                    bust = true;
+                    round.setState(FLIP7_STATE_BUST);
+                    detailLines.add("翻出重复数字 " + value + "，爆掉，本轮 0 分。");
+                }
+            } else {
+                uniqueNumbers.add(value);
+                round.setNumberSum(round.getNumberSum() + value);
+                detailLines.add("翻出数字 " + value + "，当前已有 " + uniqueNumbers.size() + " 个不同数字。");
+                if (uniqueNumbers.size() >= FLIP7_UNIQUE_TARGET) {
+                    round.setFlip7Bonus(FLIP7_BONUS);
+                    round.setState(FLIP7_STATE_FLIP7);
+                    detailLines.add("凑齐 7 个不同数字，额外获得 " + FLIP7_BONUS + " 分。");
+                }
+            }
+        } else if (card.isModifier()) {
+            if (card.modifier == null) {
+                round.setMultiplier(round.getMultiplier() * 2);
+                detailLines.add("翻出 x2 修正牌，数字牌总和翻倍。");
+            } else {
+                round.setModifierBonus(round.getModifierBonus() + card.modifier);
+                detailLines.add("翻出 +" + card.modifier + " 修正牌。");
+            }
+        } else if ("second_chance".equals(card.action)) {
+            if (round.isHasSecondChance()) {
+                detailLines.add("翻出 Second Chance，但已经持有，本张进入弃牌堆。");
+            } else {
+                round.setHasSecondChance(true);
+                detailLines.add("翻出 Second Chance，可抵消下一次重复数字。");
+            }
+        } else if ("flip_three".equals(card.action)) {
+            round.setForcedDrawsRemaining(round.getForcedDrawsRemaining() + FLIP7_FLIP_THREE_COUNT);
+            detailLines.add("翻出 Flip Three，接下来还要强制翻 " + FLIP7_FLIP_THREE_COUNT + " 张。");
+        } else if ("freeze".equals(card.action)) {
+            round.setState(FLIP7_STATE_FROZEN);
+            detailLines.add("翻出 Freeze，立即停牌结算。");
+        }
+
+        int scoreAfterCard = bust ? 0 : calculateFlip7Score(
+                round.getNumberSum(),
+                round.getModifierBonus(),
+                round.getMultiplier(),
+                round.getFlip7Bonus());
+        PetFlip7CardDTO dto = new PetFlip7CardDTO(
+                card.type,
+                card.label,
+                card.value,
+                card.modifier,
+                card.action,
+                usedSecondChance,
+                bust,
+                scoreAfterCard);
+        round.getCards().add(dto);
+        round.setScorePreview(scoreAfterCard);
+        round.setScore(scoreAfterCard);
+
+        if (FLIP7_STATE_ACTIVE.equals(round.getState()) && deckRemaining <= 0) {
+            round.setState(FLIP7_STATE_DECK_EMPTY);
+            detailLines.add("今天这副牌已经全部翻完，本轮按当前分数结算。");
+        }
+        if (!FLIP7_STATE_ACTIVE.equals(round.getState())) {
+            finishFlip7Round(round, round.getState(), now);
+        } else {
+            updateFlip7RoundControls(round, deckRemaining);
+        }
+        return dto;
+    }
+
+    private static void finishFlip7Round(PetFlip7RoundDTO round, String result, long now) {
+        normalizeFlip7Round(round);
+        round.setState(result);
+        int score = FLIP7_STATE_BUST.equals(result)
+                ? 0
+                : calculateFlip7Score(round.getNumberSum(), round.getModifierBonus(),
+                round.getMultiplier(), round.getFlip7Bonus());
+        round.setScorePreview(score);
+        round.setScore(score);
+        round.setBoneReward(score);
+        round.setCanDraw(false);
+        round.setCanStand(false);
+        round.setSettledAt(now);
+        round.getDetailLines().add("本轮得分 " + score + "，发放骨头币 " + score + "。");
+    }
+
+    private static void grantFlip7RewardIfNeeded(PetAssetsMapper assetsMapper,
+                                                 long accountId,
+                                                 PetFlip7RoundDTO round,
+                                                 long now) {
+        int boneReward = Math.max(0, round.getBoneReward());
+        if (boneReward > 0 && assetsMapper.addBones(accountId, boneReward, now) <= 0) {
+            throw new IllegalArgumentException("翻转7奖励发放失败");
+        }
+    }
+
+    private static String formatFlip7RoundMessage(PetFlip7RoundDTO round) {
+        if (round == null) {
+            return "翻转7状态已更新";
+        }
+        if (FLIP7_STATE_ACTIVE.equals(round.getState())) {
+            return "已翻出 " + round.getCards().size() + " 张牌，当前 " + round.getScorePreview() + " 分";
+        }
+        if (round.getBoneReward() > 0) {
+            return "本轮得分 " + round.getScore() + "，获得骨头币" + round.getBoneReward();
+        }
+        return "本轮爆掉，未获得骨头币";
+    }
+
+    private static void updateFlip7RoundControls(PetFlip7RoundDTO round, int deckRemaining) {
+        normalizeFlip7Round(round);
+        boolean active = FLIP7_STATE_ACTIVE.equals(round.getState());
+        round.setCanDraw(active && deckRemaining > 0);
+        round.setCanStand(active && !round.getCards().isEmpty() && round.getForcedDrawsRemaining() <= 0);
+    }
+
+    private static Set<Integer> flip7UniqueNumbers(PetFlip7RoundDTO round) {
+        Set<Integer> uniqueNumbers = new HashSet<>();
+        if (round.getCards() == null) {
+            return uniqueNumbers;
+        }
+        for (PetFlip7CardDTO card : round.getCards()) {
+            if ("number".equals(card.getType()) && card.getValue() != null
+                    && !card.isUsedSecondChance() && !card.isBust()) {
+                uniqueNumbers.add(card.getValue());
+            }
+        }
+        return uniqueNumbers;
+    }
+
+    private static void normalizeFlip7Round(PetFlip7RoundDTO round) {
+        if (round.getCards() == null) {
+            round.setCards(new ArrayList<>());
+        }
+        if (round.getDetailLines() == null) {
+            round.setDetailLines(new ArrayList<>());
+        }
+        if (round.getMultiplier() <= 0) {
+            round.setMultiplier(1);
+        }
+        if (StrUtil.isBlank(round.getState())) {
+            round.setState(FLIP7_STATE_ACTIVE);
+        }
+        if (StrUtil.isBlank(round.getRoundId())) {
+            round.setRoundId(UUID.randomUUID().toString());
+        }
+    }
+
+    private static Flip7GameState ensureFlip7State(PetFlip7StateMapper mapper,
+                                                   long accountId,
+                                                   String today,
+                                                   long now) {
+        PetFlip7StateRecord record = mapper.findByAccountId(accountId);
+        boolean changed = false;
+        List<String> drawPile;
+        List<String> discardPile;
+        PetFlip7RoundDTO activeRound;
+
+        if (record == null || !today.equals(record.getStateDate())) {
+            record = PetFlip7StateRecord.builder()
+                    .accountId(accountId)
+                    .stateDate(today)
+                    .drawPileJson("[]")
+                    .discardPileJson("[]")
+                    .activeRoundJson(null)
+                    .updatedAt(now)
+                    .build();
+            drawPile = createFreshFlip7DeckKeys();
+            discardPile = new ArrayList<>();
+            activeRound = null;
+            changed = true;
+        } else {
+            drawPile = parseFlip7Pile(record.getDrawPileJson());
+            discardPile = parseFlip7Pile(record.getDiscardPileJson());
+            activeRound = parseFlip7Round(record.getActiveRoundJson());
+            if (activeRound != null && !FLIP7_STATE_ACTIVE.equals(activeRound.getState())) {
+                activeRound = null;
+                changed = true;
+            }
+            if (drawPile.isEmpty() && activeRound == null) {
+                drawPile = createFreshFlip7DeckKeys();
+                discardPile = new ArrayList<>();
+                changed = true;
+            }
+        }
+
+        Flip7GameState state = new Flip7GameState(record, drawPile, discardPile, activeRound, changed);
+        if (changed) {
+            saveFlip7State(mapper, state, now);
+        }
+        return state;
+    }
+
+    private static void saveFlip7State(PetFlip7StateMapper mapper, Flip7GameState state, long now) {
+        state.record.setDrawPileJson(JSONUtil.toJsonStr(state.drawPile));
+        state.record.setDiscardPileJson(JSONUtil.toJsonStr(state.discardPile));
+        state.record.setActiveRoundJson(state.activeRound == null ? null : JSONUtil.toJsonStr(state.activeRound));
+        state.record.setUpdatedAt(now);
+        mapper.upsert(state.record);
+        state.changed = false;
+    }
+
+    private static List<String> parseFlip7Pile(String json) {
+        if (StrUtil.isBlank(json)) {
+            return new ArrayList<>();
+        }
+        try {
+            return new ArrayList<>(JSONUtil.toBean(json, new TypeReference<List<String>>() {}, false));
+        } catch (RuntimeException e) {
+            return new ArrayList<>();
+        }
+    }
+
+    private static PetFlip7RoundDTO parseFlip7Round(String json) {
+        if (StrUtil.isBlank(json)) {
+            return null;
+        }
+        try {
+            PetFlip7RoundDTO round = JSONUtil.toBean(json, PetFlip7RoundDTO.class);
+            normalizeFlip7Round(round);
+            return round;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static List<String> createFreshFlip7DeckKeys() {
         List<Flip7Card> deck = new ArrayList<>(flip7DeckSupplier.get());
         if (deck.isEmpty()) {
             deck = createShuffledFlip7Deck();
         }
-        Set<Integer> uniqueNumbers = new HashSet<>();
-        List<PetFlip7CardDTO> cards = new ArrayList<>();
-        List<String> detailLines = new ArrayList<>();
-        int numberSum = 0;
-        int modifierBonus = 0;
-        int multiplier = 1;
-        int flip7Bonus = 0;
-        int pendingFlipThree = 0;
-        boolean hasSecondChance = false;
-        String result = "deck_empty";
-
+        List<String> keys = new ArrayList<>(deck.size());
         for (Flip7Card card : deck) {
-            if (pendingFlipThree > 0) {
-                pendingFlipThree--;
-            }
-            boolean usedSecondChance = false;
-            boolean bust = false;
+            keys.add(flip7CardKey(card));
+        }
+        return keys;
+    }
 
-            if (card.isNumber()) {
-                int value = card.value;
-                if (uniqueNumbers.contains(value)) {
-                    if (hasSecondChance) {
-                        hasSecondChance = false;
-                        usedSecondChance = true;
-                        detailLines.add("翻出重复数字 " + value + "，Second Chance 抵消，本张弃掉。");
-                    } else {
-                        bust = true;
-                        result = "bust";
-                        detailLines.add("翻出重复数字 " + value + "，爆掉，本局 0 分。");
-                    }
-                } else {
-                    uniqueNumbers.add(value);
-                    numberSum += value;
-                    detailLines.add("翻出数字 " + value + "，当前已有 " + uniqueNumbers.size() + " 个不同数字。");
-                    if (uniqueNumbers.size() >= FLIP7_UNIQUE_TARGET) {
-                        flip7Bonus = FLIP7_BONUS;
-                        result = "flip7";
-                        detailLines.add("凑齐 7 个不同数字，额外获得 " + FLIP7_BONUS + " 分。");
-                    }
-                }
-            } else if (card.isModifier()) {
-                if (card.modifier == null) {
-                    multiplier *= 2;
-                    detailLines.add("翻出 x2 修正牌，数字牌总和翻倍。");
-                } else {
-                    modifierBonus += card.modifier;
-                    detailLines.add("翻出 +" + card.modifier + " 修正牌。");
-                }
-            } else if ("second_chance".equals(card.action)) {
-                if (hasSecondChance) {
-                    detailLines.add("翻出 Second Chance，但已经持有，本张弃掉。");
-                } else {
-                    hasSecondChance = true;
-                    detailLines.add("翻出 Second Chance，可抵消下一次重复数字。");
-                }
-            } else if ("flip_three".equals(card.action)) {
-                pendingFlipThree += FLIP7_FLIP_THREE_COUNT;
-                detailLines.add("翻出 Flip Three，接下来强制继续翻 3 张。");
-            } else if ("freeze".equals(card.action)) {
-                result = "frozen";
-                detailLines.add("翻出 Freeze，立即停牌结算。");
-            }
+    private static List<String> createOrderedFlip7DeckKeys() {
+        List<Flip7Card> deck = createOrderedFlip7Deck();
+        List<String> keys = new ArrayList<>(deck.size());
+        for (Flip7Card card : deck) {
+            keys.add(flip7CardKey(card));
+        }
+        return keys;
+    }
 
-            int scoreAfterCard = bust ? 0 : calculateFlip7Score(numberSum, modifierBonus, multiplier, flip7Bonus);
-            cards.add(new PetFlip7CardDTO(
+    private static List<PetFlip7CardCountDTO> buildFlip7CardCounts(List<String> totalDeck,
+                                                                    List<String> remainingPile) {
+        Map<String, Integer> totalCounts = countFlip7Keys(totalDeck);
+        Map<String, Integer> remainingCounts = countFlip7Keys(remainingPile);
+        Set<String> seen = new HashSet<>();
+        List<PetFlip7CardCountDTO> rows = new ArrayList<>();
+        for (String key : totalDeck) {
+            if (!seen.add(key)) {
+                continue;
+            }
+            Flip7Card card = flip7CardFromKey(key);
+            rows.add(new PetFlip7CardCountDTO(
                     card.type,
                     card.label,
                     card.value,
                     card.modifier,
                     card.action,
-                    usedSecondChance,
-                    bust,
-                    scoreAfterCard));
+                    totalCounts.getOrDefault(key, 0),
+                    remainingCounts.getOrDefault(key, 0)));
+        }
+        return rows;
+    }
 
-            if (bust || "flip7".equals(result) || "frozen".equals(result)) {
-                break;
+    private static Map<String, Integer> countFlip7Keys(List<String> keys) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String key : keys) {
+            counts.put(key, counts.getOrDefault(key, 0) + 1);
+        }
+        return counts;
+    }
+
+    private static PetFlip7RoundDTO copyFlip7RoundForClient(PetFlip7RoundDTO round, int deckRemaining) {
+        if (round == null) {
+            return null;
+        }
+        normalizeFlip7Round(round);
+        PetFlip7RoundDTO copy = new PetFlip7RoundDTO(
+                round.getRoundId(),
+                round.getState(),
+                round.getPlaySource(),
+                round.getPaidCost(),
+                new ArrayList<>(round.getCards()),
+                new ArrayList<>(round.getDetailLines()),
+                round.getNumberSum(),
+                round.getModifierBonus(),
+                round.getMultiplier(),
+                round.getFlip7Bonus(),
+                round.getScorePreview(),
+                round.getScore(),
+                round.getBoneReward(),
+                round.getForcedDrawsRemaining(),
+                round.isCanDraw(),
+                round.isCanStand(),
+                round.isHasSecondChance(),
+                round.getStartedAt(),
+                round.getSettledAt());
+        updateFlip7RoundControls(copy, deckRemaining);
+        if (!FLIP7_STATE_ACTIVE.equals(copy.getState())) {
+            copy.setCanDraw(false);
+            copy.setCanStand(false);
+        }
+        return copy;
+    }
+
+    private static String flip7CardKey(Flip7Card card) {
+        if (card.isNumber()) {
+            return FLIP7_CARD_NUMBER_PREFIX + card.value;
+        }
+        if (card.isModifier()) {
+            return FLIP7_CARD_MODIFIER_PREFIX + card.label;
+        }
+        return FLIP7_CARD_ACTION_PREFIX + card.action;
+    }
+
+    private static Flip7Card flip7CardFromKey(String key) {
+        if (key != null && key.startsWith(FLIP7_CARD_NUMBER_PREFIX)) {
+            try {
+                return Flip7Card.number(Integer.parseInt(key.substring(FLIP7_CARD_NUMBER_PREFIX.length())));
+            } catch (NumberFormatException ignored) {
+                return Flip7Card.number(0);
             }
         }
-
-        int score = "bust".equals(result)
-                ? 0
-                : calculateFlip7Score(numberSum, modifierBonus, multiplier, flip7Bonus);
-        int boneReward = score;
-        detailLines.add("本局得分 " + score + "，发放骨头币 " + boneReward + "。");
-        return new Flip7Settlement(
-                result,
-                score,
-                boneReward,
-                cards,
-                detailLines,
-                numberSum,
-                modifierBonus,
-                multiplier,
-                flip7Bonus);
+        if (key != null && key.startsWith(FLIP7_CARD_MODIFIER_PREFIX)) {
+            String label = key.substring(FLIP7_CARD_MODIFIER_PREFIX.length());
+            if ("x2".equals(label)) {
+                return Flip7Card.modifier("x2", null);
+            }
+            try {
+                int modifier = Integer.parseInt(label.replace("+", ""));
+                return Flip7Card.modifier("+" + modifier, modifier);
+            } catch (NumberFormatException ignored) {
+                return Flip7Card.modifier("+0", 0);
+            }
+        }
+        String action = key != null && key.startsWith(FLIP7_CARD_ACTION_PREFIX)
+                ? key.substring(FLIP7_CARD_ACTION_PREFIX.length())
+                : "second_chance";
+        if ("freeze".equals(action)) {
+            return Flip7Card.action("Freeze", "freeze");
+        }
+        if ("flip_three".equals(action)) {
+            return Flip7Card.action("Flip Three", "flip_three");
+        }
+        return Flip7Card.action("Second Chance", "second_chance");
     }
 
     private static int calculateFlip7Score(int numberSum, int modifierBonus, int multiplier, int flip7Bonus) {
@@ -4382,29 +4809,23 @@ public final class PetProfileService {
         }
     }
 
-    private static final class Flip7Settlement {
-        private final String result;
-        private final int score;
-        private final int boneReward;
-        private final List<PetFlip7CardDTO> cards;
-        private final List<String> detailLines;
-        private final int numberSum;
-        private final int modifierBonus;
-        private final int multiplier;
-        private final int flip7Bonus;
+    private static final class Flip7GameState {
+        private final PetFlip7StateRecord record;
+        private final List<String> drawPile;
+        private final List<String> discardPile;
+        private PetFlip7RoundDTO activeRound;
+        private boolean changed;
 
-        private Flip7Settlement(String result, int score, int boneReward, List<PetFlip7CardDTO> cards,
-                                List<String> detailLines, int numberSum, int modifierBonus, int multiplier,
-                                int flip7Bonus) {
-            this.result = result;
-            this.score = score;
-            this.boneReward = boneReward;
-            this.cards = cards;
-            this.detailLines = detailLines;
-            this.numberSum = numberSum;
-            this.modifierBonus = modifierBonus;
-            this.multiplier = multiplier;
-            this.flip7Bonus = flip7Bonus;
+        private Flip7GameState(PetFlip7StateRecord record,
+                               List<String> drawPile,
+                               List<String> discardPile,
+                               PetFlip7RoundDTO activeRound,
+                               boolean changed) {
+            this.record = record;
+            this.drawPile = drawPile;
+            this.discardPile = discardPile;
+            this.activeRound = activeRound;
+            this.changed = changed;
         }
     }
 

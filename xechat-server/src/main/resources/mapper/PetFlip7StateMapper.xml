@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.xeblog.server.pet.PetFlip7StateMapper">
+
+    <select id="findByAccountId" resultType="cn.xeblog.server.pet.PetFlip7StateRecord">
+        SELECT account_id, state_date, draw_pile_json, discard_pile_json, active_round_json, updated_at
+        FROM pet_flip7_states
+        WHERE account_id = #{accountId}
+    </select>
+
+    <insert id="upsert" parameterType="cn.xeblog.server.pet.PetFlip7StateRecord">
+        INSERT INTO pet_flip7_states (
+            account_id, state_date, draw_pile_json, discard_pile_json, active_round_json, updated_at
+        ) VALUES (
+            #{accountId}, #{stateDate}, #{drawPileJson}, #{discardPileJson}, #{activeRoundJson}, #{updatedAt}
+        )
+        ON CONFLICT(account_id) DO UPDATE
+        SET state_date = #{stateDate},
+            draw_pile_json = #{drawPileJson},
+            discard_pile_json = #{discardPileJson},
+            active_round_json = #{activeRoundJson},
+            updated_at = #{updatedAt}
+    </insert>
+
+</mapper>

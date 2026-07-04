@@ -660,6 +660,16 @@ public final class DbInitializer {
                         "updated_at INTEGER NOT NULL," +
                         "PRIMARY KEY (account_id, counter_date, counter)" +
                         ")");
+                st.execute("CREATE TABLE IF NOT EXISTS pet_flip7_states (" +
+                        "account_id INTEGER PRIMARY KEY," +
+                        "state_date TEXT NOT NULL," +
+                        "draw_pile_json TEXT NOT NULL," +
+                        "discard_pile_json TEXT NOT NULL," +
+                        "active_round_json TEXT," +
+                        "updated_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_pet_flip7_states_date " +
+                        "ON pet_flip7_states(state_date)");
                 st.execute("CREATE TABLE IF NOT EXISTS pet_training_skills (" +
                         "account_id INTEGER NOT NULL," +
                         "skill_id TEXT NOT NULL," +

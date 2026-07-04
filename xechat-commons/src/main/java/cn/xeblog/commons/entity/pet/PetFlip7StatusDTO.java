@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * 翻转7每日状态和费用。
@@ -25,5 +26,15 @@ public class PetFlip7StatusDTO implements Serializable {
     private int dailyFreeRemaining;
 
     private int paidPlayCost;
+
+    private int deckRemaining;
+
+    private int discardCount;
+
+    private List<PetFlip7CardCountDTO> totalCards;
+
+    private List<PetFlip7CardCountDTO> remainingCards;
+
+    private PetFlip7RoundDTO activeRound;
 
 }

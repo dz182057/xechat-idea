@@ -86,7 +86,8 @@ public class PetProfileDTO implements Serializable {
                 10,
                 new ArrayList<>(),
                 new ArrayList<>()),
-                new PetFlip7StatusDTO(java.time.LocalDate.now().toString(), 1, 0, 1, 50)));
+                new PetFlip7StatusDTO(java.time.LocalDate.now().toString(), 1, 0, 1, 50,
+                        94, 0, new ArrayList<>(), new ArrayList<>(), null)));
         profile.setDailySaying(PetDailySayingDTO.none());
         profile.setRecentSayings(new ArrayList<>());
         return profile;
