@@ -7,17 +7,23 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 
 /**
- * 狗狗之家小游戏聚合状态。
+ * 翻转7每日状态和费用。
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class PetArcadeStatusDTO implements Serializable {
+public class PetFlip7StatusDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    private PetTreasureHuntStatusDTO treasureHunt;
+    private String serverDate;
 
-    private PetFlip7StatusDTO flip7;
+    private int dailyFreeLimit;
+
+    private int dailyFreeUsed;
+
+    private int dailyFreeRemaining;
+
+    private int paidPlayCost;
 
 }

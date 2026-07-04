@@ -85,7 +85,8 @@ public class PetProfileDTO implements Serializable {
                 "item_rare_skin_fragment",
                 10,
                 new ArrayList<>(),
-                new ArrayList<>())));
+                new ArrayList<>()),
+                new PetFlip7StatusDTO(java.time.LocalDate.now().toString(), 1, 0, 1, 50)));
         profile.setDailySaying(PetDailySayingDTO.none());
         profile.setRecentSayings(new ArrayList<>());
         return profile;

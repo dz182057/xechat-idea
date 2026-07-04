@@ -8,6 +8,7 @@ import cn.xeblog.commons.entity.pet.PetExploreOpenDTO;
 import cn.xeblog.commons.entity.pet.PetExploreOpenResultDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStartDTO;
 import cn.xeblog.commons.entity.pet.PetFeedDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7PlayResultDTO;
 import cn.xeblog.commons.entity.pet.PetMakeupCheckinDTO;
 import cn.xeblog.commons.entity.pet.PetProfileDTO;
 import cn.xeblog.commons.entity.pet.PetRaceResultDTO;
@@ -281,6 +282,15 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                     PetProfileDTO redeemedProfile = PetProfileService.treasureHuntRedeemSkin(user.getAccountId(),
                             toBean(body.getContent(), PetTreasureHuntRedeemSkinDTO.class));
                     sendProfileResult(user, petAction, requestId, redeemedProfile);
+                } catch (IllegalArgumentException e) {
+                    send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
+                }
+                break;
+            case FLIP7_PLAY:
+                try {
+                    PetFlip7PlayResultDTO playResult = PetProfileService.flip7Play(user.getAccountId());
+                    send(user, PetResponseDTO.ok(petAction, requestId, playResult));
+                    pushProfileUpdateToOtherConnections(user, playResult.getProfile());
                 } catch (IllegalArgumentException e) {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }

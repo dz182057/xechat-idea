@@ -17,6 +17,9 @@ import cn.xeblog.commons.entity.pet.PetExploreRewardDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStartDTO;
 import cn.xeblog.commons.entity.pet.PetExploreStatusDTO;
 import cn.xeblog.commons.entity.pet.PetFeedDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7CardDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7PlayResultDTO;
+import cn.xeblog.commons.entity.pet.PetFlip7StatusDTO;
 import cn.xeblog.commons.entity.pet.PetInventoryItemDTO;
 import cn.xeblog.commons.entity.pet.PetInteractionStatusDTO;
 import cn.xeblog.commons.entity.pet.PetMakeupCheckinDTO;
@@ -70,6 +73,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 
 /**
  * 狗狗宇宙个人资料服务。
@@ -119,6 +123,11 @@ public final class PetProfileService {
     private static final int TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN = 10;
     private static final int TREASURE_HUNT_ROLL_SCALE = 100_000;
     private static final int TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT = 10_000;
+    private static final int FLIP7_DAILY_FREE_LIMIT = 1;
+    private static final int FLIP7_PAID_COST = 50;
+    private static final int FLIP7_UNIQUE_TARGET = 7;
+    private static final int FLIP7_BONUS = 15;
+    private static final int FLIP7_FLIP_THREE_COUNT = 3;
     private static final long SHOP_SHELF_REFRESH_INTERVAL_MILLIS = 6L * 60L * 60L * 1000L;
     private static final int SHOP_SHELF_NORMAL_ITEM_COUNT = 3;
     private static final int SHOP_SHELF_MAX_PAID_REFRESHES = 3;
@@ -257,6 +266,7 @@ public final class PetProfileService {
     private static final String COUNTER_SHOP_SHELF_PAID_REFRESH = "shop_shelf_paid_refresh";
     private static final String DAILY_COUNTER_TREASURE_HUNT_FREE_USED = "treasure_hunt_free_used";
     private static final String COUNTER_TREASURE_HUNT_BONUS_SPINS = "treasure_hunt_bonus_spins";
+    private static final String DAILY_COUNTER_FLIP7_FREE_USED = "flip7_free_used";
     private static final String DAILY_COUNTER_EXPLORE_START = "explore_start";
     private static final String DAILY_COUNTER_EXPLORE_ITEM_GAIN = "explore_item_gain";
     private static final String DAILY_COUNTER_MINI_GAME_COMPLETE = "mini_game_complete";
@@ -430,6 +440,7 @@ public final class PetProfileService {
     private static IntSupplier treasureHuntSlotRollSupplier =
             () -> ThreadLocalRandom.current().nextInt(TREASURE_HUNT_ROLL_SCALE);
     private static IntSupplier treasureHuntItemIndexSupplier = () -> ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
+    private static Supplier<List<Flip7Card>> flip7DeckSupplier = PetProfileService::createShuffledFlip7Deck;
 
     private PetProfileService() {
     }
@@ -650,6 +661,8 @@ public final class PetProfileService {
                 findDailyCounterValue(mapper, accountId, today, DAILY_COUNTER_TREASURE_HUNT_FREE_USED)));
         int bonusSpins = Math.max(0,
                 findLifetimeCounterValue(mapper, accountId, COUNTER_TREASURE_HUNT_BONUS_SPINS));
+        int flip7DailyFreeUsed = Math.min(FLIP7_DAILY_FREE_LIMIT, Math.max(0,
+                findDailyCounterValue(mapper, accountId, today, DAILY_COUNTER_FLIP7_FREE_USED)));
         List<PetTreasureHuntProbabilityDTO> rewardProbabilities = treasureRewardProbabilityRows();
         return new PetArcadeStatusDTO(new PetTreasureHuntStatusDTO(
                 today,
@@ -661,7 +674,13 @@ public final class PetProfileService {
                 PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT,
                 TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN,
                 new ArrayList<>(rewardProbabilities),
-                new ArrayList<>(rewardProbabilities)));
+                new ArrayList<>(rewardProbabilities)),
+                new PetFlip7StatusDTO(
+                        today,
+                        FLIP7_DAILY_FREE_LIMIT,
+                        flip7DailyFreeUsed,
+                        Math.max(0, FLIP7_DAILY_FREE_LIMIT - flip7DailyFreeUsed),
+                        FLIP7_PAID_COST));
     }
 
     private static List<PetTreasureHuntProbabilityDTO> treasureRewardProbabilityRows() {
@@ -1124,6 +1143,12 @@ public final class PetProfileService {
     public static PetTreasureHuntSpinResultDTO treasureHuntSpin(long accountId) {
         synchronized (accountLock(accountId)) {
             return treasureHuntSpinLocked(accountId);
+        }
+    }
+
+    public static PetFlip7PlayResultDTO flip7Play(long accountId) {
+        synchronized (accountLock(accountId)) {
+            return flip7PlayLocked(accountId);
         }
     }
 
@@ -1753,6 +1778,183 @@ public final class PetProfileService {
                 bonusSpinReward,
                 symbols,
                 detailLines);
+    }
+
+    private static PetFlip7PlayResultDTO flip7PlayLocked(long accountId) {
+        long now = System.currentTimeMillis();
+        String today = LocalDate.now().toString();
+        String playSource;
+        int paidCost = 0;
+
+        Flip7Settlement settlement;
+        try (SqlSession session = DbInitializer.factory().openSession(false)) {
+            ensureAssets(session, accountId);
+            PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
+            PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
+            int freeUsed = findDailyCounterValue(counterMapper, accountId, today, DAILY_COUNTER_FLIP7_FREE_USED);
+            if (freeUsed < FLIP7_DAILY_FREE_LIMIT
+                    && counterMapper.incrementIfUnderLimit(accountId, today,
+                    DAILY_COUNTER_FLIP7_FREE_USED, FLIP7_DAILY_FREE_LIMIT, now) > 0) {
+                playSource = "daily_free";
+            } else {
+                if (assetsMapper.decrementBonesIfEnough(accountId, FLIP7_PAID_COST, now) <= 0) {
+                    throw new IllegalArgumentException("骨头币不足，暂时不能继续玩翻转7");
+                }
+                playSource = "paid";
+                paidCost = FLIP7_PAID_COST;
+            }
+
+            settlement = settleFlip7Play();
+            if (settlement.boneReward > 0 && assetsMapper.addBones(accountId, settlement.boneReward, now) <= 0) {
+                throw new IllegalArgumentException("翻转7奖励发放失败");
+            }
+            session.commit();
+        }
+
+        return new PetFlip7PlayResultDTO(
+                profileLocked(accountId),
+                playSource,
+                paidCost,
+                settlement.score,
+                settlement.boneReward,
+                settlement.result,
+                settlement.cards,
+                settlement.detailLines,
+                settlement.numberSum,
+                settlement.modifierBonus,
+                settlement.multiplier,
+                settlement.flip7Bonus);
+    }
+
+    private static Flip7Settlement settleFlip7Play() {
+        List<Flip7Card> deck = new ArrayList<>(flip7DeckSupplier.get());
+        if (deck.isEmpty()) {
+            deck = createShuffledFlip7Deck();
+        }
+        Set<Integer> uniqueNumbers = new HashSet<>();
+        List<PetFlip7CardDTO> cards = new ArrayList<>();
+        List<String> detailLines = new ArrayList<>();
+        int numberSum = 0;
+        int modifierBonus = 0;
+        int multiplier = 1;
+        int flip7Bonus = 0;
+        int pendingFlipThree = 0;
+        boolean hasSecondChance = false;
+        String result = "deck_empty";
+
+        for (Flip7Card card : deck) {
+            if (pendingFlipThree > 0) {
+                pendingFlipThree--;
+            }
+            boolean usedSecondChance = false;
+            boolean bust = false;
+
+            if (card.isNumber()) {
+                int value = card.value;
+                if (uniqueNumbers.contains(value)) {
+                    if (hasSecondChance) {
+                        hasSecondChance = false;
+                        usedSecondChance = true;
+                        detailLines.add("翻出重复数字 " + value + "，Second Chance 抵消，本张弃掉。");
+                    } else {
+                        bust = true;
+                        result = "bust";
+                        detailLines.add("翻出重复数字 " + value + "，爆掉，本局 0 分。");
+                    }
+                } else {
+                    uniqueNumbers.add(value);
+                    numberSum += value;
+                    detailLines.add("翻出数字 " + value + "，当前已有 " + uniqueNumbers.size() + " 个不同数字。");
+                    if (uniqueNumbers.size() >= FLIP7_UNIQUE_TARGET) {
+                        flip7Bonus = FLIP7_BONUS;
+                        result = "flip7";
+                        detailLines.add("凑齐 7 个不同数字，额外获得 " + FLIP7_BONUS + " 分。");
+                    }
+                }
+            } else if (card.isModifier()) {
+                if (card.modifier == null) {
+                    multiplier *= 2;
+                    detailLines.add("翻出 x2 修正牌，数字牌总和翻倍。");
+                } else {
+                    modifierBonus += card.modifier;
+                    detailLines.add("翻出 +" + card.modifier + " 修正牌。");
+                }
+            } else if ("second_chance".equals(card.action)) {
+                if (hasSecondChance) {
+                    detailLines.add("翻出 Second Chance，但已经持有，本张弃掉。");
+                } else {
+                    hasSecondChance = true;
+                    detailLines.add("翻出 Second Chance，可抵消下一次重复数字。");
+                }
+            } else if ("flip_three".equals(card.action)) {
+                pendingFlipThree += FLIP7_FLIP_THREE_COUNT;
+                detailLines.add("翻出 Flip Three，接下来强制继续翻 3 张。");
+            } else if ("freeze".equals(card.action)) {
+                result = "frozen";
+                detailLines.add("翻出 Freeze，立即停牌结算。");
+            }
+
+            int scoreAfterCard = bust ? 0 : calculateFlip7Score(numberSum, modifierBonus, multiplier, flip7Bonus);
+            cards.add(new PetFlip7CardDTO(
+                    card.type,
+                    card.label,
+                    card.value,
+                    card.modifier,
+                    card.action,
+                    usedSecondChance,
+                    bust,
+                    scoreAfterCard));
+
+            if (bust || "flip7".equals(result) || "frozen".equals(result)) {
+                break;
+            }
+        }
+
+        int score = "bust".equals(result)
+                ? 0
+                : calculateFlip7Score(numberSum, modifierBonus, multiplier, flip7Bonus);
+        int boneReward = score;
+        detailLines.add("本局得分 " + score + "，发放骨头币 " + boneReward + "。");
+        return new Flip7Settlement(
+                result,
+                score,
+                boneReward,
+                cards,
+                detailLines,
+                numberSum,
+                modifierBonus,
+                multiplier,
+                flip7Bonus);
+    }
+
+    private static int calculateFlip7Score(int numberSum, int modifierBonus, int multiplier, int flip7Bonus) {
+        return Math.max(0, numberSum * Math.max(1, multiplier) + modifierBonus + flip7Bonus);
+    }
+
+    private static List<Flip7Card> createShuffledFlip7Deck() {
+        List<Flip7Card> deck = createOrderedFlip7Deck();
+        Collections.shuffle(deck, ThreadLocalRandom.current());
+        return deck;
+    }
+
+    private static List<Flip7Card> createOrderedFlip7Deck() {
+        List<Flip7Card> deck = new ArrayList<>();
+        deck.add(Flip7Card.number(0));
+        for (int value = 1; value <= 12; value++) {
+            for (int count = 0; count < value; count++) {
+                deck.add(Flip7Card.number(value));
+            }
+        }
+        for (int modifier = 2; modifier <= 10; modifier += 2) {
+            deck.add(Flip7Card.modifier("+" + modifier, modifier));
+        }
+        deck.add(Flip7Card.modifier("x2", null));
+        for (int count = 0; count < 3; count++) {
+            deck.add(Flip7Card.action("Freeze", "freeze"));
+            deck.add(Flip7Card.action("Flip Three", "flip_three"));
+            deck.add(Flip7Card.action("Second Chance", "second_chance"));
+        }
+        return deck;
     }
 
     private static PetProfileDTO treasureHuntRedeemSkinLocked(long accountId, PetTreasureHuntRedeemSkinDTO request) {
@@ -4141,6 +4343,68 @@ public final class PetProfileService {
 
         private boolean isBones() {
             return "bones".equals(type);
+        }
+    }
+
+    private static final class Flip7Card {
+        private final String type;
+        private final String label;
+        private final Integer value;
+        private final Integer modifier;
+        private final String action;
+
+        private Flip7Card(String type, String label, Integer value, Integer modifier, String action) {
+            this.type = type;
+            this.label = label;
+            this.value = value;
+            this.modifier = modifier;
+            this.action = action;
+        }
+
+        private static Flip7Card number(int value) {
+            return new Flip7Card("number", String.valueOf(value), value, null, null);
+        }
+
+        private static Flip7Card modifier(String label, Integer modifier) {
+            return new Flip7Card("modifier", label, null, modifier, null);
+        }
+
+        private static Flip7Card action(String label, String action) {
+            return new Flip7Card("action", label, null, null, action);
+        }
+
+        private boolean isNumber() {
+            return "number".equals(type) && value != null;
+        }
+
+        private boolean isModifier() {
+            return "modifier".equals(type);
+        }
+    }
+
+    private static final class Flip7Settlement {
+        private final String result;
+        private final int score;
+        private final int boneReward;
+        private final List<PetFlip7CardDTO> cards;
+        private final List<String> detailLines;
+        private final int numberSum;
+        private final int modifierBonus;
+        private final int multiplier;
+        private final int flip7Bonus;
+
+        private Flip7Settlement(String result, int score, int boneReward, List<PetFlip7CardDTO> cards,
+                                List<String> detailLines, int numberSum, int modifierBonus, int multiplier,
+                                int flip7Bonus) {
+            this.result = result;
+            this.score = score;
+            this.boneReward = boneReward;
+            this.cards = cards;
+            this.detailLines = detailLines;
+            this.numberSum = numberSum;
+            this.modifierBonus = modifierBonus;
+            this.multiplier = multiplier;
+            this.flip7Bonus = flip7Bonus;
         }
     }
 
