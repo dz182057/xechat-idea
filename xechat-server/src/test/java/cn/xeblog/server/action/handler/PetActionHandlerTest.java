@@ -411,7 +411,7 @@ public class PetActionHandlerTest {
         Assert.assertNull(status.getActiveRound());
         Assert.assertEquals(1, findFlip7Count(status, "number", "0").getTotal());
         Assert.assertEquals(7, findFlip7Count(status, "number", "7").getTotal());
-        Assert.assertEquals(3, findFlip7Count(status, "action", "Freeze").getTotal());
+        Assert.assertEquals(3, findFlip7Count(status, "action", "冻结").getTotal());
         Assert.assertEquals(7, findFlip7Count(status, "number", "7").getRemaining());
     }
 
@@ -464,7 +464,8 @@ public class PetActionHandlerTest {
             Assert.assertEquals(311, stand.getProfile().getAssets().getBones());
             Assert.assertEquals(6, stand.getStatus().getDeckRemaining());
             Assert.assertEquals(2, stand.getStatus().getDiscardCount());
-            Assert.assertNull(stand.getStatus().getActiveRound());
+            Assert.assertNotNull(stand.getStatus().getActiveRound());
+            Assert.assertEquals("stood", stand.getStatus().getActiveRound().getState());
 
             PetFlip7ActionResultDTO paidStart = parseFlip7ActionResult(
                     handlerProcess(user, flip7PlayRequest(907105L)), PetAction.FLIP7_PLAY);
@@ -497,8 +498,19 @@ public class PetActionHandlerTest {
             Assert.assertEquals(0, result.getRound().getBoneReward());
             Assert.assertEquals(300, result.getProfile().getAssets().getBones());
             Assert.assertTrue(result.getRound().getCards().get(2).isBust());
-            Assert.assertEquals(3, result.getStatus().getDeckRemaining());
-            Assert.assertEquals(0, result.getStatus().getDiscardCount());
+            Assert.assertEquals(0, result.getStatus().getDeckRemaining());
+            Assert.assertEquals(3, result.getStatus().getDiscardCount());
+            Assert.assertNotNull(result.getStatus().getActiveRound());
+            Assert.assertEquals("bust", result.getStatus().getActiveRound().getState());
+
+            PetFlip7ActionResultDTO paidStart = parseFlip7ActionResult(
+                    handlerProcess(user, flip7PlayRequest(907205L)), PetAction.FLIP7_PLAY);
+            Assert.assertEquals("paid", paidStart.getRound().getPlaySource());
+            Assert.assertEquals("active", paidStart.getRound().getState());
+            Assert.assertTrue(paidStart.getRound().getCards().isEmpty());
+            Assert.assertEquals(3, paidStart.getStatus().getDeckRemaining());
+            Assert.assertEquals(0, paidStart.getStatus().getDiscardCount());
+            Assert.assertEquals(250, paidStart.getProfile().getAssets().getBones());
         } finally {
             setFlip7DeckSupplier(originalDeckSupplier);
         }
@@ -509,7 +521,7 @@ public class PetActionHandlerTest {
         User user = user(9073L, "flip7_second_chance_user");
         Supplier<List<Object>> originalDeckSupplier = setFlip7DeckSupplier(flip7Deck(
                 flip7Number(5),
-                flip7Action("Second Chance", "second_chance"),
+                flip7Action("第二次机会", "second_chance"),
                 flip7Number(5),
                 flip7Number(6),
                 flip7Number(7),
@@ -546,7 +558,7 @@ public class PetActionHandlerTest {
         Supplier<List<Object>> originalDeckSupplier = setFlip7DeckSupplier(flip7Deck(
                 flip7Number(5),
                 flip7Modifier("+10", 10),
-                flip7Action("Freeze", "freeze"),
+                flip7Action("冻结", "freeze"),
                 flip7Number(6)
         ));
 
@@ -562,6 +574,8 @@ public class PetActionHandlerTest {
             Assert.assertEquals(15, result.getRound().getBoneReward());
             Assert.assertEquals(3, result.getRound().getCards().size());
             Assert.assertEquals(315, result.getProfile().getAssets().getBones());
+            Assert.assertNotNull(result.getStatus().getActiveRound());
+            Assert.assertEquals("frozen", result.getStatus().getActiveRound().getState());
         } finally {
             setFlip7DeckSupplier(originalDeckSupplier);
         }
@@ -571,7 +585,7 @@ public class PetActionHandlerTest {
     public void flip7FlipThreeForcesDrawBeforeStanding() {
         User user = user(9076L, "flip7_flip_three_user");
         Supplier<List<Object>> originalDeckSupplier = setFlip7DeckSupplier(flip7Deck(
-                flip7Action("Flip Three", "flip_three"),
+                flip7Action("翻三张", "flip_three"),
                 flip7Number(1),
                 flip7Number(2),
                 flip7Number(3),
@@ -587,7 +601,7 @@ public class PetActionHandlerTest {
 
             PetResponseDTO standTooEarly = handlerProcess(user, flip7StandRequest(907603L));
             Assert.assertFalse(standTooEarly.isSuccess());
-            Assert.assertEquals("Flip Three 还需要继续翻牌，暂时不能停牌", standTooEarly.getError());
+            Assert.assertEquals("翻三张还需要继续翻牌，暂时不能停牌", standTooEarly.getError());
 
             parseFlip7ActionResult(handlerProcess(user, flip7DrawRequest(907604L)), PetAction.FLIP7_DRAW);
             parseFlip7ActionResult(handlerProcess(user, flip7DrawRequest(907605L)), PetAction.FLIP7_DRAW);
@@ -613,8 +627,16 @@ public class PetActionHandlerTest {
             Assert.assertEquals("deck_empty", result.getRound().getState());
             Assert.assertEquals(1, result.getRound().getScore());
             Assert.assertEquals(301, result.getProfile().getAssets().getBones());
-            Assert.assertEquals(1, result.getStatus().getDeckRemaining());
-            Assert.assertEquals(0, result.getStatus().getDiscardCount());
+            Assert.assertEquals(0, result.getStatus().getDeckRemaining());
+            Assert.assertEquals(1, result.getStatus().getDiscardCount());
+            Assert.assertNotNull(result.getStatus().getActiveRound());
+            Assert.assertEquals("deck_empty", result.getStatus().getActiveRound().getState());
+
+            PetFlip7ActionResultDTO paidStart = parseFlip7ActionResult(
+                    handlerProcess(user, flip7PlayRequest(907703L)), PetAction.FLIP7_PLAY);
+            Assert.assertEquals("active", paidStart.getRound().getState());
+            Assert.assertEquals(1, paidStart.getStatus().getDeckRemaining());
+            Assert.assertEquals(0, paidStart.getStatus().getDiscardCount());
         } finally {
             setFlip7DeckSupplier(originalDeckSupplier);
         }

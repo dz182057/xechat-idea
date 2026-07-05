@@ -1843,6 +1843,14 @@ public final class PetProfileService {
                 }
                 return buildFlip7ActionResult(accountId, event, round, null, "本轮翻转7继续进行中");
             }
+            if (state.activeRound != null) {
+                state.activeRound = null;
+                state.changed = true;
+            }
+            if (state.drawPile.isEmpty()) {
+                resetFlip7Deck(state);
+                state.changed = true;
+            }
 
             int freeUsed = findDailyCounterValue(counterMapper, accountId, today, DAILY_COUNTER_FLIP7_FREE_USED);
             if (freeUsed < FLIP7_DAILY_FREE_LIMIT
@@ -1904,7 +1912,7 @@ public final class PetProfileService {
             if (state.drawPile.isEmpty()) {
                 finishFlip7Round(round, FLIP7_STATE_DECK_EMPTY, now);
                 grantFlip7RewardIfNeeded(assetsMapper, accountId, round, now);
-                state.activeRound = null;
+                state.activeRound = round;
                 saveFlip7State(stateMapper, state, now);
                 session.commit();
                 return buildFlip7ActionResult(accountId, FLIP7_EVENT_SETTLED, round, null, "牌堆已经翻完，本轮结算完成");
@@ -1919,7 +1927,7 @@ public final class PetProfileService {
                 state.activeRound = round;
             } else {
                 grantFlip7RewardIfNeeded(assetsMapper, accountId, round, now);
-                state.activeRound = null;
+                state.activeRound = round;
             }
             saveFlip7State(stateMapper, state, now);
             session.commit();
@@ -1944,12 +1952,12 @@ public final class PetProfileService {
                 throw new IllegalArgumentException("请先翻一张牌再停牌");
             }
             if (round.getForcedDrawsRemaining() > 0) {
-                throw new IllegalArgumentException("Flip Three 还需要继续翻牌，暂时不能停牌");
+                throw new IllegalArgumentException("翻三张还需要继续翻牌，暂时不能停牌");
             }
 
             finishFlip7Round(round, FLIP7_STATE_STOOD, now);
             grantFlip7RewardIfNeeded(assetsMapper, accountId, round, now);
-            state.activeRound = null;
+            state.activeRound = round;
             saveFlip7State(stateMapper, state, now);
             session.commit();
         }
@@ -2002,7 +2010,7 @@ public final class PetProfileService {
                 if (round.isHasSecondChance()) {
                     round.setHasSecondChance(false);
                     usedSecondChance = true;
-                    detailLines.add("翻出重复数字 " + value + "，Second Chance 抵消，本张进入弃牌堆。");
+                    detailLines.add("翻出重复数字 " + value + "，第二次机会抵消，本张进入弃牌堆。");
                 } else {
                     bust = true;
                     round.setState(FLIP7_STATE_BUST);
@@ -2028,17 +2036,17 @@ public final class PetProfileService {
             }
         } else if ("second_chance".equals(card.action)) {
             if (round.isHasSecondChance()) {
-                detailLines.add("翻出 Second Chance，但已经持有，本张进入弃牌堆。");
+                detailLines.add("翻出第二次机会，但已经持有，本张进入弃牌堆。");
             } else {
                 round.setHasSecondChance(true);
-                detailLines.add("翻出 Second Chance，可抵消下一次重复数字。");
+                detailLines.add("翻出第二次机会，可抵消下一次重复数字。");
             }
         } else if ("flip_three".equals(card.action)) {
             round.setForcedDrawsRemaining(round.getForcedDrawsRemaining() + FLIP7_FLIP_THREE_COUNT);
-            detailLines.add("翻出 Flip Three，接下来还要强制翻 " + FLIP7_FLIP_THREE_COUNT + " 张。");
+            detailLines.add("翻出翻三张，接下来还要强制翻 " + FLIP7_FLIP_THREE_COUNT + " 张。");
         } else if ("freeze".equals(card.action)) {
             round.setState(FLIP7_STATE_FROZEN);
-            detailLines.add("翻出 Freeze，立即停牌结算。");
+            detailLines.add("翻出冻结，立即停牌结算。");
         }
 
         int scoreAfterCard = bust ? 0 : calculateFlip7Score(
@@ -2176,10 +2184,6 @@ public final class PetProfileService {
             drawPile = parseFlip7Pile(record.getDrawPileJson());
             discardPile = parseFlip7Pile(record.getDiscardPileJson());
             activeRound = parseFlip7Round(record.getActiveRoundJson());
-            if (activeRound != null && !FLIP7_STATE_ACTIVE.equals(activeRound.getState())) {
-                activeRound = null;
-                changed = true;
-            }
             if (drawPile.isEmpty() && activeRound == null) {
                 drawPile = createFreshFlip7DeckKeys();
                 discardPile = new ArrayList<>();
@@ -2201,6 +2205,12 @@ public final class PetProfileService {
         state.record.setUpdatedAt(now);
         mapper.upsert(state.record);
         state.changed = false;
+    }
+
+    private static void resetFlip7Deck(Flip7GameState state) {
+        state.drawPile.clear();
+        state.drawPile.addAll(createFreshFlip7DeckKeys());
+        state.discardPile.clear();
     }
 
     private static List<String> parseFlip7Pile(String json) {
@@ -2346,12 +2356,12 @@ public final class PetProfileService {
                 ? key.substring(FLIP7_CARD_ACTION_PREFIX.length())
                 : "second_chance";
         if ("freeze".equals(action)) {
-            return Flip7Card.action("Freeze", "freeze");
+            return Flip7Card.action("冻结", "freeze");
         }
         if ("flip_three".equals(action)) {
-            return Flip7Card.action("Flip Three", "flip_three");
+            return Flip7Card.action("翻三张", "flip_three");
         }
-        return Flip7Card.action("Second Chance", "second_chance");
+        return Flip7Card.action("第二次机会", "second_chance");
     }
 
     private static int calculateFlip7Score(int numberSum, int modifierBonus, int multiplier, int flip7Bonus) {
@@ -2377,9 +2387,9 @@ public final class PetProfileService {
         }
         deck.add(Flip7Card.modifier("x2", null));
         for (int count = 0; count < 3; count++) {
-            deck.add(Flip7Card.action("Freeze", "freeze"));
-            deck.add(Flip7Card.action("Flip Three", "flip_three"));
-            deck.add(Flip7Card.action("Second Chance", "second_chance"));
+            deck.add(Flip7Card.action("冻结", "freeze"));
+            deck.add(Flip7Card.action("翻三张", "flip_three"));
+            deck.add(Flip7Card.action("第二次机会", "second_chance"));
         }
         return deck;
     }
