@@ -128,7 +128,7 @@ public final class PetProfileService {
     private static final int TREASURE_HUNT_ROLL_SCALE = 100_000;
     private static final int TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT = 10_000;
     private static final int FLIP7_DAILY_FREE_LIMIT = 1;
-    private static final int FLIP7_PAID_COST = 50;
+    private static final int FLIP7_PAID_COST = 30;
     private static final int FLIP7_UNIQUE_TARGET = 7;
     private static final int FLIP7_BONUS = 15;
     private static final int FLIP7_FLIP_THREE_COUNT = 3;

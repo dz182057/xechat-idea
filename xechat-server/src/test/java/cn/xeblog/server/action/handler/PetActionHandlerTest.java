@@ -405,7 +405,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals(1, status.getDailyFreeLimit());
         Assert.assertEquals(0, status.getDailyFreeUsed());
         Assert.assertEquals(1, status.getDailyFreeRemaining());
-        Assert.assertEquals(50, status.getPaidPlayCost());
+        Assert.assertEquals(30, status.getPaidPlayCost());
         Assert.assertEquals(94, status.getDeckRemaining());
         Assert.assertEquals(0, status.getDiscardCount());
         Assert.assertNull(status.getActiveRound());
@@ -470,8 +470,8 @@ public class PetActionHandlerTest {
             PetFlip7ActionResultDTO paidStart = parseFlip7ActionResult(
                     handlerProcess(user, flip7PlayRequest(907105L)), PetAction.FLIP7_PLAY);
             Assert.assertEquals("paid", paidStart.getRound().getPlaySource());
-            Assert.assertEquals(50, paidStart.getRound().getPaidCost());
-            Assert.assertEquals(261, paidStart.getProfile().getAssets().getBones());
+            Assert.assertEquals(30, paidStart.getRound().getPaidCost());
+            Assert.assertEquals(281, paidStart.getProfile().getAssets().getBones());
         } finally {
             setFlip7DeckSupplier(originalDeckSupplier);
         }
@@ -510,7 +510,7 @@ public class PetActionHandlerTest {
             Assert.assertTrue(paidStart.getRound().getCards().isEmpty());
             Assert.assertEquals(3, paidStart.getStatus().getDeckRemaining());
             Assert.assertEquals(0, paidStart.getStatus().getDiscardCount());
-            Assert.assertEquals(250, paidStart.getProfile().getAssets().getBones());
+            Assert.assertEquals(270, paidStart.getProfile().getAssets().getBones());
         } finally {
             setFlip7DeckSupplier(originalDeckSupplier);
         }
@@ -646,7 +646,7 @@ public class PetActionHandlerTest {
     public void flip7PaidPlayFailsWhenBonesInsufficient() {
         User user = user(9075L, "flip7_insufficient_user");
         setDailyCounter(user.getAccountId(), "flip7_free_used", 1);
-        setAssets(user.getAccountId(), 30, 1);
+        setAssets(user.getAccountId(), 29, 1);
 
         PetResponseDTO body = handlerProcess(user, flip7PlayRequest(907501L));
 
