@@ -313,6 +313,22 @@ CREATE INDEX IF NOT EXISTS idx_pet_item_ledger_account
 CREATE INDEX IF NOT EXISTS idx_pet_item_ledger_item
     ON pet_item_ledger(account_id, item_id, created_at);
 
+CREATE TABLE IF NOT EXISTS pet_treasure_hunt_records (
+    record_id         TEXT PRIMARY KEY,
+    account_id        INTEGER NOT NULL,
+    spin_count        INTEGER NOT NULL,
+    spin_source       TEXT NOT NULL,
+    paid_cost         INTEGER NOT NULL DEFAULT 0,
+    bone_reward       INTEGER NOT NULL DEFAULT 0,
+    extra_reward_text TEXT,
+    bonus_spin_reward INTEGER NOT NULL DEFAULT 0,
+    symbols_json      TEXT NOT NULL,
+    detail_lines_json TEXT NOT NULL,
+    created_at        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pet_treasure_hunt_records_account
+    ON pet_treasure_hunt_records(account_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS pet_collections (
     account_id INTEGER NOT NULL,
     item_id    TEXT NOT NULL,

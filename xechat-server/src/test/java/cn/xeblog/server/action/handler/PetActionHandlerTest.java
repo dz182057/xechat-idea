@@ -26,6 +26,7 @@ import cn.xeblog.commons.entity.pet.PetTrainingSkillDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillDefinitionDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntProbabilityDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntRedeemSkinDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntRecordDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinResultDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntStatusDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
@@ -236,6 +237,7 @@ public class PetActionHandlerTest {
         Assert.assertEquals(250.0, status.getExtraProbabilities().get(9).getProbabilityBp(), 0.000001);
         Assert.assertEquals("完整传说皮肤", status.getExtraProbabilities().get(13).getLabel());
         Assert.assertEquals(0.2, status.getExtraProbabilities().get(13).getProbabilityBp(), 0.000001);
+        Assert.assertTrue(profile.getTreasureHuntRecords().isEmpty());
     }
 
     @Test
@@ -350,6 +352,16 @@ public class PetActionHandlerTest {
             Assert.assertEquals(315, result.getProfile().getAssets().getBones());
             Assert.assertEquals(0, result.getProfile().getArcadeStatus().getTreasureHunt().getBonusSpins());
             Assert.assertEquals(1, countItem(user.getAccountId(), result.getExtraReward().getItemId()));
+            Assert.assertEquals(1, result.getProfile().getTreasureHuntRecords().size());
+            PetTreasureHuntRecordDTO record = result.getProfile().getTreasureHuntRecords().get(0);
+            Assert.assertEquals(1, record.getSpinCount());
+            Assert.assertEquals("daily_free", record.getSpinSource());
+            Assert.assertEquals(0, record.getPaidCost());
+            Assert.assertEquals(15, record.getBoneReward());
+            Assert.assertEquals("探雷骨头", record.getExtraRewardText());
+            Assert.assertEquals(Arrays.asList("item_normal", "bone_5", "bone_10"), record.getSymbols());
+            Assert.assertTrue(record.getDetailLines().get(0).contains("探雷骨头"));
+            Assert.assertFalse(record.getDetailLines().get(0).contains(result.getExtraReward().getItemId()));
         } finally {
             setTreasureHuntSlotRollSupplier(originalSlotRollSupplier);
             setTreasureHuntItemIndexSupplier(originalItemIndexSupplier);
@@ -469,6 +481,15 @@ public class PetActionHandlerTest {
                     .getTreasureHunt().getLegendSkinPityProgress());
             Assert.assertEquals(10, result.getDetailLines().size());
             Assert.assertTrue(result.getDetailLines().get(0).contains("第 1 次"));
+            Assert.assertEquals(1, result.getProfile().getTreasureHuntRecords().size());
+            PetTreasureHuntRecordDTO record = result.getProfile().getTreasureHuntRecords().get(0);
+            Assert.assertEquals(10, record.getSpinCount());
+            Assert.assertEquals("multi", record.getSpinSource());
+            Assert.assertEquals(450, record.getPaidCost());
+            Assert.assertEquals(300, record.getBoneReward());
+            Assert.assertEquals(Arrays.asList("bone_5", "bone_10", "bone_15"), record.getSymbols());
+            Assert.assertEquals(10, record.getDetailLines().size());
+            Assert.assertTrue(record.getDetailLines().get(0).contains("第 1 次"));
         } finally {
             setTreasureHuntSlotRollSupplier(originalSlotRollSupplier);
         }

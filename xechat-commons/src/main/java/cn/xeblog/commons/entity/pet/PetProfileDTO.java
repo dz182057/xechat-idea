@@ -54,6 +54,8 @@ public class PetProfileDTO implements Serializable {
 
     private List<PetRecentSayingDTO> recentSayings;
 
+    private List<PetTreasureHuntRecordDTO> treasureHuntRecords;
+
     public static PetProfileDTO empty(long accountId) {
         PetProfileDTO profile = new PetProfileDTO();
         profile.setAccountId(accountId);
@@ -93,6 +95,7 @@ public class PetProfileDTO implements Serializable {
                         94, 0, new ArrayList<>(), new ArrayList<>(), null)));
         profile.setDailySaying(PetDailySayingDTO.none());
         profile.setRecentSayings(new ArrayList<>());
+        profile.setTreasureHuntRecords(new ArrayList<>());
         return profile;
     }
 

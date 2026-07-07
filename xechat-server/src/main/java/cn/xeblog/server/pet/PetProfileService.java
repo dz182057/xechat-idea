@@ -42,6 +42,7 @@ import cn.xeblog.commons.entity.pet.PetTrainingSkillDefinitionDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingStatusDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntExtraRewardDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntProbabilityDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntRecordDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntRedeemSkinDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinRequestDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinResultDTO;
@@ -129,6 +130,8 @@ public final class PetProfileService {
     private static final int TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN = 10;
     private static final int TREASURE_HUNT_LEGEND_SKIN_PITY_LIMIT = 300;
     private static final int TREASURE_HUNT_MULTI_SPIN_COUNT = 10;
+    private static final int TREASURE_HUNT_RECORD_PROFILE_LIMIT = 20;
+    private static final int TREASURE_HUNT_RECORD_RETAIN_LIMIT = 100;
     private static final int TREASURE_HUNT_ROLL_SCALE = 100_000;
     private static final int TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT = 10_000;
     private static final int FLIP7_DAILY_FREE_LIMIT = 1;
@@ -564,6 +567,8 @@ public final class PetProfileService {
             PetItemMapper itemMapper = session.getMapper(PetItemMapper.class);
             PetExploreChestMapper chestMapper = session.getMapper(PetExploreChestMapper.class);
             PetItemLedgerMapper ledgerMapper = session.getMapper(PetItemLedgerMapper.class);
+            PetTreasureHuntRecordMapper treasureHuntRecordMapper =
+                    session.getMapper(PetTreasureHuntRecordMapper.class);
             PetTrainingMapper trainingMapper = session.getMapper(PetTrainingMapper.class);
             PetDailyCounterMapper dailyCounterMapper = session.getMapper(PetDailyCounterMapper.class);
             Flip7GameState flip7State = ensureFlip7State(session.getMapper(PetFlip7StateMapper.class),
@@ -666,6 +671,8 @@ public final class PetProfileService {
             profile.setDailyCompanionStatus(buildDailyCompanionStatus(dailyCounterMapper, accountId, todayText, rows));
             profile.setDailySaying(PetDailySayingService.currentState(session, accountId, todayText));
             profile.setRecentSayings(PetDailySayingService.recentSayings(session, accountId));
+            profile.setTreasureHuntRecords(toTreasureHuntRecordDTOs(
+                    treasureHuntRecordMapper.listRecentByAccountId(accountId, TREASURE_HUNT_RECORD_PROFILE_LIMIT)));
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             profile.setShopStatus(buildShopStatus(dailyCounterMapper, accountId, now));
             profile.setArcadeStatus(buildArcadeStatus(dailyCounterMapper, accountId, todayText, flip7State));
@@ -1834,6 +1841,10 @@ public final class PetProfileService {
         int bonusSpinReward = 0;
         List<PetTreasureHuntExtraRewardDTO> extraRewards = new ArrayList<>();
         List<PetTreasureHuntSpinRoundDTO> rounds = new ArrayList<>();
+        PetTreasureHuntExtraRewardDTO extraReward = null;
+        List<String> resultSymbols = new ArrayList<>();
+        List<String> detailLines = new ArrayList<>();
+        String resultSpinSource = "paid";
 
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             ensureAssets(session, accountId);
@@ -1855,13 +1866,13 @@ public final class PetProfileService {
                     throw new IllegalArgumentException("寻宝奖励发放失败");
                 }
 
-                PetTreasureHuntExtraRewardDTO extraReward =
+                PetTreasureHuntExtraRewardDTO roundExtraReward =
                         settlement.extraRewards.isEmpty() ? null : settlement.extraRewards.get(0);
                 PetTreasureHuntSpinRoundDTO round = new PetTreasureHuntSpinRoundDTO(
                         payment.spinSource,
                         payment.paidCost,
                         settlement.boneReward,
-                        extraReward,
+                        roundExtraReward,
                         settlement.extraRewards,
                         settlement.bonusSpinReward,
                         settlement.symbols,
@@ -1873,26 +1884,69 @@ public final class PetProfileService {
                 bonusSpinReward += settlement.bonusSpinReward;
                 extraRewards.addAll(settlement.extraRewards);
             }
+            PetTreasureHuntSpinRoundDTO lastRound = rounds.get(rounds.size() - 1);
+            extraReward = extraRewards.isEmpty() ? null : extraRewards.get(0);
+            detailLines = spinCount == 1
+                    ? lastRound.getDetailLines()
+                    : summarizeTreasureHuntSpinRounds(rounds);
+            resultSymbols = lastRound.getSymbols() == null
+                    ? new ArrayList<>()
+                    : new ArrayList<>(lastRound.getSymbols());
+            resultSpinSource = spinCount == 1 ? lastRound.getSpinSource() : "multi";
+            insertTreasureHuntRecord(
+                    session.getMapper(PetTreasureHuntRecordMapper.class),
+                    accountId,
+                    spinCount,
+                    resultSpinSource,
+                    paidCost,
+                    boneReward,
+                    extraRewards,
+                    bonusSpinReward,
+                    resultSymbols,
+                    detailLines,
+                    now);
             session.commit();
         }
 
-        PetTreasureHuntSpinRoundDTO lastRound = rounds.get(rounds.size() - 1);
-        PetTreasureHuntExtraRewardDTO extraReward = extraRewards.isEmpty() ? null : extraRewards.get(0);
-        List<String> detailLines = spinCount == 1
-                ? lastRound.getDetailLines()
-                : summarizeTreasureHuntSpinRounds(rounds);
         return new PetTreasureHuntSpinResultDTO(
                 profileLocked(accountId),
-                spinCount == 1 ? lastRound.getSpinSource() : "multi",
+                resultSpinSource,
                 paidCost,
                 boneReward,
                 extraReward,
                 extraRewards,
                 bonusSpinReward,
-                lastRound.getSymbols(),
+                resultSymbols,
                 detailLines,
                 spinCount,
                 rounds);
+    }
+
+    private static void insertTreasureHuntRecord(PetTreasureHuntRecordMapper mapper,
+                                                 long accountId,
+                                                 int spinCount,
+                                                 String spinSource,
+                                                 int paidCost,
+                                                 int boneReward,
+                                                 List<PetTreasureHuntExtraRewardDTO> extraRewards,
+                                                 int bonusSpinReward,
+                                                 List<String> symbols,
+                                                 List<String> detailLines,
+                                                 long now) {
+        mapper.insert(PetTreasureHuntRecord.builder()
+                .recordId(UUID.randomUUID().toString())
+                .accountId(accountId)
+                .spinCount(spinCount)
+                .spinSource(spinSource)
+                .paidCost(paidCost)
+                .boneReward(boneReward)
+                .extraRewardText(treasureHuntRewardSummaryText(extraRewards, bonusSpinReward))
+                .bonusSpinReward(bonusSpinReward)
+                .symbolsJson(JSONUtil.toJsonStr(symbols == null ? new ArrayList<>() : symbols))
+                .detailLinesJson(JSONUtil.toJsonStr(detailLines == null ? new ArrayList<>() : detailLines))
+                .createdAt(now)
+                .build());
+        mapper.deleteOlderThanRecentLimit(accountId, TREASURE_HUNT_RECORD_RETAIN_LIMIT);
     }
 
     private static TreasureHuntSpinPayment consumeTreasureHuntSpin(PetAssetsMapper assetsMapper,
@@ -2813,6 +2867,23 @@ public final class PetProfileService {
             return null;
         }
         return quantity > 1 ? label + " ×" + quantity : label;
+    }
+
+    private static String treasureHuntRewardSummaryText(List<PetTreasureHuntExtraRewardDTO> extraRewards,
+                                                        int bonusSpinReward) {
+        List<String> parts = new ArrayList<>();
+        if (extraRewards != null) {
+            for (PetTreasureHuntExtraRewardDTO reward : extraRewards) {
+                String text = treasureHuntExtraRewardSummary(reward);
+                if (text != null) {
+                    parts.add(text);
+                }
+            }
+        }
+        if (bonusSpinReward > 0) {
+            parts.add(bonusSpinReward > 1 ? "额外寻宝次数 ×" + bonusSpinReward : "额外寻宝次数");
+        }
+        return parts.isEmpty() ? null : String.join("、", parts);
     }
 
     private static String treasureHuntSpinSourceLabel(String spinSource) {
@@ -4853,6 +4924,40 @@ public final class PetProfileService {
 
     private static PetCollectionItemDTO toDTO(PetCollectionRecord row) {
         return new PetCollectionItemDTO(row.getItemId(), row.getCount(), row.isDiscovered());
+    }
+
+    private static List<PetTreasureHuntRecordDTO> toTreasureHuntRecordDTOs(
+            List<PetTreasureHuntRecord> records) {
+        List<PetTreasureHuntRecordDTO> result = new ArrayList<>();
+        if (records == null) {
+            return result;
+        }
+        for (PetTreasureHuntRecord row : records) {
+            result.add(new PetTreasureHuntRecordDTO(
+                    row.getRecordId(),
+                    row.getSpinCount(),
+                    row.getSpinSource(),
+                    row.getPaidCost(),
+                    row.getBoneReward(),
+                    row.getExtraRewardText(),
+                    row.getBonusSpinReward(),
+                    parseTreasureHuntStringList(row.getSymbolsJson()),
+                    parseTreasureHuntStringList(row.getDetailLinesJson()),
+                    row.getCreatedAt()));
+        }
+        return result;
+    }
+
+    private static List<String> parseTreasureHuntStringList(String json) {
+        if (StrUtil.isBlank(json)) {
+            return new ArrayList<>();
+        }
+        try {
+            List<String> values = JSONUtil.toBean(json, new TypeReference<List<String>>() {}, false);
+            return values == null ? new ArrayList<>() : new ArrayList<>(values);
+        } catch (RuntimeException e) {
+            return new ArrayList<>();
+        }
     }
 
     private static List<String> resolveActiveDogIds(String savedDogIds, List<PetDogDTO> dogs) {
