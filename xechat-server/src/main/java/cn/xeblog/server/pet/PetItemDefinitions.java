@@ -49,10 +49,11 @@ public final class PetItemDefinitions {
             "item_gomoku_skin_starry",
             "item_gomoku_skin_fairy",
             "item_gomoku_skin_ink",
-            "item_gomoku_skin_toy",
+            "item_gomoku_skin_toy"
+    ));
+    private static final List<String> LEGENDARY_SKIN_ITEM_IDS = Collections.unmodifiableList(List.of(
             "item_gomoku_skin_deepsea"
     ));
-    private static final List<String> LEGENDARY_SKIN_ITEM_IDS = Collections.emptyList();
     private static final List<String> SKIN_ITEM_IDS = combineSkinItemIds();
     private static final List<PetItemDefinition> DEFINITIONS = createDefinitions();
     private static final Map<String, PetItemDefinition> DEFINITIONS_BY_ID = indexById(DEFINITIONS);
@@ -60,7 +61,7 @@ public final class PetItemDefinitions {
     private static final List<String> LUCKY_BAG_RARE_ITEM_IDS = itemIdsByRarity(Rarity.RARE);
     private static final List<String> LUCKY_BAG_EPIC_ITEM_IDS = itemIdsByRarity(Rarity.EPIC);
     private static final List<String> LUCKY_BAG_ITEM_IDS = luckyBagItemIds();
-    private static final List<String> DAILY_SKIN_SHOP_ITEM_IDS = SKIN_ITEM_IDS;
+    private static final List<String> DAILY_SKIN_SHOP_ITEM_IDS = combineDailySkinShopItemIds();
     private static final Set<String> SHOP_NORMAL_ITEM_IDS = Collections.unmodifiableSet(
             new LinkedHashSet<>(LUCKY_BAG_NORMAL_ITEM_IDS));
     private static final Map<String, Integer> SELL_ITEM_PRICES = sellPrices();
@@ -188,11 +189,21 @@ public final class PetItemDefinitions {
     }
 
     private static List<String> combineSkinItemIds() {
-        List<String> itemIds = new ArrayList<>();
-        itemIds.addAll(RARE_SKIN_ITEM_IDS);
-        itemIds.addAll(EPIC_SKIN_ITEM_IDS);
+        List<String> itemIds = new ArrayList<>(combineDailySkinShopItemIds());
         itemIds.addAll(LEGENDARY_SKIN_ITEM_IDS);
         return Collections.unmodifiableList(itemIds);
+    }
+
+    private static List<String> combineDailySkinShopItemIds() {
+        return Collections.unmodifiableList(List.of(
+                "item_minesweeper_skin_ink_wash",
+                "item_minesweeper_skin_toy",
+                "item_gomoku_skin_magic",
+                "item_gomoku_skin_starry",
+                "item_gomoku_skin_fairy",
+                "item_gomoku_skin_ink",
+                "item_gomoku_skin_toy"
+        ));
     }
 
     private static List<PetItemDefinition> createDefinitions() {
@@ -226,8 +237,8 @@ public final class PetItemDefinitions {
                 EPIC_SKIN_SELL_PRICE, Game.GOBANG);
         utility(items, "item_gomoku_skin_toy", Rarity.EPIC, ReleaseStage.CORE,
                 EPIC_SKIN_SELL_PRICE, Game.GOBANG);
-        utility(items, "item_gomoku_skin_deepsea", Rarity.EPIC, ReleaseStage.CORE,
-                EPIC_SKIN_SELL_PRICE, Game.GOBANG);
+        utility(items, "item_gomoku_skin_deepsea", Rarity.LEGENDARY, ReleaseStage.CORE,
+                LEGENDARY_SKIN_SELL_PRICE, Game.GOBANG);
 
         play(items, "item_mine_shield", Rarity.RARE, false, Game.MINESWEEPER);
         play(items, "item_mine_detector", Rarity.RARE, false, Game.MINESWEEPER);

@@ -219,6 +219,9 @@ public class PetActionHandlerTest {
         Assert.assertEquals(50, status.getPaidSpinCost());
         Assert.assertEquals(PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT, status.getSkinTicketItemId());
         Assert.assertEquals(10, status.getSkinTicketsPerSkin());
+        Assert.assertEquals(300, status.getLegendSkinPityLimit());
+        Assert.assertEquals(0, status.getLegendSkinPityProgress());
+        Assert.assertEquals(300, status.getLegendSkinPityRemaining());
         Assert.assertEquals(14, status.getBoneProbabilities().size());
         Assert.assertEquals(14, status.getExtraProbabilities().size());
         Assert.assertEquals(10000.0, probabilityTotal(status.getBoneProbabilities()), 0.000001);
@@ -246,6 +249,8 @@ public class PetActionHandlerTest {
                     handlerProcess(user, treasureHuntSpinRequest(906101L)));
 
             Assert.assertEquals("daily_free", firstResult.getSpinSource());
+            Assert.assertEquals(1, firstResult.getSpinCount());
+            Assert.assertEquals(1, firstResult.getRounds().size());
             Assert.assertEquals(0, firstResult.getPaidCost());
             Assert.assertEquals(30, firstResult.getBoneReward());
             Assert.assertNull(firstResult.getExtraReward());
@@ -256,6 +261,8 @@ public class PetActionHandlerTest {
                     .getTreasureHunt().getDailyFreeRemaining());
             Assert.assertEquals(0, firstResult.getProfile().getArcadeStatus()
                     .getTreasureHunt().getBonusSpins());
+            Assert.assertEquals(1, firstResult.getProfile().getArcadeStatus()
+                    .getTreasureHunt().getLegendSkinPityProgress());
 
             PetTreasureHuntSpinResultDTO secondResult = parseTreasureHuntSpinResult(
                     handlerProcess(user, treasureHuntSpinRequest(906102L)));
@@ -267,6 +274,8 @@ public class PetActionHandlerTest {
             Assert.assertEquals(310, secondResult.getProfile().getAssets().getBones());
             Assert.assertEquals(0, secondResult.getProfile().getArcadeStatus()
                     .getTreasureHunt().getDailyFreeRemaining());
+            Assert.assertEquals(2, secondResult.getProfile().getArcadeStatus()
+                    .getTreasureHunt().getLegendSkinPityProgress());
         } finally {
             setTreasureHuntSlotRollSupplier(originalSlotRollSupplier);
         }
@@ -369,6 +378,96 @@ public class PetActionHandlerTest {
         } finally {
             setTreasureHuntSlotRollSupplier(originalSlotRollSupplier);
             setTreasureHuntItemIndexSupplier(originalItemIndexSupplier);
+        }
+    }
+
+    @Test
+    public void treasureHuntLegendSkinDropsDeepseaAndResetsPity() {
+        User user = user(9067L, "treasure_legend_user");
+        insertDailyCounter(user.getAccountId(), "lifetime", "treasure_hunt_legend_skin_pity", 12);
+        IntSupplier originalSlotRollSupplier = setTreasureHuntSlotRollSupplier(
+                sequenceSupplier(99998, 0, 45316));
+        IntSupplier originalItemIndexSupplier = setTreasureHuntItemIndexSupplier(() -> 0);
+
+        try {
+            PetTreasureHuntSpinResultDTO result = parseTreasureHuntSpinResult(
+                    handlerProcess(user, treasureHuntSpinRequest(906701L)));
+
+            Assert.assertEquals(Arrays.asList("legend_skin", "bone_5", "bone_10"), result.getSymbols());
+            Assert.assertEquals(15, result.getBoneReward());
+            Assert.assertNotNull(result.getExtraReward());
+            Assert.assertEquals("legend_skin", result.getExtraReward().getType());
+            Assert.assertEquals("item_gomoku_skin_deepsea", result.getExtraReward().getItemId());
+            Assert.assertEquals(1, countItem(user.getAccountId(), "item_gomoku_skin_deepsea"));
+            Assert.assertEquals(0, countCounter(user.getAccountId(), "lifetime",
+                    "treasure_hunt_legend_skin_pity"));
+            Assert.assertEquals(0, result.getProfile().getArcadeStatus()
+                    .getTreasureHunt().getLegendSkinPityProgress());
+        } finally {
+            setTreasureHuntSlotRollSupplier(originalSlotRollSupplier);
+            setTreasureHuntItemIndexSupplier(originalItemIndexSupplier);
+        }
+    }
+
+    @Test
+    public void treasureHuntLegendPityTriggersOnThreeHundredthSpin() {
+        User user = user(9068L, "treasure_legend_pity_user");
+        insertDailyCounter(user.getAccountId(), "lifetime", "treasure_hunt_legend_skin_pity", 299);
+        IntSupplier originalSlotRollSupplier = setTreasureHuntSlotRollSupplier(
+                sequenceSupplier(0, 45316));
+        IntSupplier originalItemIndexSupplier = setTreasureHuntItemIndexSupplier(() -> 0);
+
+        try {
+            PetTreasureHuntSpinResultDTO result = parseTreasureHuntSpinResult(
+                    handlerProcess(user, treasureHuntSpinRequest(906801L)));
+
+            Assert.assertEquals(Arrays.asList("legend_skin", "bone_5", "bone_10"), result.getSymbols());
+            Assert.assertTrue(result.getRounds().get(0).isLegendSkinPityTriggered());
+            Assert.assertEquals("legend_skin", result.getExtraReward().getType());
+            Assert.assertEquals("item_gomoku_skin_deepsea", result.getExtraReward().getItemId());
+            Assert.assertEquals(0, result.getProfile().getArcadeStatus()
+                    .getTreasureHunt().getLegendSkinPityProgress());
+            Assert.assertTrue(result.getDetailLines().get(0).contains("传说皮肤保底触发"));
+        } finally {
+            setTreasureHuntSlotRollSupplier(originalSlotRollSupplier);
+            setTreasureHuntItemIndexSupplier(originalItemIndexSupplier);
+        }
+    }
+
+    @Test
+    public void treasureHuntMultiSpinConsumesSequentiallyAndReturnsRounds() {
+        User user = user(9069L, "treasure_multi_user");
+        IntSupplier originalSlotRollSupplier = setTreasureHuntSlotRollSupplier(
+                sequenceSupplier(
+                        0, 45316, 74652,
+                        0, 45316, 74652,
+                        0, 45316, 74652,
+                        0, 45316, 74652,
+                        0, 45316, 74652,
+                        0, 45316, 74652,
+                        0, 45316, 74652,
+                        0, 45316, 74652,
+                        0, 45316, 74652,
+                        0, 45316, 74652));
+
+        try {
+            PetTreasureHuntSpinResultDTO result = parseTreasureHuntSpinResult(
+                    handlerProcess(user, treasureHuntSpinRequest(906901L, 10)));
+
+            Assert.assertEquals("multi", result.getSpinSource());
+            Assert.assertEquals(10, result.getSpinCount());
+            Assert.assertEquals(10, result.getRounds().size());
+            Assert.assertEquals(450, result.getPaidCost());
+            Assert.assertEquals(300, result.getBoneReward());
+            Assert.assertEquals(150, result.getProfile().getAssets().getBones());
+            Assert.assertEquals("daily_free", result.getRounds().get(0).getSpinSource());
+            Assert.assertEquals("paid", result.getRounds().get(1).getSpinSource());
+            Assert.assertEquals(10, result.getProfile().getArcadeStatus()
+                    .getTreasureHunt().getLegendSkinPityProgress());
+            Assert.assertEquals(10, result.getDetailLines().size());
+            Assert.assertTrue(result.getDetailLines().get(0).contains("第 1 次"));
+        } finally {
+            setTreasureHuntSlotRollSupplier(originalSlotRollSupplier);
         }
     }
 
@@ -5026,9 +5125,16 @@ public class PetActionHandlerTest {
     }
 
     private static PetRequestDTO treasureHuntSpinRequest(long requestId) {
+        return treasureHuntSpinRequest(requestId, 1);
+    }
+
+    private static PetRequestDTO treasureHuntSpinRequest(long requestId, int spinCount) {
         PetRequestDTO request = new PetRequestDTO();
         request.setPetAction(PetAction.TREASURE_HUNT_SPIN);
         request.setRequestId(requestId);
+        if (spinCount > 1) {
+            request.setContent(Collections.singletonMap("spinCount", spinCount));
+        }
         return request;
     }
 

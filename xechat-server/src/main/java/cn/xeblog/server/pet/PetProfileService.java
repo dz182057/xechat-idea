@@ -43,7 +43,9 @@ import cn.xeblog.commons.entity.pet.PetTrainingStatusDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntExtraRewardDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntProbabilityDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntRedeemSkinDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinRequestDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinResultDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinRoundDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntStatusDTO;
 import cn.xeblog.commons.entity.pet.PetUseItemDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
@@ -125,6 +127,8 @@ public final class PetProfileService {
     private static final int TREASURE_HUNT_DAILY_FREE_LIMIT = 1;
     private static final int TREASURE_HUNT_PAID_COST = 50;
     private static final int TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN = 10;
+    private static final int TREASURE_HUNT_LEGEND_SKIN_PITY_LIMIT = 300;
+    private static final int TREASURE_HUNT_MULTI_SPIN_COUNT = 10;
     private static final int TREASURE_HUNT_ROLL_SCALE = 100_000;
     private static final int TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT = 10_000;
     private static final int FLIP7_DAILY_FREE_LIMIT = 1;
@@ -284,6 +288,8 @@ public final class PetProfileService {
     private static final String COUNTER_SHOP_SHELF_PAID_REFRESH = "shop_shelf_paid_refresh";
     private static final String DAILY_COUNTER_TREASURE_HUNT_FREE_USED = "treasure_hunt_free_used";
     private static final String COUNTER_TREASURE_HUNT_BONUS_SPINS = "treasure_hunt_bonus_spins";
+    private static final String COUNTER_TREASURE_HUNT_LEGEND_SKIN_PITY =
+            "treasure_hunt_legend_skin_pity";
     private static final String DAILY_COUNTER_FLIP7_FREE_USED = "flip7_free_used";
     private static final String DAILY_COUNTER_EXPLORE_START = "explore_start";
     private static final String DAILY_COUNTER_EXPLORE_ITEM_GAIN = "explore_item_gain";
@@ -682,6 +688,8 @@ public final class PetProfileService {
                 findDailyCounterValue(mapper, accountId, today, DAILY_COUNTER_TREASURE_HUNT_FREE_USED)));
         int bonusSpins = Math.max(0,
                 findLifetimeCounterValue(mapper, accountId, COUNTER_TREASURE_HUNT_BONUS_SPINS));
+        int legendSkinPityProgress = Math.min(TREASURE_HUNT_LEGEND_SKIN_PITY_LIMIT, Math.max(0,
+                findLifetimeCounterValue(mapper, accountId, COUNTER_TREASURE_HUNT_LEGEND_SKIN_PITY)));
         int flip7DailyFreeUsed = Math.min(FLIP7_DAILY_FREE_LIMIT, Math.max(0,
                 findDailyCounterValue(mapper, accountId, today, DAILY_COUNTER_FLIP7_FREE_USED)));
         List<PetTreasureHuntProbabilityDTO> rewardProbabilities = treasureRewardProbabilityRows();
@@ -694,6 +702,9 @@ public final class PetProfileService {
                 TREASURE_HUNT_PAID_COST,
                 PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT,
                 TREASURE_HUNT_SKIN_FRAGMENTS_PER_SKIN,
+                TREASURE_HUNT_LEGEND_SKIN_PITY_LIMIT,
+                legendSkinPityProgress,
+                Math.max(0, TREASURE_HUNT_LEGEND_SKIN_PITY_LIMIT - legendSkinPityProgress),
                 new ArrayList<>(rewardProbabilities),
                 new ArrayList<>(rewardProbabilities)),
                 new PetFlip7StatusDTO(
@@ -1167,8 +1178,13 @@ public final class PetProfileService {
     }
 
     public static PetTreasureHuntSpinResultDTO treasureHuntSpin(long accountId) {
+        return treasureHuntSpin(accountId, null);
+    }
+
+    public static PetTreasureHuntSpinResultDTO treasureHuntSpin(long accountId,
+                                                                 PetTreasureHuntSpinRequestDTO request) {
         synchronized (accountLock(accountId)) {
-            return treasureHuntSpinLocked(accountId);
+            return treasureHuntSpinLocked(accountId, normalizeTreasureHuntSpinCount(request));
         }
     }
 
@@ -1759,63 +1775,104 @@ public final class PetProfileService {
         return profile(accountId);
     }
 
-    private static PetTreasureHuntSpinResultDTO treasureHuntSpinLocked(long accountId) {
+    private static int normalizeTreasureHuntSpinCount(PetTreasureHuntSpinRequestDTO request) {
+        if (request == null || request.getSpinCount() <= 1) {
+            return 1;
+        }
+        if (request.getSpinCount() == TREASURE_HUNT_MULTI_SPIN_COUNT) {
+            return TREASURE_HUNT_MULTI_SPIN_COUNT;
+        }
+        throw new IllegalArgumentException("寻宝次数只能为 1 次或 10 次");
+    }
+
+    private static PetTreasureHuntSpinResultDTO treasureHuntSpinLocked(long accountId, int spinCount) {
         long now = System.currentTimeMillis();
         String today = LocalDate.now().toString();
-        String spinSource;
         int paidCost = 0;
-        int boneReward;
-        PetTreasureHuntExtraRewardDTO extraReward;
-        List<PetTreasureHuntExtraRewardDTO> extraRewards;
-        int bonusSpinReward;
-        List<String> symbols;
-        List<String> detailLines;
+        int boneReward = 0;
+        int bonusSpinReward = 0;
+        List<PetTreasureHuntExtraRewardDTO> extraRewards = new ArrayList<>();
+        List<PetTreasureHuntSpinRoundDTO> rounds = new ArrayList<>();
 
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             ensureAssets(session, accountId);
             PetAssetsMapper assetsMapper = session.getMapper(PetAssetsMapper.class);
             PetDailyCounterMapper counterMapper = session.getMapper(PetDailyCounterMapper.class);
-            int freeUsed = findDailyCounterValue(counterMapper, accountId, today,
-                    DAILY_COUNTER_TREASURE_HUNT_FREE_USED);
-            if (freeUsed < TREASURE_HUNT_DAILY_FREE_LIMIT
-                    && counterMapper.incrementIfUnderLimit(accountId, today,
-                    DAILY_COUNTER_TREASURE_HUNT_FREE_USED, TREASURE_HUNT_DAILY_FREE_LIMIT, now) > 0) {
-                spinSource = "daily_free";
-            } else if (findLifetimeCounterValue(counterMapper, accountId, COUNTER_TREASURE_HUNT_BONUS_SPINS) > 0
-                    && counterMapper.decrementIfEnough(accountId, COUNTER_DATE_LIFETIME,
-                    COUNTER_TREASURE_HUNT_BONUS_SPINS, 1, now) > 0) {
-                spinSource = "bonus";
-            } else {
-                if (assetsMapper.decrementBonesIfEnough(accountId, TREASURE_HUNT_PAID_COST, now) <= 0) {
-                    throw new IllegalArgumentException("骨头币不足，暂时不能继续寻宝");
-                }
-                spinSource = "paid";
-                paidCost = TREASURE_HUNT_PAID_COST;
-            }
 
-            TreasureHuntSettlement settlement = settleTreasureHuntSpin(session, accountId, now);
-            boneReward = settlement.boneReward;
-            extraRewards = settlement.extraRewards;
-            extraReward = extraRewards.isEmpty() ? null : extraRewards.get(0);
-            bonusSpinReward = settlement.bonusSpinReward;
-            symbols = settlement.symbols;
-            detailLines = settlement.detailLines;
-            if (boneReward > 0 && assetsMapper.addBones(accountId, boneReward, now) <= 0) {
-                throw new IllegalArgumentException("寻宝奖励发放失败");
+            for (int index = 0; index < spinCount; index++) {
+                TreasureHuntSpinPayment payment = consumeTreasureHuntSpin(
+                        assetsMapper, counterMapper, accountId, today, now);
+                int pityProgress = Math.min(TREASURE_HUNT_LEGEND_SKIN_PITY_LIMIT, Math.max(0,
+                        findLifetimeCounterValue(counterMapper, accountId,
+                                COUNTER_TREASURE_HUNT_LEGEND_SKIN_PITY)));
+                boolean legendSkinPityTriggered = pityProgress + 1 >= TREASURE_HUNT_LEGEND_SKIN_PITY_LIMIT;
+                TreasureHuntSettlement settlement = settleTreasureHuntSpin(
+                        session, accountId, now, legendSkinPityTriggered);
+
+                updateTreasureHuntLegendSkinPity(counterMapper, accountId, now, settlement.legendSkinHit);
+                if (settlement.boneReward > 0 && assetsMapper.addBones(accountId, settlement.boneReward, now) <= 0) {
+                    throw new IllegalArgumentException("寻宝奖励发放失败");
+                }
+
+                PetTreasureHuntExtraRewardDTO extraReward =
+                        settlement.extraRewards.isEmpty() ? null : settlement.extraRewards.get(0);
+                PetTreasureHuntSpinRoundDTO round = new PetTreasureHuntSpinRoundDTO(
+                        payment.spinSource,
+                        payment.paidCost,
+                        settlement.boneReward,
+                        extraReward,
+                        settlement.extraRewards,
+                        settlement.bonusSpinReward,
+                        settlement.symbols,
+                        settlement.detailLines,
+                        legendSkinPityTriggered);
+                rounds.add(round);
+                paidCost += payment.paidCost;
+                boneReward += settlement.boneReward;
+                bonusSpinReward += settlement.bonusSpinReward;
+                extraRewards.addAll(settlement.extraRewards);
             }
             session.commit();
         }
 
+        PetTreasureHuntSpinRoundDTO lastRound = rounds.get(rounds.size() - 1);
+        PetTreasureHuntExtraRewardDTO extraReward = extraRewards.isEmpty() ? null : extraRewards.get(0);
+        List<String> detailLines = spinCount == 1
+                ? lastRound.getDetailLines()
+                : summarizeTreasureHuntSpinRounds(rounds);
         return new PetTreasureHuntSpinResultDTO(
                 profileLocked(accountId),
-                spinSource,
+                spinCount == 1 ? lastRound.getSpinSource() : "multi",
                 paidCost,
                 boneReward,
                 extraReward,
                 extraRewards,
                 bonusSpinReward,
-                symbols,
-                detailLines);
+                lastRound.getSymbols(),
+                detailLines,
+                spinCount,
+                rounds);
+    }
+
+    private static TreasureHuntSpinPayment consumeTreasureHuntSpin(PetAssetsMapper assetsMapper,
+                                                                   PetDailyCounterMapper counterMapper,
+                                                                   long accountId, String today, long now) {
+        int freeUsed = findDailyCounterValue(counterMapper, accountId, today,
+                DAILY_COUNTER_TREASURE_HUNT_FREE_USED);
+        if (freeUsed < TREASURE_HUNT_DAILY_FREE_LIMIT
+                && counterMapper.incrementIfUnderLimit(accountId, today,
+                DAILY_COUNTER_TREASURE_HUNT_FREE_USED, TREASURE_HUNT_DAILY_FREE_LIMIT, now) > 0) {
+            return new TreasureHuntSpinPayment("daily_free", 0);
+        }
+        if (findLifetimeCounterValue(counterMapper, accountId, COUNTER_TREASURE_HUNT_BONUS_SPINS) > 0
+                && counterMapper.decrementIfEnough(accountId, COUNTER_DATE_LIFETIME,
+                COUNTER_TREASURE_HUNT_BONUS_SPINS, 1, now) > 0) {
+            return new TreasureHuntSpinPayment("bonus", 0);
+        }
+        if (assetsMapper.decrementBonesIfEnough(accountId, TREASURE_HUNT_PAID_COST, now) <= 0) {
+            throw new IllegalArgumentException("骨头币不足，暂时不能继续寻宝");
+        }
+        return new TreasureHuntSpinPayment("paid", TREASURE_HUNT_PAID_COST);
     }
 
     private static PetFlip7ActionResultDTO flip7PlayLocked(long accountId) {
@@ -2457,16 +2514,40 @@ public final class PetProfileService {
         return profile(accountId);
     }
 
-    private static TreasureHuntSettlement settleTreasureHuntSpin(SqlSession session, long accountId, long now) {
+    private static void updateTreasureHuntLegendSkinPity(PetDailyCounterMapper counterMapper, long accountId,
+                                                         long now, boolean legendSkinHit) {
+        if (legendSkinHit) {
+            counterMapper.deleteCounter(accountId, COUNTER_DATE_LIFETIME,
+                    COUNTER_TREASURE_HUNT_LEGEND_SKIN_PITY);
+            return;
+        }
+        if (counterMapper.incrementByIfUnderLimit(accountId, COUNTER_DATE_LIFETIME,
+                COUNTER_TREASURE_HUNT_LEGEND_SKIN_PITY, 1,
+                TREASURE_HUNT_LEGEND_SKIN_PITY_LIMIT - 1, now) <= 0) {
+            throw new IllegalArgumentException("寻宝保底计数更新失败");
+        }
+    }
+
+    private static TreasureHuntSettlement settleTreasureHuntSpin(SqlSession session, long accountId, long now,
+                                                                 boolean forceLegendSkin) {
         int boneReward = 0;
         int bonusSpinReward = 0;
+        boolean legendSkinHit = false;
         List<String> symbols = new ArrayList<>();
         List<String> detailLines = new ArrayList<>();
         List<PetTreasureHuntExtraRewardDTO> extraRewards = new ArrayList<>();
+        if (forceLegendSkin) {
+            detailLines.add("传说皮肤保底触发，本次寻宝锁定完整传说皮肤。");
+        }
 
         for (int index = 0; index < TREASURE_HUNT_SLOT_COUNT; index++) {
-            TreasureSlotOption rewardOption = pickTreasureRewardOption();
+            TreasureSlotOption rewardOption = forceLegendSkin && index == 0
+                    ? treasureHuntLegendSkinOption()
+                    : pickTreasureRewardOption();
             symbols.add(rewardOption.symbol);
+            if ("legend_skin".equals(rewardOption.type)) {
+                legendSkinHit = true;
+            }
             if (rewardOption.isBones()) {
                 boneReward += rewardOption.boneAmount;
                 detailLines.add("第 " + (index + 1) + " 格摇出" + rewardOption.label
@@ -2490,7 +2571,8 @@ public final class PetProfileService {
             detailLines.add("三格都是" + treasureSymbolLabel(symbols.get(0)) + "，额外附赠一次寻宝机会。");
         }
 
-        return new TreasureHuntSettlement(boneReward, extraRewards, bonusSpinReward, symbols, detailLines);
+        return new TreasureHuntSettlement(boneReward, extraRewards, bonusSpinReward, symbols, detailLines,
+                legendSkinHit);
     }
 
     private static TreasureSlotOption pickTreasureRewardOption() {
@@ -2503,6 +2585,15 @@ public final class PetProfileService {
             }
         }
         return TREASURE_HUNT_SLOT_OPTIONS.get(TREASURE_HUNT_SLOT_OPTIONS.size() - 1);
+    }
+
+    private static TreasureSlotOption treasureHuntLegendSkinOption() {
+        for (TreasureSlotOption option : TREASURE_HUNT_SLOT_OPTIONS) {
+            if ("legend_skin".equals(option.type)) {
+                return option;
+            }
+        }
+        return pickTreasureRewardOption();
     }
 
     private static PetTreasureHuntExtraRewardDTO applyTreasurePrizeReward(SqlSession session, long accountId,
@@ -2634,6 +2725,57 @@ public final class PetProfileService {
         }
         String label = StrUtil.blankToDefault(reward.getLabel(), option.label);
         return quantity > 1 ? label + " ×" + quantity : label;
+    }
+
+    private static List<String> summarizeTreasureHuntSpinRounds(List<PetTreasureHuntSpinRoundDTO> rounds) {
+        List<String> lines = new ArrayList<>();
+        for (int index = 0; index < rounds.size(); index++) {
+            PetTreasureHuntSpinRoundDTO round = rounds.get(index);
+            List<String> parts = new ArrayList<>();
+            if (round.getBoneReward() > 0) {
+                parts.add("骨头币 " + round.getBoneReward());
+            }
+            for (PetTreasureHuntExtraRewardDTO reward : round.getExtraRewards()) {
+                String text = treasureHuntExtraRewardSummary(reward);
+                if (text != null) {
+                    parts.add(text);
+                }
+            }
+            if (round.getBonusSpinReward() > 0) {
+                parts.add(round.getBonusSpinReward() > 1
+                        ? "额外寻宝次数 " + round.getBonusSpinReward()
+                        : "额外寻宝次数");
+            }
+            if (parts.isEmpty()) {
+                parts.add("奖励已发放");
+            }
+            String pityText = round.isLegendSkinPityTriggered() ? "，触发传说保底" : "";
+            lines.add("第 " + (index + 1) + " 次" + treasureHuntSpinSourceLabel(round.getSpinSource())
+                    + pityText + "：" + String.join("、", parts) + "。");
+        }
+        return lines;
+    }
+
+    private static String treasureHuntExtraRewardSummary(PetTreasureHuntExtraRewardDTO reward) {
+        if (reward == null) {
+            return null;
+        }
+        int quantity = Math.max(1, reward.getQuantity());
+        String label = StrUtil.blankToDefault(reward.getLabel(), reward.getItemId());
+        if (StrUtil.isBlank(label)) {
+            return null;
+        }
+        return quantity > 1 ? label + " ×" + quantity : label;
+    }
+
+    private static String treasureHuntSpinSourceLabel(String spinSource) {
+        if ("daily_free".equals(spinSource)) {
+            return "（免费）";
+        }
+        if ("bonus".equals(spinSource)) {
+            return "（额外次数）";
+        }
+        return "（付费）";
     }
 
     private static String treasureSymbolLabel(String symbol) {
@@ -4845,14 +4987,27 @@ public final class PetProfileService {
         private final int bonusSpinReward;
         private final List<String> symbols;
         private final List<String> detailLines;
+        private final boolean legendSkinHit;
 
         private TreasureHuntSettlement(int boneReward, List<PetTreasureHuntExtraRewardDTO> extraRewards,
-                                       int bonusSpinReward, List<String> symbols, List<String> detailLines) {
+                                       int bonusSpinReward, List<String> symbols, List<String> detailLines,
+                                       boolean legendSkinHit) {
             this.boneReward = boneReward;
             this.extraRewards = extraRewards;
             this.bonusSpinReward = bonusSpinReward;
             this.symbols = symbols;
             this.detailLines = detailLines;
+            this.legendSkinHit = legendSkinHit;
+        }
+    }
+
+    private static final class TreasureHuntSpinPayment {
+        private final String spinSource;
+        private final int paidCost;
+
+        private TreasureHuntSpinPayment(String spinSource, int paidCost) {
+            this.spinSource = spinSource;
+            this.paidCost = paidCost;
         }
     }
 

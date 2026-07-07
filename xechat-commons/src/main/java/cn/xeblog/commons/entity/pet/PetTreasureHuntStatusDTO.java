@@ -34,6 +34,21 @@ public class PetTreasureHuntStatusDTO implements Serializable {
     private int skinTicketsPerSkin;
 
     /**
+     * 传说皮肤保底次数。
+     */
+    private int legendSkinPityLimit;
+
+    /**
+     * 当前距离上次传说皮肤的寻宝次数。
+     */
+    private int legendSkinPityProgress;
+
+    /**
+     * 距离触发传说皮肤保底还需要的寻宝次数。
+     */
+    private int legendSkinPityRemaining;
+
+    /**
      * 兼容旧客户端，当前与 extraProbabilities 一样表示单格图标概率。
      */
     private List<PetTreasureHuntProbabilityDTO> boneProbabilities;

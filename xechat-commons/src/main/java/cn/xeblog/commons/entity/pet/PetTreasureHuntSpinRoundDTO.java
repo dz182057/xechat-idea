@@ -8,16 +8,14 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * 汪汪寻宝摇奖结果。
+ * 汪汪寻宝单次结算。
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class PetTreasureHuntSpinResultDTO implements Serializable {
+public class PetTreasureHuntSpinRoundDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
-
-    private PetProfileDTO profile;
 
     private String spinSource;
 
@@ -35,8 +33,6 @@ public class PetTreasureHuntSpinResultDTO implements Serializable {
 
     private List<String> detailLines;
 
-    private int spinCount;
-
-    private List<PetTreasureHuntSpinRoundDTO> rounds;
+    private boolean legendSkinPityTriggered;
 
 }

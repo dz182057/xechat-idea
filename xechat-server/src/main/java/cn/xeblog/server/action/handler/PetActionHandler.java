@@ -21,6 +21,7 @@ import cn.xeblog.commons.entity.pet.PetSetCompanionDTO;
 import cn.xeblog.commons.entity.pet.PetShopBuyDTO;
 import cn.xeblog.commons.entity.pet.PetTrainingSkillActionDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntRedeemSkinDTO;
+import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinRequestDTO;
 import cn.xeblog.commons.entity.pet.PetTreasureHuntSpinResultDTO;
 import cn.xeblog.commons.entity.pet.PetUseItemDTO;
 import cn.xeblog.commons.entity.pet.PetWalkDogDTO;
@@ -270,7 +271,8 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                 break;
             case TREASURE_HUNT_SPIN:
                 try {
-                    PetTreasureHuntSpinResultDTO spinResult = PetProfileService.treasureHuntSpin(user.getAccountId());
+                    PetTreasureHuntSpinResultDTO spinResult = PetProfileService.treasureHuntSpin(user.getAccountId(),
+                            toBean(body.getContent(), PetTreasureHuntSpinRequestDTO.class));
                     send(user, PetResponseDTO.ok(petAction, requestId, spinResult));
                     pushProfileUpdateToOtherConnections(user, spinResult.getProfile());
                 } catch (IllegalArgumentException e) {
