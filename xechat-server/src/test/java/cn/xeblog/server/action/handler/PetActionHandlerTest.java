@@ -341,9 +341,12 @@ public class PetActionHandlerTest {
             Assert.assertNotNull(result.getExtraReward());
             Assert.assertEquals("item", result.getExtraReward().getType());
             Assert.assertNotNull(result.getExtraReward().getItemId());
+            Assert.assertEquals("探雷骨头", result.getExtraReward().getLabel());
             Assert.assertEquals(1, result.getExtraReward().getQuantity());
             Assert.assertEquals(0, result.getBonusSpinReward());
             Assert.assertEquals(Arrays.asList("item_normal", "bone_5", "bone_10"), result.getSymbols());
+            Assert.assertTrue(result.getDetailLines().get(0).contains("探雷骨头"));
+            Assert.assertFalse(result.getDetailLines().get(0).contains(result.getExtraReward().getItemId()));
             Assert.assertEquals(315, result.getProfile().getAssets().getBones());
             Assert.assertEquals(0, result.getProfile().getArcadeStatus().getTreasureHunt().getBonusSpins());
             Assert.assertEquals(1, countItem(user.getAccountId(), result.getExtraReward().getItemId()));

@@ -395,6 +395,46 @@ public final class PetProfileService {
         return itemIds;
     }
 
+    private static Map<String, String> createTreasureHuntItemLabels() {
+        Map<String, String> labels = new HashMap<>();
+        labels.put("item_mine_mark", "探雷骨头");
+        labels.put("item_mine_safe_ping", "安全爪印");
+        labels.put("item_draw_advance_hint", "抢先闻闻");
+        labels.put("item_draw_pattern", "字形骨牌");
+        labels.put("item_draw_overlap", "沾边铃");
+        labels.put("item_sync_prophecy", "默契预言");
+        labels.put("item_quiz_score_pad", "护分爪垫");
+        labels.put("item_quiz_duel", "点名对决");
+        labels.put("item_gomoku_prediction", "猜你落这儿");
+        labels.put("item_battle_echo", "回声弹道");
+        labels.put("item_battle_direct_hit", "神投骨签");
+        labels.put("item_prophecy", "胜负预言贴");
+        labels.put("item_mine_shield", "排雷护盾");
+        labels.put("item_mine_detector", "金属探测器");
+        labels.put("item_mine_counter", "雷区计数器");
+        labels.put("item_draw_reveal_char", "漏字饼干");
+        labels.put("item_sync_perspective", "换位骨牌");
+        labels.put("item_quiz_wrong_option", "错项嗅探");
+        labels.put("item_gomoku_guard", "守门骨");
+        labels.put("item_gomoku_finisher", "妙手骨");
+        labels.put("item_turtle_probe", "试探骨");
+        labels.put("item_battle_pebble", "试抛小石子");
+        labels.put("item_battle_airbag", "气垫背包");
+        labels.put("item_wild_common", "万能狗鼻子");
+        labels.put("item_party_equalizer", "全员汪汪包");
+        labels.put("item_express", "加急快递");
+        labels.put("item_lucky_day", "狗运爆棚");
+        labels.put("item_minesweeper_skin_ink_wash", "扫雷水墨皮肤");
+        labels.put("item_minesweeper_skin_toy", "扫雷玩具皮肤");
+        labels.put("item_gomoku_skin_magic", "五子棋魔法夜境皮肤");
+        labels.put("item_gomoku_skin_starry", "五子棋星空幻境皮肤");
+        labels.put("item_gomoku_skin_fairy", "五子棋童话森林皮肤");
+        labels.put("item_gomoku_skin_ink", "五子棋水墨国风皮肤");
+        labels.put("item_gomoku_skin_toy", "五子棋玩具糖果皮肤");
+        labels.put("item_gomoku_skin_deepsea", "五子棋深海胜境皮肤");
+        return Collections.unmodifiableMap(labels);
+    }
+
     private static List<PetTrainingSkillDefinitionDTO> createTrainingSkillDefinitions() {
         List<PetTrainingSkillDefinitionDTO> definitions = new ArrayList<>();
         definitions.add(new PetTrainingSkillDefinitionDTO(TRAINING_SKILL_ROUTE, "熟路口令", "🧭",
@@ -437,6 +477,7 @@ public final class PetProfileService {
     private static final List<String> TREASURE_HUNT_EPIC_SKIN_ITEM_IDS = PetItemDefinitions.epicSkinItemIds();
     private static final List<String> TREASURE_HUNT_LEGENDARY_SKIN_ITEM_IDS =
             PetItemDefinitions.legendarySkinItemIds();
+    private static final Map<String, String> TREASURE_HUNT_ITEM_LABELS = createTreasureHuntItemLabels();
     private static final int TREASURE_HUNT_SLOT_COUNT = 3;
     private static final List<TreasureSlotOption> TREASURE_HUNT_SLOT_OPTIONS =
             Collections.unmodifiableList(Arrays.asList(
@@ -2633,7 +2674,8 @@ public final class PetProfileService {
             return grantTreasureHuntItem(session, accountId, PetItemDefinitions.ITEM_RARE_SKIN_FRAGMENT,
                     "稀有皮肤碎片", 1, TREASURE_HUNT_SKIN_FRAGMENT_MAX_GRANT, now, "rare_skin_fragment");
         }
-        return grantTreasureHuntItem(session, accountId, itemId, itemId, 1, MAX_ITEM_COUNT, now, "item");
+        return grantTreasureHuntItem(session, accountId, itemId, treasureHuntItemLabel(itemId), 1,
+                MAX_ITEM_COUNT, now, "item");
     }
 
     private static PetTreasureHuntExtraRewardDTO grantTreasureHuntSkinReward(SqlSession session, long accountId,
@@ -2643,7 +2685,8 @@ public final class PetProfileService {
                                                                              String fallbackFragmentLabel) {
         String skinItemId = selectUnownedItem(session.getMapper(PetItemMapper.class), accountId, skinPool, 1);
         if (skinItemId != null) {
-            return grantTreasureHuntItem(session, accountId, skinItemId, skinItemId, 1, 1, now, type);
+            return grantTreasureHuntItem(session, accountId, skinItemId, treasureHuntItemLabel(skinItemId),
+                    1, 1, now, type);
         }
         if (fallbackFragmentItemId == null) {
             return null;
@@ -2682,6 +2725,10 @@ public final class PetProfileService {
                 ITEM_LEDGER_GAIN, ITEM_LEDGER_SOURCE_TREASURE_HUNT, "treasure_hunt:" + UUID.randomUUID(),
                 null, now);
         return new PetTreasureHuntExtraRewardDTO(type, itemId, label, quantity);
+    }
+
+    private static String treasureHuntItemLabel(String itemId) {
+        return StrUtil.blankToDefault(TREASURE_HUNT_ITEM_LABELS.get(itemId), itemId);
     }
 
     private static String selectUnownedItem(PetItemMapper mapper, long accountId, List<String> itemIds, int maxCount) {
