@@ -435,6 +435,7 @@ public final class PetProfileService {
         labels.put("item_gomoku_skin_ink", "五子棋水墨国风皮肤");
         labels.put("item_gomoku_skin_toy", "五子棋玩具糖果皮肤");
         labels.put("item_gomoku_skin_deepsea", "五子棋深海胜境皮肤");
+        labels.put("item_gomoku_skin_lotus_ink", "五子棋水墨荷塘皮肤");
         return Collections.unmodifiableMap(labels);
     }
 
