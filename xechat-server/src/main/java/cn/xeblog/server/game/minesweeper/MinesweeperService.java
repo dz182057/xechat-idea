@@ -71,6 +71,9 @@ public final class MinesweeperService {
             case SHARED_MARK:
                 handleSharedMark(user, room, dto);
                 return true;
+            case SYNC_REQUEST:
+                sendRoomSnapshot(user, room);
+                return true;
             case RESTART_RESPONSE:
                 if (Boolean.TRUE.equals(dto.getRestartApproved())) {
                     STATES.remove(roomKey(room.getId()));
@@ -208,6 +211,16 @@ public final class MinesweeperService {
         MinesweeperDTO response = stateEvent(state, new OpenResult(), false, actorKey, dto.getX(), dto.getY());
         response.setEvent(MinesweeperDTO.Event.SHARED_MARK);
         sendToRoom(room, ResponseBuilder.build(user, response, MessageType.GAME));
+    }
+
+    private static void sendRoomSnapshot(User user, GameRoom room) {
+        RoomState state = STATES.get(roomKey(room.getId()));
+        if (state == null) {
+            return;
+        }
+        MinesweeperDTO snapshot = stateEvent(state, new OpenResult(), false, null, null, null);
+        snapshot.setEvent(MinesweeperDTO.Event.SYNC_SNAPSHOT);
+        user.send(ResponseBuilder.build(null, snapshot, MessageType.GAME));
     }
 
     private static void handleRoomItemUse(User user, GameRoom room, MinesweeperDTO dto) {

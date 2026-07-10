@@ -195,6 +195,38 @@ public class MinesweeperServiceTest {
     }
 
     @Test
+    public void roomSyncRequestShouldReturnCurrentSnapshotToRequester() {
+        User homeowner = user("home-channel-sync", 9351L, "home-sync");
+        User opponent = user("opponent-channel-sync", 9352L, "opponent-sync");
+        UserCache.add(homeowner.getId(), homeowner);
+        UserCache.add(opponent.getId(), opponent);
+        GameRoom room = room("minesweeper-room-sync-test", homeowner, opponent);
+        MinesweeperService.clearRoom(room.getId());
+        try {
+            MinesweeperDTO action = actionRequest(room.getId(), 9, 9, 10, 3, 5);
+            action.setActorKey(homeowner.getIdentityKey());
+            MinesweeperService.handleRoom(homeowner, room, action);
+            drain(homeowner);
+            drain(opponent);
+
+            MinesweeperDTO syncRequest = new MinesweeperDTO(room.getId());
+            syncRequest.setEvent(MinesweeperDTO.Event.SYNC_REQUEST);
+            Assert.assertTrue(MinesweeperService.handleRoom(opponent, room, syncRequest));
+            MinesweeperDTO snapshot = gameBody(readResponse(opponent));
+
+            Assert.assertEquals(MinesweeperDTO.Event.SYNC_SNAPSHOT, snapshot.getEvent());
+            Assert.assertEquals(Integer.valueOf(9), snapshot.getRows());
+            Assert.assertEquals(Integer.valueOf(9), snapshot.getCols());
+            Assert.assertEquals(Integer.valueOf(10), snapshot.getMines());
+            Assert.assertTrue(cell(snapshot, 3, 5).isOpened());
+        } finally {
+            MinesweeperService.clearRoom(room.getId());
+            UserCache.remove(homeowner.getId());
+            UserCache.remove(opponent.getId());
+        }
+    }
+
+    @Test
     public void roomShieldPlayItemShouldConsumeAndPreventFirstMineFailure() {
         User homeowner = user("home-channel-shield", 9401L, "home-shield");
         User opponent = user("opponent-channel-shield", 9402L, "opponent-shield");
