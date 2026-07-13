@@ -429,6 +429,7 @@ public final class PetProfileService {
         labels.put("item_lucky_day", "狗运爆棚");
         labels.put("item_minesweeper_skin_ink_wash", "扫雷水墨皮肤");
         labels.put("item_minesweeper_skin_toy", "扫雷玩具皮肤");
+        labels.put("item_minesweeper_skin_fleet", "扫雷星空舰队皮肤");
         labels.put("item_gomoku_skin_magic", "五子棋魔法夜境皮肤");
         labels.put("item_gomoku_skin_starry", "五子棋星空幻境皮肤");
         labels.put("item_gomoku_skin_fairy", "五子棋童话森林皮肤");

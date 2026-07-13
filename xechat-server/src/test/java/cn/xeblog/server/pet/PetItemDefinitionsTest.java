@@ -1,6 +1,7 @@
 package cn.xeblog.server.pet;
 
 import cn.xeblog.commons.enums.Game;
+import cn.xeblog.server.pet.PetItemDefinition.Rarity;
 import cn.xeblog.server.pet.PetItemDefinition.ReleaseStage;
 import org.junit.Assert;
 import org.junit.Test;
@@ -49,6 +50,7 @@ public class PetItemDefinitionsTest {
         Assert.assertEquals(Arrays.asList(
                 "item_minesweeper_skin_ink_wash",
                 "item_minesweeper_skin_toy",
+                "item_minesweeper_skin_fleet",
                 "item_gomoku_skin_magic",
                 "item_gomoku_skin_starry",
                 "item_gomoku_skin_fairy",
@@ -60,12 +62,17 @@ public class PetItemDefinitionsTest {
         Assert.assertEquals(Arrays.asList(
                 "item_minesweeper_skin_ink_wash",
                 "item_minesweeper_skin_toy",
+                "item_minesweeper_skin_fleet",
                 "item_gomoku_skin_magic",
                 "item_gomoku_skin_starry",
                 "item_gomoku_skin_fairy",
                 "item_gomoku_skin_ink",
                 "item_gomoku_skin_toy"
         ), PetItemDefinitions.dailySkinShopItemIds());
+        Assert.assertEquals(Arrays.asList(
+                "item_gomoku_skin_deepsea",
+                "item_gomoku_skin_lotus_ink"
+        ), PetItemDefinitions.legendarySkinItemIds());
         Assert.assertTrue(PetItemDefinitions.isSkinItem("item_gomoku_skin_magic"));
         Assert.assertTrue(PetItemDefinitions.isSkinItem("item_gomoku_skin_starry"));
         Assert.assertTrue(PetItemDefinitions.isSkinItem("item_gomoku_skin_deepsea"));
@@ -84,6 +91,7 @@ public class PetItemDefinitionsTest {
         Assert.assertEquals(Integer.valueOf(500), PetItemDefinitions.sellItemPrices().get("item_gomoku_oracle"));
         Assert.assertEquals(Integer.valueOf(420), PetItemDefinitions.sellItemPrices().get("item_gomoku_skin_magic"));
         Assert.assertEquals(Integer.valueOf(420), PetItemDefinitions.sellItemPrices().get("item_gomoku_skin_starry"));
+        Assert.assertEquals(Integer.valueOf(420), PetItemDefinitions.sellItemPrices().get("item_minesweeper_skin_fleet"));
         Assert.assertEquals(Integer.valueOf(2000), PetItemDefinitions.sellItemPrices().get("item_gomoku_skin_deepsea"));
         Assert.assertEquals(Integer.valueOf(2000), PetItemDefinitions.sellItemPrices().get("item_gomoku_skin_lotus_ink"));
 
@@ -91,6 +99,8 @@ public class PetItemDefinitionsTest {
                 PetItemDefinitions.byId("item_race_knee").getReleaseStage());
         Assert.assertEquals(PetItemDefinition.Slot.UTILITY,
                 PetItemDefinitions.byId("item_minesweeper_skin_toy").getSlot());
+        Assert.assertEquals(Rarity.EPIC,
+                PetItemDefinitions.byId("item_minesweeper_skin_fleet").getRarity());
 
         Assert.assertEquals(Integer.valueOf(40),
                 PetItemDefinitions.byId("item_battle_direct_hit").getInteractionRewardBones());

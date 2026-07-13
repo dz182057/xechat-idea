@@ -45,6 +45,7 @@ public final class PetItemDefinitions {
     ));
     private static final List<String> EPIC_SKIN_ITEM_IDS = Collections.unmodifiableList(List.of(
             "item_minesweeper_skin_ink_wash",
+            "item_minesweeper_skin_fleet",
             "item_gomoku_skin_magic",
             "item_gomoku_skin_starry",
             "item_gomoku_skin_fairy",
@@ -199,6 +200,7 @@ public final class PetItemDefinitions {
         return Collections.unmodifiableList(List.of(
                 "item_minesweeper_skin_ink_wash",
                 "item_minesweeper_skin_toy",
+                "item_minesweeper_skin_fleet",
                 "item_gomoku_skin_magic",
                 "item_gomoku_skin_starry",
                 "item_gomoku_skin_fairy",
@@ -228,6 +230,8 @@ public final class PetItemDefinitions {
                 EPIC_SKIN_SELL_PRICE, Game.MINESWEEPER);
         utility(items, "item_minesweeper_skin_toy", Rarity.RARE, ReleaseStage.CORE,
                 RARE_SKIN_SELL_PRICE, Game.MINESWEEPER);
+        utility(items, "item_minesweeper_skin_fleet", Rarity.EPIC, ReleaseStage.CORE,
+                EPIC_SKIN_SELL_PRICE, Game.MINESWEEPER);
         utility(items, "item_gomoku_skin_magic", Rarity.EPIC, ReleaseStage.CORE,
                 EPIC_SKIN_SELL_PRICE, Game.GOBANG);
         utility(items, "item_gomoku_skin_starry", Rarity.EPIC, ReleaseStage.CORE,
