@@ -2787,6 +2787,10 @@ public final class PetProfileService {
         return StrUtil.blankToDefault(TREASURE_HUNT_ITEM_LABELS.get(itemId), itemId);
     }
 
+    public static String getPetItemLabel(String itemId) {
+        return treasureHuntItemLabel(itemId);
+    }
+
     private static String selectUnownedItem(PetItemMapper mapper, long accountId, List<String> itemIds, int maxCount) {
         List<String> candidates = new ArrayList<>();
         for (String itemId : itemIds) {

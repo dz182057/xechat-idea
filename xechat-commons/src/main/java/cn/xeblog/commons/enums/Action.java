@@ -132,6 +132,11 @@ public enum Action {
     ADMIN_LIST_USERS,
 
     /**
+     * 管理员:查询狗狗之家皮肤列表
+     */
+    ADMIN_LIST_PET_SKINS,
+
+    /**
      * 管理员:设置账号状态
      */
     ADMIN_SET_USER_STATUS,

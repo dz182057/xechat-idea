@@ -160,6 +160,7 @@ public class RequestHandler {
                 || action == Action.LIST_FRIENDS
                 || action == Action.LIST_FRIEND_REQUESTS
                 || action == Action.ADMIN_LIST_DRAW_GUESS_WORDS
+                || action == Action.ADMIN_LIST_PET_SKINS
                 || action == Action.DRAW_GUESS_RANDOM_WORD
                 || action == Action.ADMIN_LIST_TACIT_QUIZ_QUESTIONS
                 || action == Action.TACIT_QUIZ_MY_RECORDS

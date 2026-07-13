@@ -88,6 +88,10 @@ public enum MessageType {
      */
     ADMIN_USER_LIST,
     /**
+     * 管理员狗狗之家皮肤列表响应
+     */
+    ADMIN_PET_SKIN_LIST,
+    /**
      * 你画我猜词库列表响应
      */
     DRAW_GUESS_WORD_BANK,
