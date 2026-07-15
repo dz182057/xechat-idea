@@ -41,6 +41,7 @@ public class DrawGuessServiceTest {
         DrawGuessService.clearRoom("draw-guess-score");
         DrawGuessService.clearRoom("draw-guess-timeout");
         DrawGuessService.clearRoom("draw-guess-reject");
+        DrawGuessService.clearRoom("draw-guess-undo");
         UserCache.clear();
     }
 
@@ -172,6 +173,29 @@ public class DrawGuessServiceTest {
         }
     }
 
+    @Test
+    public void undoShouldRemoveTheLastWholeStrokeAndKeepEarlierStrokes() {
+        GameRoom room = room("draw-guess-undo", 2, 1, 60);
+        List<User> players = players(2);
+        join(room, players);
+        DrawGuessService.applyRequestForTest(room, key(1), "玩家1", start(room, "小猫"), nowMs.get());
+
+        DrawGuessService.applyRequestForTest(room, key(1), "玩家1", draw(room, "stroke-1", 0), nowMs.get());
+        DrawGuessService.applyRequestForTest(room, key(1), "玩家1", draw(room, "stroke-2", 10), nowMs.get());
+        DrawGuessService.applyRequestForTest(room, key(1), "玩家1", draw(room, "stroke-2", 20), nowMs.get());
+
+        DrawGuessDTO undo = DrawGuessService.applyRequestForTest(
+                room,
+                key(1),
+                "玩家1",
+                base(room, DrawGuessDTO.Event.UNDO),
+                nowMs.get()).get(0);
+
+        assertEquals(DrawGuessDTO.Event.UNDO, undo.getEvent());
+        assertEquals(1, undo.getLines().size());
+        assertEquals("stroke-1", undo.getLines().get(0).getStrokeId());
+    }
+
     private GameRoom room(String id, int nums, int rounds, int timeLimitSeconds) {
         GameRoom room = new GameRoom();
         room.setId(id);
@@ -216,6 +240,20 @@ public class DrawGuessServiceTest {
     private DrawGuessDTO guess(GameRoom room, String text) {
         DrawGuessDTO dto = base(room, DrawGuessDTO.Event.GUESS);
         dto.setText(text);
+        return dto;
+    }
+
+    private DrawGuessDTO draw(GameRoom room, String strokeId, double offset) {
+        DrawGuessDTO dto = base(room, DrawGuessDTO.Event.DRAW);
+        DrawGuessDTO.Line line = new DrawGuessDTO.Line();
+        line.setX1(offset);
+        line.setY1(offset);
+        line.setX2(offset + 1);
+        line.setY2(offset + 1);
+        line.setColor("#111827");
+        line.setSize(5);
+        line.setStrokeId(strokeId);
+        dto.setLine(line);
         return dto;
     }
 

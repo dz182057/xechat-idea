@@ -27,6 +27,7 @@ public class DrawGuessDTO extends GameDTO {
     private String word;
     private String text;
     private Line line;
+    private List<Line> lines;
     private Integer roundNo;
     private Integer totalRounds;
     private Integer turnIndex;
@@ -51,6 +52,7 @@ public class DrawGuessDTO extends GameDTO {
     public enum Event {
         START_ROUND,
         DRAW,
+        UNDO,
         CLEAR,
         GUESS,
         CORRECT,
@@ -67,6 +69,7 @@ public class DrawGuessDTO extends GameDTO {
         private double y2;
         private String color;
         private int size;
+        private String strokeId;
     }
 
     @Data

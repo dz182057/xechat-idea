@@ -126,9 +126,12 @@ public final class DrawGuessService {
             case DRAW:
                 validateDrawerInput(room, playerKey);
                 return Collections.singletonList(drawEvent(room, playerKey, playerName, request));
+            case UNDO:
+                validateDrawerInput(room, playerKey);
+                return Collections.singletonList(undoEvent(room));
             case CLEAR:
                 validateDrawerInput(room, playerKey);
-                return Collections.singletonList(baseEvent(stateOf(room), DrawGuessDTO.Event.CLEAR));
+                return Collections.singletonList(clearEvent(room));
             case GUESS:
                 return handleGuess(room, playerKey, playerName, request, nowMs);
             case CORRECT:
@@ -211,8 +214,15 @@ public final class DrawGuessService {
             }
 
             List<DrawGuessDTO> events = new ArrayList<>();
-            events.add(guessEvent(state, playerKey, playerName, text));
+            DrawGuessDTO guess = guessEvent(state, playerKey, playerName, text);
+            events.add(guess);
             if (!normalizeText(text).equals(normalizeText(state.word))) {
+                if (state.overlapHintPending) {
+                    guess.setPetItemNotice(hasSharedCharacter(text, state.word)
+                            ? "沾边铃提示：猜测中至少有一个相同汉字。"
+                            : "沾边铃提示：猜测中没有相同汉字。");
+                    state.overlapHintPending = false;
+                }
                 return events;
             }
 
@@ -305,6 +315,36 @@ public final class DrawGuessService {
             if (request.getLine() != null) {
                 state.lines.add(request.getLine());
             }
+            return dto;
+        }
+    }
+
+    private static DrawGuessDTO undoEvent(GameRoom room) {
+        RoomState state = stateOf(room);
+        synchronized (state) {
+            if (!state.lines.isEmpty()) {
+                DrawGuessDTO.Line lastLine = state.lines.remove(state.lines.size() - 1);
+                String strokeId = trimToNull(lastLine.getStrokeId());
+                while (strokeId != null && !state.lines.isEmpty()) {
+                    DrawGuessDTO.Line previousLine = state.lines.get(state.lines.size() - 1);
+                    if (!strokeId.equals(trimToNull(previousLine.getStrokeId()))) {
+                        break;
+                    }
+                    state.lines.remove(state.lines.size() - 1);
+                }
+            }
+            DrawGuessDTO dto = baseEvent(state, DrawGuessDTO.Event.UNDO);
+            dto.setLines(new ArrayList<>(state.lines));
+            return dto;
+        }
+    }
+
+    private static DrawGuessDTO clearEvent(GameRoom room) {
+        RoomState state = stateOf(room);
+        synchronized (state) {
+            state.lines.clear();
+            DrawGuessDTO dto = baseEvent(state, DrawGuessDTO.Event.CLEAR);
+            dto.setLines(Collections.emptyList());
             return dto;
         }
     }
@@ -454,6 +494,7 @@ public final class DrawGuessService {
         state.petItemPattern = null;
         state.petItemRevealedMask = null;
         state.petItemHintDelaySeconds = null;
+        state.overlapHintPending = false;
         for (String itemId : resolveGuesserCarryItems(room, state.drawerId)) {
             applyPetAssistItem(state, itemId);
         }
@@ -477,6 +518,7 @@ public final class DrawGuessService {
         }
         if ("item_draw_overlap".equals(itemId)) {
             appendPetItemNotice(state, "沾边铃已触发：下一次猜错时会提示是否至少有一个相同汉字。");
+            state.overlapHintPending = true;
             return;
         }
         if ("item_draw_replay".equals(itemId)) {
@@ -550,6 +592,12 @@ public final class DrawGuessService {
             return;
         }
         state.petItemNotice = trimToNull(state.petItemNotice) == null ? next : state.petItemNotice + " " + next;
+    }
+
+    private static boolean hasSharedCharacter(String guess, String answer) {
+        Set<Integer> answerCharacters = new LinkedHashSet<>();
+        normalizeText(answer).codePoints().forEach(answerCharacters::add);
+        return normalizeText(guess).codePoints().anyMatch(answerCharacters::contains);
     }
 
     private static boolean allGuessersAnswered(RoomState state) {
@@ -727,6 +775,7 @@ public final class DrawGuessService {
         private String petItemPattern;
         private String petItemRevealedMask;
         private Integer petItemHintDelaySeconds;
+        private boolean overlapHintPending;
         private int timeoutVersion;
         private ScheduledFuture<?> timeoutTask;
     }
