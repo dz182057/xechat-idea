@@ -106,6 +106,16 @@ public final class UserCache {
      * <p>不同平台互不影响,例如同一账号可以同时在线 IDEA、DESKTOP、WEB。</p>
      */
     public static synchronized List<User> addReplacingAccountClient(User user) {
+        return addReplacingAccountClient(user, false);
+    }
+
+    /**
+     * 新登录接管同账号同平台在线席位。
+     *
+     * @param reconnected true 表示断线自动恢复；此时不同客户端 UUID 不能反向顶掉当前在线连接
+     * @return 被替换的旧连接；返回 null 表示自动恢复被当前在线客户端拒绝
+     */
+    public static synchronized List<User> addReplacingAccountClient(User user, boolean reconnected) {
         if (user == null) {
             return Collections.emptyList();
         }
@@ -117,6 +127,13 @@ public final class UserCache {
         List<User> replacedUsers = new ArrayList<>(1);
         String key = accountClientKey(user);
         if (key != null) {
+            String currentChannelId = ACCOUNT_CLIENT_TO_ID.get(key);
+            User currentUser = currentChannelId == null ? null : ID_TO_USER.get(currentChannelId);
+            if (reconnected && currentUser != null
+                    && !currentUser.getId().equals(user.getId())
+                    && !sameClient(currentUser, user)) {
+                return null;
+            }
             String oldChannelId = ACCOUNT_CLIENT_TO_ID.put(key, user.getId());
             if (oldChannelId != null && !oldChannelId.equals(user.getId())) {
                 User oldUser = ID_TO_USER.get(oldChannelId);
@@ -326,6 +343,12 @@ public final class UserCache {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static boolean sameClient(User left, User right) {
+        return left != null && right != null
+                && !isBlank(left.getUuid())
+                && left.getUuid().equals(right.getUuid());
     }
 
 }

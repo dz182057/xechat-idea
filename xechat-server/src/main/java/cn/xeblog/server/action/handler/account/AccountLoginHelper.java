@@ -57,6 +57,13 @@ public final class AccountLoginHelper {
     public static boolean onLoginSuccess(ChannelHandlerContext ctx, Account account,
                                          String token, long expiresAt,
                                          String uuid, Platform platform) {
+        return onLoginSuccess(ctx, account, token, expiresAt, uuid, platform, false);
+    }
+
+    public static boolean onLoginSuccess(ChannelHandlerContext ctx, Account account,
+                                         String token, long expiresAt,
+                                         String uuid, Platform platform,
+                                         boolean reconnected) {
         String id = ChannelAction.getId(ctx);
         String ip = IpUtil.getIpByCtx(ctx);
         IpRegion region = IpUtil.getRegionByIp(ip);
@@ -79,7 +86,7 @@ public final class AccountLoginHelper {
         // 注册用户:回读 envelope 一并下发,客户端拿 e2eeSalt+envelope 派生 masterKey 并解出私钥
         String identityEnvelope = E2EEKeyService.findIdentityEnvelope(account.getAccountId());
         return notifyOnline(user, token, expiresAt,
-                account.getE2eeSalt(), account.getIdentityPubKey(), identityEnvelope);
+                account.getE2eeSalt(), account.getIdentityPubKey(), identityEnvelope, reconnected);
     }
 
     /**
@@ -104,9 +111,21 @@ public final class AccountLoginHelper {
     public static boolean notifyOnline(User user, String token, long expiresAt,
                                        String e2eeSalt, String identityPubKey,
                                        String identityPrivKeyEnvelope) {
+        return notifyOnline(user, token, expiresAt, e2eeSalt, identityPubKey,
+                identityPrivKeyEnvelope, false);
+    }
+
+    private static boolean notifyOnline(User user, String token, long expiresAt,
+                                        String e2eeSalt, String identityPubKey,
+                                        String identityPrivKeyEnvelope,
+                                        boolean reconnected) {
         boolean samePlatformAlreadyOnline = user.getAccountId() > 0
                 && UserCache.hasOnlineByAccountAndPlatform(user.getAccountId(), user.getPlatform());
-        List<User> replacedUsers = UserCache.addReplacingAccountClient(user);
+        List<User> replacedUsers = UserCache.addReplacingAccountClient(user, reconnected);
+        if (replacedUsers == null) {
+            user.send(ResponseBuilder.system(ACCOUNT_REPLACED_MESSAGE));
+            return false;
+        }
         ChannelAction.add(user.getChannel());
         kickReplacedUsers(replacedUsers, user.getId());
         GameRoom reconnectedRoom = GameRoomCache.reconnectRoom(user);

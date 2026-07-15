@@ -66,7 +66,7 @@ public class LoginWithTokenActionHandler implements ActionHandler<LoginDTO> {
             }
 
             if (AccountLoginHelper.onLoginSuccess(ctx, account, sess.getToken(),
-                    sess.getExpiresAt(), uuid, platform)) {
+                    sess.getExpiresAt(), uuid, platform, body.isReconnected())) {
                 log.info("账号 {} 上线(token 登录,滑动续期)", account.getAccount());
             }
         } catch (Exception e) {

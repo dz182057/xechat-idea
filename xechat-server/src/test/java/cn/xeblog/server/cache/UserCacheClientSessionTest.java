@@ -9,6 +9,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class UserCacheClientSessionTest {
@@ -89,6 +90,34 @@ public class UserCacheClientSessionTest {
         assertEquals(2, UserCache.getByAccount(1001L).size());
         assertTrue(UserCache.getByAccount(1001L).contains(idea));
         assertTrue(UserCache.getByAccount(1001L).contains(nextDesktop));
+    }
+
+    @Test
+    public void reconnectedOldClientCannotReplaceCurrentDifferentClient() {
+        User current = user("channel-current", 1001L, "client-new", Platform.WEB);
+        User oldReconnect = user("channel-old-reconnect", 1001L, "client-old", Platform.WEB);
+
+        assertTrue(UserCache.addReplacingAccountClient(current).isEmpty());
+
+        List<User> kickedUsers = UserCache.addReplacingAccountClient(oldReconnect, true);
+
+        assertNull(kickedUsers);
+        assertEquals(1, UserCache.getByAccount(1001L).size());
+        assertTrue(UserCache.getByAccount(1001L).contains(current));
+    }
+
+    @Test
+    public void reconnectedSameClientCanReplaceStaleConnection() {
+        User stale = user("channel-stale", 1001L, "client-same", Platform.WEB);
+        User reconnected = user("channel-reconnected", 1001L, "client-same", Platform.WEB);
+
+        assertTrue(UserCache.addReplacingAccountClient(stale).isEmpty());
+
+        List<User> kickedUsers = UserCache.addReplacingAccountClient(reconnected, true);
+
+        assertEquals(1, kickedUsers.size());
+        assertTrue(kickedUsers.contains(stale));
+        assertTrue(UserCache.getByAccount(1001L).contains(reconnected));
     }
 
     private static User user(String channelId, long accountId, String uuid, Platform platform) {
