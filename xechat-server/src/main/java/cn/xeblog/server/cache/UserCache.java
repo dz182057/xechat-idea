@@ -112,7 +112,7 @@ public final class UserCache {
     /**
      * 新登录接管同账号同平台在线席位。
      *
-     * @param reconnected true 表示断线自动恢复；此时不同客户端 UUID 不能反向顶掉当前在线连接
+     * @param reconnected true 表示断线自动恢复；此时不能顶掉任何仍在线的连接
      * @return 被替换的旧连接；返回 null 表示自动恢复被当前在线客户端拒绝
      */
     public static synchronized List<User> addReplacingAccountClient(User user, boolean reconnected) {
@@ -130,8 +130,7 @@ public final class UserCache {
             String currentChannelId = ACCOUNT_CLIENT_TO_ID.get(key);
             User currentUser = currentChannelId == null ? null : ID_TO_USER.get(currentChannelId);
             if (reconnected && currentUser != null
-                    && !currentUser.getId().equals(user.getId())
-                    && !sameClient(currentUser, user)) {
+                    && !currentUser.getId().equals(user.getId())) {
                 return null;
             }
             String oldChannelId = ACCOUNT_CLIENT_TO_ID.put(key, user.getId());
@@ -343,12 +342,6 @@ public final class UserCache {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
-    }
-
-    private static boolean sameClient(User left, User right) {
-        return left != null && right != null
-                && !isBlank(left.getUuid())
-                && left.getUuid().equals(right.getUuid());
     }
 
 }

@@ -107,16 +107,20 @@ public class UserCacheClientSessionTest {
     }
 
     @Test
-    public void reconnectedSameClientCanReplaceStaleConnection() {
-        User stale = user("channel-stale", 1001L, "client-same", Platform.WEB);
+    public void reconnectedClientCannotReplaceCurrentSessionEvenWithSameUuid() {
+        User current = user("channel-current", 1001L, "client-same", Platform.WEB);
         User reconnected = user("channel-reconnected", 1001L, "client-same", Platform.WEB);
 
-        assertTrue(UserCache.addReplacingAccountClient(stale).isEmpty());
+        assertTrue(UserCache.addReplacingAccountClient(current).isEmpty());
 
         List<User> kickedUsers = UserCache.addReplacingAccountClient(reconnected, true);
 
-        assertEquals(1, kickedUsers.size());
-        assertTrue(kickedUsers.contains(stale));
+        assertNull(kickedUsers);
+        assertTrue(UserCache.getByAccount(1001L).contains(current));
+
+        UserCache.remove(current.getId());
+
+        assertTrue(UserCache.addReplacingAccountClient(reconnected, true).isEmpty());
         assertTrue(UserCache.getByAccount(1001L).contains(reconnected));
     }
 
