@@ -36,4 +36,6 @@ public class QuickQuizRecord {
 
     private String optionsJson;
 
+    private int correctAnswerIndex;
+
 }

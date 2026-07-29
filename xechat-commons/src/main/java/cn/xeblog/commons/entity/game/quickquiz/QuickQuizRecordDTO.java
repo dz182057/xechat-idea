@@ -23,6 +23,8 @@ public class QuickQuizRecordDTO implements Serializable {
 
     private List<String> options;
 
+    private int correctAnswerIndex;
+
     private long createdAt;
 
     private List<QuickQuizAnswerViewDTO> answers;

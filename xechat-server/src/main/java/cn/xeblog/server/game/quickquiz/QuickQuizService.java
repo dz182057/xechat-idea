@@ -19,6 +19,10 @@ import org.apache.ibatis.session.SqlSession;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
 /**
@@ -36,6 +40,11 @@ public final class QuickQuizService {
     private static final String ITEM_PROPHECY = "item_prophecy";
     private static final int SCORE_PAD_BLOCK_POINTS = 2;
     private static final int DUEL_REWARD_BONES = 30;
+    private static final ScheduledExecutorService TIMEOUT_EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread thread = new Thread(r, "quick-quiz-timeout");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
 
@@ -176,6 +185,7 @@ public final class QuickQuizService {
         if (state != null) {
             synchronized (state) {
                 state.closed = true;
+                cancelTimeout(state);
                 refundEntryFees(state);
                 state.prizePool = state.chargedEntryFees.values().stream().mapToInt(Integer::intValue).sum();
                 if (state.chargedEntryFees.isEmpty()) {
@@ -276,6 +286,7 @@ public final class QuickQuizService {
         if (state.closed || state.currentQuestion == null) {
             return null;
         }
+        cancelTimeout(state);
         for (User player : state.players) {
             String key = playerKey(player);
             if (!state.answers.containsKey(key)) {
@@ -352,7 +363,48 @@ public final class QuickQuizService {
                 callerQuestion = visibleQuestion;
             }
         }
+        scheduleTimeout(room, state, dto);
         return callerQuestion;
+    }
+
+    private static void scheduleTimeout(GameRoom room, RoomState state, QuickQuizQuestionDTO question) {
+        cancelTimeout(state);
+        long delay = Math.max(1L, question.getDeadlineAt() - now() + 1L);
+        long questionId = question.getId();
+        state.timeoutTask = TIMEOUT_EXECUTOR.schedule(
+                () -> timeoutQuestion(room, questionId),
+                delay,
+                TimeUnit.MILLISECONDS);
+    }
+
+    private static void timeoutQuestion(GameRoom room, long questionId) {
+        RoomState state = ROOM_STATES.get(room.getId());
+        if (state == null) {
+            return;
+        }
+        synchronized (state) {
+            if (state.closed || state.currentQuestion == null || state.currentQuestion.getId() != questionId) {
+                return;
+            }
+            long now = now();
+            if (now <= state.currentQuestion.getDeadlineAt()) {
+                scheduleTimeout(room, state, state.currentQuestion);
+                return;
+            }
+            try {
+                revealLocked(room, state, now, QuickQuizService::randomAvailableQuestion);
+            } catch (RuntimeException e) {
+                log.error("快问快答超时自动结算失败 -> roomId: {}, questionId: {}", room.getId(), questionId, e);
+            }
+        }
+    }
+
+    private static void cancelTimeout(RoomState state) {
+        ScheduledFuture<?> task = state.timeoutTask;
+        state.timeoutTask = null;
+        if (task != null) {
+            task.cancel(false);
+        }
     }
 
     private static void applyWrongOptionItems(GameRoom room, RoomState state) {
@@ -498,7 +550,7 @@ public final class QuickQuizService {
         if (winners <= 0) {
             return 0;
         }
-        int reward = (state.prizePool + winners - 1) / winners;
+        int reward = state.prizePool / winners;
         for (QuickQuizPlayerScoreDTO ranking : rankings) {
             if (ranking.isWinner()) {
                 long accountId = state.accountIds.getOrDefault(ranking.getPlayerKey(), 0L);
@@ -819,6 +871,7 @@ public final class QuickQuizService {
                         row.getQuestionId(),
                         row.getQuestion(),
                         JSONUtil.toList(row.getOptionsJson(), String.class),
+                        row.getCorrectAnswerIndex(),
                         row.getCreatedAt(),
                         new ArrayList<>(),
                         null,
@@ -871,6 +924,7 @@ public final class QuickQuizService {
         private int roundNo;
         private int prizePool;
         private long matchStartedAt;
+        private ScheduledFuture<?> timeoutTask;
         private boolean economyApplied;
         private boolean rewardApplied;
         private boolean closed;

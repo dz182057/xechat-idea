@@ -4,6 +4,7 @@ import cn.xeblog.commons.entity.User;
 import cn.xeblog.commons.entity.game.GameRoom;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizAnswerResultDTO;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizQuestionDTO;
+import cn.xeblog.commons.entity.game.quickquiz.QuickQuizRecordDTO;
 import cn.xeblog.commons.entity.game.quickquiz.QuickQuizSubmitAnswerDTO;
 import cn.xeblog.commons.enums.Game;
 import cn.xeblog.server.cache.UserCache;
@@ -95,7 +96,7 @@ public class QuickQuizServiceTest {
     }
 
     @Test
-    public void finalResultShouldSplitPrizeByCeilingForTiedWinners() {
+    public void finalResultShouldSplitPrizeEquallyForTiedWinners() {
         GameRoom room = room(3, 5, 120);
         room.setQuickQuizQuestionCount(1);
         List<User> players = players(3);
@@ -114,8 +115,8 @@ public class QuickQuizServiceTest {
 
         assertTrue(result.isFinished());
         assertEquals(15, result.getPrizePool());
-        assertEquals(8, result.getRewardPerWinner());
-        assertEquals(Arrays.asList("1:-5", "2:-5", "3:-5", "1:8", "2:8"), economyEvents);
+        assertEquals(7, result.getRewardPerWinner());
+        assertEquals(Arrays.asList("1:-5", "2:-5", "3:-5", "1:7", "2:7"), economyEvents);
         assertEquals(Arrays.asList(
                 "1:" + Game.QUICK_QUIZ + ":true:61",
                 "2:" + Game.QUICK_QUIZ + ":true:61",
@@ -205,6 +206,27 @@ public class QuickQuizServiceTest {
         join(room, players);
 
         QuickQuizService.nextQuestion(players.get(0), room, (usedQuestionIds) -> question(401L, "超员题", 0, 5));
+    }
+
+    @Test
+    public void recordDtoShouldExposeCorrectAnswerIndex() {
+        QuickQuizRecord row = QuickQuizRecord.builder()
+                .roomId("room-1")
+                .questionId(501L)
+                .question("以下哪项是正确答案？")
+                .optionsJson("[\"选项一\",\"选项二\",\"选项三\"]")
+                .correctAnswerIndex(1)
+                .playerKey("alice")
+                .username("Alice")
+                .choiceIndex(-1)
+                .choiceText("不作答")
+                .createdAt(1_000L)
+                .build();
+
+        QuickQuizRecordDTO record = QuickQuizService.toRecordDTOs(Arrays.asList(row), "alice").get(0);
+
+        assertEquals(1, record.getCorrectAnswerIndex());
+        assertEquals(Arrays.asList("选项一", "选项二", "选项三"), record.getOptions());
     }
 
     private GameRoom room(int nums, int entryFee, int timeLimitSeconds) {
