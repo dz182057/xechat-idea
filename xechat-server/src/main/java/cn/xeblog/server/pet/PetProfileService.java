@@ -174,6 +174,8 @@ public final class PetProfileService {
     private static final int SHIBA_CHECKIN_PITY_COUNT = 30;
     private static final int SHIBA_DAILY_CHECKIN_ROLL_THRESHOLD = 3;
     private static final String SHIBA_UNLOCK_COLLECTION_ID = "breed_shiba_unlocked";
+    private static final String COUNTER_SHIBA_UNLOCK_CELEBRATION_ACKNOWLEDGED =
+            "shiba_unlock_celebration_acknowledged";
     private static final int BACK_HILL_COLLECTION_CHECKIN_BONUS_BONES = 5;
     private static final String TRAINING_DEFINITION_VERSION = "v5-explore-training";
     private static final String TRAINING_SKILL_ROUTE = "explore_route";
@@ -521,6 +523,25 @@ public final class PetProfileService {
         }
     }
 
+    public static PetProfileDTO acknowledgeShibaUnlockCelebration(long accountId) {
+        synchronized (accountLock(accountId)) {
+            long now = System.currentTimeMillis();
+            try (SqlSession session = DbInitializer.factory().openSession(false)) {
+                PetCollectionMapper collectionMapper = session.getMapper(PetCollectionMapper.class);
+                if (findCollectionCount(collectionMapper, accountId, SHIBA_UNLOCK_COLLECTION_ID) > 0) {
+                    session.getMapper(PetDailyCounterMapper.class).incrementIfUnderLimit(
+                            accountId,
+                            COUNTER_DATE_LIFETIME,
+                            COUNTER_SHIBA_UNLOCK_CELEBRATION_ACKNOWLEDGED,
+                            1,
+                            now);
+                    session.commit();
+                }
+            }
+            return profileLocked(accountId);
+        }
+    }
+
     public static boolean hasPositiveItem(long accountId, String itemId) {
         String normalizedItemId = StrUtil.trim(itemId);
         if (accountId <= 0L || StrUtil.isBlank(normalizedItemId)) {
@@ -586,6 +607,8 @@ public final class PetProfileService {
             List<PetItemRecord> itemRows = itemMapper.listPositiveByAccountId(accountId);
             List<PetExploreChestRecord> chestRows = chestMapper.listAvailableByAccountId(accountId);
             List<PetCollectionRecord> collectionRows = collectionMapper.listByAccountId(accountId);
+            boolean shibaUnlocked = collectionRows.stream().anyMatch((row) ->
+                    SHIBA_UNLOCK_COLLECTION_ID.equals(row.getItemId()) && row.getCount() > 0);
             PetCheckinMapper checkinMapper = session.getMapper(PetCheckinMapper.class);
             PetCheckinRecord todayCheckin = checkinMapper.findByAccountIdAndDate(accountId, todayText);
             List<String> checkedDatesInMonth = checkinMapper.listDatesByAccountIdAndMonthPrefix(
@@ -678,6 +701,10 @@ public final class PetProfileService {
             profile.setTrainingStatus(buildTrainingStatus(trainingMapper, accountId));
             profile.setShopStatus(buildShopStatus(dailyCounterMapper, accountId, now));
             profile.setArcadeStatus(buildArcadeStatus(dailyCounterMapper, accountId, todayText, flip7State));
+            profile.setShibaUnlockCelebrationPending(
+                    shibaUnlocked
+                            && findLifetimeCounterValue(dailyCounterMapper, accountId,
+                            COUNTER_SHIBA_UNLOCK_CELEBRATION_ACKNOWLEDGED) <= 0);
             if (energyRefreshed || legacyChestMigrated || exploreSettled || dogStageChanged || flip7State.changed) {
                 session.commit();
             }

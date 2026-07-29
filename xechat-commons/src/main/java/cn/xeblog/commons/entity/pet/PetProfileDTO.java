@@ -56,6 +56,8 @@ public class PetProfileDTO implements Serializable {
 
     private List<PetTreasureHuntRecordDTO> treasureHuntRecords;
 
+    private boolean shibaUnlockCelebrationPending;
+
     public static PetProfileDTO empty(long accountId) {
         PetProfileDTO profile = new PetProfileDTO();
         profile.setAccountId(accountId);

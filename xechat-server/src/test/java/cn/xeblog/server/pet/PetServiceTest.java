@@ -81,6 +81,7 @@ public class PetServiceTest {
         Assert.assertEquals(LocalDate.now().toString(), profile.getAssets().getEnergyDate());
         Assert.assertTrue(profile.getDogs().isEmpty());
         Assert.assertNotNull(profile.getCheckinStatus().getServerDate());
+        Assert.assertFalse(profile.isShibaUnlockCelebrationPending());
     }
 
     @Test
@@ -325,7 +326,9 @@ public class PetServiceTest {
         User user = accountUser(990013L);
         PetService.adopt(user, adopt("corgi", "小白"));
         insertCheckins(user.getAccountId(), 29);
-        PetProfileService.checkin(user.getAccountId());
+        PetProfileDTO unlockedProfile = PetProfileService.checkin(user.getAccountId());
+
+        Assert.assertTrue(unlockedProfile.isShibaUnlockCelebrationPending());
 
         PetProfileDTO afterAdopt = PetService.adopt(user, adopt("shiba", "小柴"));
 
@@ -333,6 +336,11 @@ public class PetServiceTest {
         PetDogDTO shiba = afterAdopt.getDogs().get(1);
         Assert.assertEquals("小柴", shiba.getName());
         Assert.assertEquals("shiba", shiba.getBreed());
+
+        PetProfileDTO acknowledgedProfile =
+                PetProfileService.acknowledgeShibaUnlockCelebration(user.getAccountId());
+        Assert.assertFalse(acknowledgedProfile.isShibaUnlockCelebrationPending());
+        Assert.assertFalse(PetProfileService.profile(user.getAccountId()).isShibaUnlockCelebrationPending());
     }
 
     @Test

@@ -111,6 +111,11 @@ public class PetActionHandler extends AbstractActionHandler<PetRequestDTO> {
                     send(user, PetResponseDTO.fail(petAction, requestId, e.getMessage()));
                 }
                 break;
+            case ACK_SHIBA_UNLOCK_CELEBRATION:
+                PetProfileDTO acknowledgedProfile =
+                        PetProfileService.acknowledgeShibaUnlockCelebration(user.getAccountId());
+                sendProfileResult(user, petAction, requestId, acknowledgedProfile);
+                break;
             case WALK_DOG:
                 try {
                     PetProfileDTO walkedProfile = PetProfileService.walkDog(user.getAccountId(),
