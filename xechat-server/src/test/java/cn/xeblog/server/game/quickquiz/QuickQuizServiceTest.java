@@ -76,7 +76,12 @@ public class QuickQuizServiceTest {
         assertNull(QuickQuizService.submitAnswer(players.get(1), room,
                 new QuickQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "上海")));
         QuickQuizAnswerResultDTO result = QuickQuizService.submitAnswer(players.get(2), room,
-                new QuickQuizSubmitAnswerDTO(room.getId(), question.getId(), -1, "不作答"));
+                new QuickQuizSubmitAnswerDTO(room.getId(), question.getId(), -1, "不作答"),
+                (usedQuestionIds) -> question(202L, "第二题", 0, 8));
+        QuickQuizQuestionDTO nextQuestion = QuickQuizService.nextQuestion(
+                players.get(0), room, (usedQuestionIds) -> {
+                    throw new AssertionError("双方答完后应已自动下发第二题");
+                });
 
         assertEquals(5, result.getAnswers().get(0).getPointsDelta());
         assertEquals(-2, result.getAnswers().get(1).getPointsDelta());
@@ -85,6 +90,8 @@ public class QuickQuizServiceTest {
         assertEquals(0, result.getRankings().get(1).getScore());
         assertEquals(-2, result.getRankings().get(2).getScore());
         assertFalse(result.isFinished());
+        assertEquals("双方答完后应自动进入第 2 题", 202L, nextQuestion.getId());
+        assertEquals(2, nextQuestion.getRoundNo());
     }
 
     @Test

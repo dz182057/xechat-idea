@@ -112,7 +112,10 @@ public final class QuickQuizService {
                 if (now <= state.currentQuestion.getDeadlineAt()) {
                     return copyQuestion(state.currentQuestion, false);
                 }
-                revealLocked(room, state, now);
+                revealLocked(room, state, now, questionPicker);
+                if (state.currentQuestion != null) {
+                    return copyQuestion(state.currentQuestion, false);
+                }
             }
             if (state.roundNo >= room.getQuickQuizQuestionCount()) {
                 throw new IllegalArgumentException("本局题目已经答完");
@@ -122,6 +125,11 @@ public final class QuickQuizService {
     }
 
     public static QuickQuizAnswerResultDTO submitAnswer(User user, GameRoom room, QuickQuizSubmitAnswerDTO body) {
+        return submitAnswer(user, room, body, QuickQuizService::randomAvailableQuestion);
+    }
+
+    static QuickQuizAnswerResultDTO submitAnswer(User user, GameRoom room, QuickQuizSubmitAnswerDTO body,
+                                                  QuestionPicker questionPicker) {
         RoomState state = ROOM_STATES.get(room.getId());
         if (state == null) {
             throw new IllegalArgumentException("当前没有可提交的题目");
@@ -139,12 +147,12 @@ public final class QuickQuizService {
             }
             long now = now();
             if (now > state.currentQuestion.getDeadlineAt()) {
-                return revealLocked(room, state, now);
+                return revealLocked(room, state, now, questionPicker);
             }
             QuickQuizAnswerViewDTO answer = buildAnswer(user, room, state.currentQuestion, body, now, state);
             state.answers.putIfAbsent(key, answer);
             if (state.answers.size() >= state.expectedPlayerKeys.size()) {
-                return revealLocked(room, state, now);
+                return revealLocked(room, state, now, questionPicker);
             }
             return null;
         }
@@ -263,7 +271,8 @@ public final class QuickQuizService {
         return Math.max(1, score / 2);
     }
 
-    private static QuickQuizAnswerResultDTO revealLocked(GameRoom room, RoomState state, long now) {
+    private static QuickQuizAnswerResultDTO revealLocked(GameRoom room, RoomState state, long now,
+                                                          QuestionPicker questionPicker) {
         if (state.closed || state.currentQuestion == null) {
             return null;
         }
@@ -308,6 +317,10 @@ public final class QuickQuizService {
             state.closed = true;
             state.prizePool = 0;
             ROOM_STATES.remove(room.getId(), state);
+        } else {
+            List<User> nextPlayers = getRoomUsers(room);
+            validatePlayers(nextPlayers);
+            startNextQuestion(room, state, nextPlayers, questionPicker);
         }
         return result;
     }
