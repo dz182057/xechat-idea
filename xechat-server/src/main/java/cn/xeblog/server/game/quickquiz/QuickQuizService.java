@@ -39,7 +39,7 @@ public final class QuickQuizService {
 
     private static final Map<String, RoomState> ROOM_STATES = new ConcurrentHashMap<>();
 
-    private static Economy economy = PetService::changeBones;
+    private static Economy economy = PetService::changeBonesOnly;
     private static MiniGameRewards miniGameRewards = MiniGameRewards.petService();
     private static LongSupplier nowSupplier = System::currentTimeMillis;
 
@@ -197,7 +197,7 @@ public final class QuickQuizService {
     }
 
     static void resetEconomy() {
-        economy = PetService::changeBones;
+        economy = PetService::changeBonesOnly;
     }
 
     static void setMiniGameRewardsForTest(MiniGameRewards testMiniGameRewards) {

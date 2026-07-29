@@ -9,6 +9,8 @@ import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.After;
 import org.junit.Test;
+import org.sqlite.SQLiteConfig;
+import org.sqlite.SQLiteConnection;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
@@ -67,7 +69,7 @@ public class DbInitializerConnectionTest {
     }
 
     @Test
-    public void pooledConnectionsShouldUseWalAndWaitForConcurrentSqliteWrites() throws Exception {
+    public void pooledConnectionsShouldUseWalImmediateTransactionsAndWaitForConcurrentSqliteWrites() throws Exception {
         Path root = Files.createTempDirectory("xechat-db-busy-timeout-test");
         System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());
         GlobalConfig.initDataPath(null);
@@ -80,6 +82,9 @@ public class DbInitializerConnectionTest {
             assertEquals("wal", scalarText(conn, "PRAGMA journal_mode"));
             assertEquals(1, scalarLong(conn, "PRAGMA synchronous"));
             assertEquals(5000, scalarLong(conn, "PRAGMA busy_timeout"));
+            SQLiteConnection sqlite = conn.unwrap(SQLiteConnection.class);
+            assertEquals(SQLiteConfig.TransactionMode.IMMEDIATE,
+                    sqlite.getConnectionConfig().getTransactionMode());
         }
     }
 

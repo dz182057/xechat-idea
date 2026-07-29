@@ -1301,6 +1301,12 @@ public final class PetProfileService {
         }
     }
 
+    public static void changeBonesOnly(long accountId, int delta) {
+        synchronized (accountLock(accountId)) {
+            changeBonesOnlyLocked(accountId, delta);
+        }
+    }
+
     public static PetProfileDTO applyGameTraining(long accountId, Game game, boolean win) {
         synchronized (accountLock(accountId)) {
             return applyGameTrainingLocked(accountId, game, win);
@@ -2939,8 +2945,13 @@ public final class PetProfileService {
     }
 
     private static PetProfileDTO changeBonesLocked(long accountId, int delta) {
+        changeBonesOnlyLocked(accountId, delta);
+        return profile(accountId);
+    }
+
+    private static void changeBonesOnlyLocked(long accountId, int delta) {
         if (delta == 0) {
-            return profile(accountId);
+            return;
         }
         long now = System.currentTimeMillis();
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
@@ -2955,7 +2966,6 @@ public final class PetProfileService {
             }
             session.commit();
         }
-        return profile(accountId);
     }
 
     private static PetProfileDTO applyGameTrainingLocked(long accountId, Game game, boolean win) {

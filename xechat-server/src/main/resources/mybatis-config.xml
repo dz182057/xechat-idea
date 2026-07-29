@@ -20,6 +20,7 @@
                 <property name="url" value="${jdbc.url}"/>
                 <property name="driver.journal_mode" value="WAL"/>
                 <property name="driver.synchronous" value="NORMAL"/>
+                <property name="driver.transaction_mode" value="IMMEDIATE"/>
                 <property name="driver.busy_timeout" value="5000"/>
             </dataSource>
         </environment>

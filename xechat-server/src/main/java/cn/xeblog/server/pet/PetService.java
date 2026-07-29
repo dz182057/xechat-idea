@@ -48,6 +48,11 @@ public final class PetService {
         return PetProfileService.changeBones(accountId, delta);
     }
 
+    public static void changeBonesOnly(long accountId, int delta) {
+        ensureAccountId(accountId);
+        PetProfileService.changeBonesOnly(accountId, delta);
+    }
+
     public static PetProfileDTO applyGameTraining(long accountId, Game game, boolean win) {
         ensureAccountId(accountId);
         return PetProfileService.applyGameTraining(accountId, game, win);
