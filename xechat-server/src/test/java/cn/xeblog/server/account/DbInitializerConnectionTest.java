@@ -67,7 +67,7 @@ public class DbInitializerConnectionTest {
     }
 
     @Test
-    public void pooledConnectionsShouldWaitForConcurrentSqliteWrites() throws Exception {
+    public void pooledConnectionsShouldUseWalAndWaitForConcurrentSqliteWrites() throws Exception {
         Path root = Files.createTempDirectory("xechat-db-busy-timeout-test");
         System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());
         GlobalConfig.initDataPath(null);
@@ -75,11 +75,11 @@ public class DbInitializerConnectionTest {
 
         DbInitializer.initIfNeeded();
 
-        try (SqlSession session = DbInitializer.factory().openSession(true);
-             Statement st = session.getConnection().createStatement();
-             ResultSet rs = st.executeQuery("PRAGMA busy_timeout")) {
-            rs.next();
-            assertEquals(5000, rs.getInt(1));
+        try (SqlSession session = DbInitializer.factory().openSession(true)) {
+            Connection conn = session.getConnection();
+            assertEquals("wal", scalarText(conn, "PRAGMA journal_mode"));
+            assertEquals(1, scalarLong(conn, "PRAGMA synchronous"));
+            assertEquals(5000, scalarLong(conn, "PRAGMA busy_timeout"));
         }
     }
 

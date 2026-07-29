@@ -18,6 +18,8 @@
             <dataSource type="POOLED">
                 <property name="driver" value="org.sqlite.JDBC"/>
                 <property name="url" value="${jdbc.url}"/>
+                <property name="driver.journal_mode" value="WAL"/>
+                <property name="driver.synchronous" value="NORMAL"/>
                 <property name="driver.busy_timeout" value="5000"/>
             </dataSource>
         </environment>
