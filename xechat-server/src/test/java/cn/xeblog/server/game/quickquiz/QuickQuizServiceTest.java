@@ -38,10 +38,10 @@ public class QuickQuizServiceTest {
 
     @After
     public void tearDown() {
+        QuickQuizService.clearRoom("quick-quiz-test");
         QuickQuizService.resetEconomy();
         QuickQuizService.resetMiniGameRewards();
         QuickQuizService.resetNowSupplier();
-        QuickQuizService.clearRoom("quick-quiz-test");
         UserCache.clear();
     }
 
@@ -103,6 +103,7 @@ public class QuickQuizServiceTest {
                 new QuickQuizSubmitAnswerDTO(room.getId(), question.getId(), 0, "2"));
         QuickQuizAnswerResultDTO result = QuickQuizService.submitAnswer(players.get(2), room,
                 new QuickQuizSubmitAnswerDTO(room.getId(), question.getId(), -1, "不作答"));
+        QuickQuizService.clearRoom(room);
 
         assertTrue(result.isFinished());
         assertEquals(15, result.getPrizePool());
@@ -112,6 +113,48 @@ public class QuickQuizServiceTest {
                 "1:" + Game.QUICK_QUIZ + ":true:61",
                 "2:" + Game.QUICK_QUIZ + ":true:61",
                 "3:" + Game.QUICK_QUIZ + ":false:61"), miniGameEvents);
+        assertEquals(0, QuickQuizService.poolOf(room.getId()));
+    }
+
+    @Test
+    public void clearRoomShouldRefundChargedEntryFeesOnce() {
+        GameRoom room = room(3, 5, 120);
+        List<User> players = players(3);
+        join(room, players);
+        QuickQuizService.nextQuestion(
+                players.get(0), room, (usedQuestionIds) -> question(303L, "异常退出题", 0, 10));
+
+        QuickQuizService.clearRoom(room);
+        QuickQuizService.clearRoom(room);
+
+        assertEquals(Arrays.asList(
+                "1:-5", "2:-5", "3:-5",
+                "1:5", "2:5", "3:5"), economyEvents);
+        assertEquals(0, QuickQuizService.poolOf(room.getId()));
+    }
+
+    @Test
+    public void failedRefundShouldRemainPendingForNextRoomCleanup() {
+        AtomicInteger refundFailures = new AtomicInteger();
+        QuickQuizService.setEconomyForTest((accountId, delta) -> {
+            if (accountId == 2L && delta > 0 && refundFailures.getAndIncrement() == 0) {
+                economyEvents.add("2:5:失败");
+                throw new IllegalStateException("模拟退款失败");
+            }
+            economyEvents.add(accountId + ":" + delta);
+        });
+        GameRoom room = room(3, 5, 120);
+        List<User> players = players(3);
+        join(room, players);
+        QuickQuizService.nextQuestion(
+                players.get(0), room, (usedQuestionIds) -> question(304L, "退款重试题", 0, 10));
+
+        QuickQuizService.clearRoom(room);
+        QuickQuizService.clearRoom(room);
+
+        assertEquals(Arrays.asList(
+                "1:-5", "2:-5", "3:-5",
+                "1:5", "2:5:失败", "3:5", "2:5"), economyEvents);
         assertEquals(0, QuickQuizService.poolOf(room.getId()));
     }
 

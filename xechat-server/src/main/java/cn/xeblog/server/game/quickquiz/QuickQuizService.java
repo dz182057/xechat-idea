@@ -164,11 +164,15 @@ public final class QuickQuizService {
     }
 
     public static void clearRoom(String roomId) {
-        RoomState state = ROOM_STATES.remove(roomId);
+        RoomState state = ROOM_STATES.get(roomId);
         if (state != null) {
             synchronized (state) {
                 state.closed = true;
-                state.prizePool = 0;
+                refundEntryFees(state);
+                state.prizePool = state.chargedEntryFees.values().stream().mapToInt(Integer::intValue).sum();
+                if (state.chargedEntryFees.isEmpty()) {
+                    ROOM_STATES.remove(roomId, state);
+                }
             }
         }
     }
@@ -407,11 +411,13 @@ public final class QuickQuizService {
             for (User player : players) {
                 economy.change(player.getAccountId(), -entryFee);
                 charged.add(player);
+                state.chargedEntryFees.put(player.getAccountId(), entryFee);
             }
         } catch (RuntimeException e) {
             for (User player : charged) {
                 try {
                     economy.change(player.getAccountId(), entryFee);
+                    state.chargedEntryFees.remove(player.getAccountId());
                 } catch (RuntimeException rollbackError) {
                     log.error("快问快答报名费回滚失败 -> accountId: {}", player.getAccountId(), rollbackError);
                 }
@@ -420,6 +426,18 @@ public final class QuickQuizService {
         }
         state.prizePool = entryFee * players.size();
         state.economyApplied = true;
+    }
+
+    private static void refundEntryFees(RoomState state) {
+        for (Map.Entry<Long, Integer> entry : new ArrayList<>(state.chargedEntryFees.entrySet())) {
+            try {
+                economy.change(entry.getKey(), entry.getValue());
+                state.chargedEntryFees.remove(entry.getKey());
+            } catch (RuntimeException e) {
+                log.error("快问快答异常结束返还报名费失败 -> roomId: {}, accountId: {}",
+                        state.roomId, entry.getKey(), e);
+            }
+        }
     }
 
     private static void applyMiniGameRewards(RoomState state, List<QuickQuizPlayerScoreDTO> rankings, long now) {
@@ -478,6 +496,7 @@ public final class QuickQuizService {
             }
         }
         state.rewardApplied = true;
+        state.chargedEntryFees.clear();
         return reward;
     }
 
@@ -830,6 +849,7 @@ public final class QuickQuizService {
         private final Map<String, QuickQuizAnswerViewDTO> answers = new ConcurrentHashMap<>();
         private final Map<String, Integer> scores = new HashMap<>();
         private final Map<String, Long> accountIds = new HashMap<>();
+        private final Map<Long, Integer> chargedEntryFees = new LinkedHashMap<>();
         private final Set<String> expectedPlayerKeys = new HashSet<>();
         private final List<User> players = new ArrayList<>();
         private final Map<String, Integer> disabledWrongOptionByPlayerKey = new HashMap<>();
