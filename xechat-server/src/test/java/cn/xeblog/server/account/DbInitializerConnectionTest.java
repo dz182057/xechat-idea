@@ -67,6 +67,23 @@ public class DbInitializerConnectionTest {
     }
 
     @Test
+    public void pooledConnectionsShouldWaitForConcurrentSqliteWrites() throws Exception {
+        Path root = Files.createTempDirectory("xechat-db-busy-timeout-test");
+        System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());
+        GlobalConfig.initDataPath(null);
+        resetFactory();
+
+        DbInitializer.initIfNeeded();
+
+        try (SqlSession session = DbInitializer.factory().openSession(true);
+             Statement st = session.getConnection().createStatement();
+             ResultSet rs = st.executeQuery("PRAGMA busy_timeout")) {
+            rs.next();
+            assertEquals(5000, rs.getInt(1));
+        }
+    }
+
+    @Test
     public void initShouldMigrateLegacyQuickQuizRowsToTacitQuizAndClearQuickQuizTables() throws Exception {
         Path root = Files.createTempDirectory("xechat-db-migrate-quick-quiz-test");
         System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, root.toString());
