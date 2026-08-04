@@ -31,12 +31,14 @@ public class GameRoomEndpointRoutingTest {
     private final String roomId = "endpoint-routing-room";
     private final String dogBattleRoomId = "dog-battle-reconnect-routing-room";
     private final String gobangRegretRoomId = "gobang-regret-routing-room";
+    private final String tacitQuizLeaveRoomId = "tacit-quiz-leave-routing-room";
 
     @After
     public void tearDown() {
         GameRoomCache.removeRoom(roomId);
         GameRoomCache.removeRoom(dogBattleRoomId);
         GameRoomCache.removeRoom(gobangRegretRoomId);
+        GameRoomCache.removeRoom(tacitQuizLeaveRoomId);
         DogBattleService.clearRoom(dogBattleRoomId);
         GobangPetItemService.clearRoom(gobangRegretRoomId);
         UserCache.clear();
@@ -188,6 +190,32 @@ public class GameRoomEndpointRoutingTest {
         Assert.assertEquals("MOVE", replay.getEvent());
         Assert.assertEquals(2, replay.getTurn());
         Assert.assertEquals(1, replay.getMoveSeq());
+    }
+
+    @Test
+    public void tacitQuizActiveLeaveClosesRoomForRemainingPlayer() throws Exception {
+        User homeowner = user("tacit-quiz-owner-channel", 4001L, "房主");
+        User opponent = user("tacit-quiz-opponent-channel", 4002L, "对手");
+        addOnline(homeowner);
+        addOnline(opponent);
+
+        GameRoom room = GameRoomCache.seize(tacitQuizLeaveRoomId);
+        room.setGame(Game.TACIT_QUIZ);
+        room.setNums(2);
+        room.setHomeowner(homeowner);
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), homeowner));
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), opponent));
+
+        GameRoomActionHandler handler = new GameRoomActionHandler();
+        GameRoomMsgDTO left = new GameRoomMsgDTO(room.getId(), Game.TACIT_QUIZ,
+                GameRoomMsgDTO.MsgType.PLAYER_LEFT, null);
+        handler.process(opponent, room, left);
+
+        Response homeownerResponse = readResponse(homeowner);
+        Assert.assertEquals(MessageType.GAME_ROOM, homeownerResponse.getType());
+        GameRoomMsgDTO close = (GameRoomMsgDTO) homeownerResponse.getBody();
+        Assert.assertEquals(GameRoomMsgDTO.MsgType.ROOM_CLOSE, close.getMsgType());
+        Assert.assertNull(GameRoomCache.getGameRoom(room.getId()));
     }
 
     private static User user(String channelId, long accountId, String username) {

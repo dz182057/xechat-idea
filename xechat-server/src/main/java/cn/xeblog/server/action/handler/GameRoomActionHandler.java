@@ -288,10 +288,12 @@ public class GameRoomActionHandler extends AbstractGameActionHandler<GameRoomMsg
             DogBattleService.clearRoom(gameRoom.getId());
             DrawGuessService.clearRoom(gameRoom);
             GobangPetItemService.clearRoom(gameRoom);
-            Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);
-            sendMsg(gameRoom, resp);
-            if (homeowner) {
+            if (homeowner || gameRoom.getGame() == Game.TACIT_QUIZ) {
+                // 默契问答只有两位玩家，任一方主动离开都应关闭整间房。
                 roomClose(user, gameRoom);
+            } else {
+                Response resp = ResponseBuilder.build(user, body, MessageType.GAME_ROOM);
+                sendMsg(gameRoom, resp);
             }
         }
     }

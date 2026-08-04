@@ -83,6 +83,26 @@ public class GameRoomCacheStatusTest {
     }
 
     @Test
+    public void tacitQuizDisconnectKeepsSeatForReconnectWhileOpponentIsActive() {
+        User homeowner = user("tacit-channel-owner", 1011L, "房主");
+        User opponent = user("tacit-channel-opponent", 1012L, "对手");
+        GameRoom room = room("room-tacit-reconnect", Game.TACIT_QUIZ, 2);
+        room.setHomeowner(homeowner);
+
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), homeowner));
+        Assert.assertTrue(GameRoomCache.joinRoom(room.getId(), opponent));
+
+        Assert.assertFalse(GameRoomCache.disconnectRoomConnection(room.getId(), homeowner));
+        Assert.assertSame(room, GameRoomCache.getGameRoom(room.getId()));
+        Assert.assertSame(room, GameRoomCache.getGameRoomByUserId(homeowner.getIdentityKey()));
+
+        User reconnected = user("tacit-channel-owner-new", homeowner.getAccountId(), "房主");
+        Assert.assertSame(room, GameRoomCache.reconnectRoom(reconnected));
+        Assert.assertSame(room, GameRoomCache.getGameRoomByConnectionId(reconnected.getId()));
+        Assert.assertTrue(room.isHomeowner(reconnected));
+    }
+
+    @Test
     public void disconnectKeepsGobangRoomWhenNoActivePlayerRemainsThenReconnects() {
         GameRoomCache.setGobangEmptyRoomTtlMillisForTest(20L);
         User homeowner = user("channel-last", 1006L, "房主");
