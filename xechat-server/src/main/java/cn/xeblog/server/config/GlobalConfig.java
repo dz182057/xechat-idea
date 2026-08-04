@@ -44,6 +44,11 @@ public class GlobalConfig {
      */
     public static String AVATAR_DIR;
 
+    /**
+     * 双人小屋密文附件目录
+     */
+    public static String DUO_ATTACHMENT_DIR;
+
     static {
         initDataPath(null);
     }
@@ -61,6 +66,7 @@ public class GlobalConfig {
         DATA_DIR = Paths.get(DATA_PATH, "data").toString();
         DB_PATH = Paths.get(DATA_DIR, "xechat.db").toString();
         AVATAR_DIR = Paths.get(DATA_DIR, "avatars").toString();
+        DUO_ATTACHMENT_DIR = Paths.get(DATA_DIR, "duo-attachments").toString();
     }
 
     /**

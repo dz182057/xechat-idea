@@ -37,6 +37,7 @@
         <mapper resource="mapper/KeyEnvelopeMapper.xml"/>
         <mapper resource="mapper/PrivateMessageMapper.xml"/>
         <mapper resource="mapper/FriendMapper.xml"/>
+        <mapper resource="mapper/DuoSpaceMapper.xml"/>
         <mapper resource="mapper/DrawGuessWordMapper.xml"/>
         <mapper resource="mapper/QuickQuizMapper.xml"/>
         <mapper resource="mapper/TacitQuizMapper.xml"/>

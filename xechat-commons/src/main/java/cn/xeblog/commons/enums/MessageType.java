@@ -208,5 +208,10 @@ public enum MessageType {
     /**
      * 狗狗宇宙个人数据
      */
-    PET;
+    PET,
+
+    /**
+     * 双人小屋
+     */
+    DUO_SPACE;
 }

@@ -20,6 +20,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import cn.xeblog.server.duo.DuoAttachmentService;
 import java.util.Properties;
 
 /**
@@ -71,6 +72,7 @@ public final class DbInitializer {
             // 1. 确保数据目录存在
             Files.createDirectories(Paths.get(GlobalConfig.DATA_DIR));
             Files.createDirectories(Paths.get(GlobalConfig.AVATAR_DIR));
+            DuoAttachmentService.ensureDirectory();
 
             // 2. 构建 SqlSessionFactory,把 jdbc.url 通过 properties 注入到 mybatis-config.xml
             Properties props = new Properties();
@@ -89,6 +91,7 @@ public final class DbInitializer {
             ensureDrawGuessWordTable();
             ensureQuickQuizTables();
             ensureTurtleSoupTables();
+            ensureDuoSpaceTables();
             ensurePetTables();
             backfillTacitQuizSameAnswers();
             ensurePushSubscriptionTable();
@@ -513,9 +516,11 @@ public final class DbInitializer {
                         "account_id INTEGER NOT NULL," +
                         "p256dh TEXT NOT NULL," +
                         "auth TEXT NOT NULL," +
+                        "path_prefix TEXT NOT NULL DEFAULT ''," +
                         "created_at INTEGER NOT NULL," +
                         "updated_at INTEGER NOT NULL" +
                         ")");
+                addColumnIfMissing(conn, st, "push_subscriptions", "path_prefix", "TEXT NOT NULL DEFAULT ''");
                 st.execute("CREATE INDEX IF NOT EXISTS idx_push_subscriptions_account " +
                         "ON push_subscriptions(account_id)");
             }
@@ -751,6 +756,88 @@ public final class DbInitializer {
                         "ON pet_daily_saying_assignments(account_id, status, read_at DESC)");
             }
             seedPetDailySayingContent(conn);
+        }
+    }
+
+    /**
+     * 给已有数据库补齐双人小屋表。
+     */
+    private static void ensureDuoSpaceTables() throws Exception {
+        try (SqlSession session = FACTORY.openSession(false)) {
+            Connection conn = session.getConnection();
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE IF NOT EXISTS duo_spaces (" +
+                        "id TEXT PRIMARY KEY," +
+                        "account_low_id INTEGER NOT NULL," +
+                        "account_high_id INTEGER NOT NULL," +
+                        "invited_by_account_id INTEGER NOT NULL," +
+                        "status TEXT NOT NULL," +
+                        "warmth INTEGER NOT NULL DEFAULT 0," +
+                        "created_at INTEGER NOT NULL," +
+                        "activated_at INTEGER," +
+                        "expires_at INTEGER," +
+                        "updated_at INTEGER NOT NULL," +
+                        "UNIQUE(account_low_id, account_high_id)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS duo_members (" +
+                        "space_id TEXT NOT NULL," +
+                        "account_id INTEGER NOT NULL UNIQUE," +
+                        "selected_dog_id TEXT," +
+                        "joined_at INTEGER," +
+                        "PRIMARY KEY(space_id, account_id)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS duo_interactions (" +
+                        "id TEXT PRIMARY KEY," +
+                        "space_id TEXT NOT NULL," +
+                        "server_date TEXT NOT NULL," +
+                        "actor_account_id INTEGER NOT NULL," +
+                        "gesture TEXT NOT NULL," +
+                        "payload_version TEXT," +
+                        "payload_iv TEXT," +
+                        "payload_ciphertext TEXT," +
+                        "attachment_id TEXT," +
+                        "created_at INTEGER NOT NULL," +
+                        "viewed_at INTEGER," +
+                        "UNIQUE(space_id, server_date, actor_account_id)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS duo_daily_quizzes (" +
+                        "id TEXT PRIMARY KEY," +
+                        "space_id TEXT NOT NULL," +
+                        "server_date TEXT NOT NULL," +
+                        "question_id INTEGER NOT NULL," +
+                        "created_at INTEGER NOT NULL," +
+                        "completed_at INTEGER," +
+                        "UNIQUE(space_id, server_date)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS duo_daily_quiz_answers (" +
+                        "quiz_id TEXT NOT NULL," +
+                        "account_id INTEGER NOT NULL," +
+                        "choice_index INTEGER NOT NULL," +
+                        "answered_at INTEGER NOT NULL," +
+                        "PRIMARY KEY(quiz_id, account_id)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS duo_daily_progress (" +
+                        "space_id TEXT NOT NULL," +
+                        "server_date TEXT NOT NULL," +
+                        "interaction_awarded INTEGER NOT NULL DEFAULT 0," +
+                        "play_awarded INTEGER NOT NULL DEFAULT 0," +
+                        "PRIMARY KEY(space_id, server_date)" +
+                        ")");
+                st.execute("CREATE TABLE IF NOT EXISTS duo_attachments (" +
+                        "id TEXT PRIMARY KEY," +
+                        "space_id TEXT NOT NULL," +
+                        "uploader_account_id INTEGER NOT NULL," +
+                        "storage_name TEXT NOT NULL UNIQUE," +
+                        "size_bytes INTEGER NOT NULL," +
+                        "interaction_id TEXT," +
+                        "created_at INTEGER NOT NULL" +
+                        ")");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_duo_interactions_space_created " +
+                        "ON duo_interactions(space_id, created_at)");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_duo_attachments_space_created " +
+                        "ON duo_attachments(space_id, created_at)");
+            }
+            session.commit();
         }
     }
 

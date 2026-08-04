@@ -7,6 +7,7 @@ import cn.xeblog.server.account.mapper.AccountMapper;
 import cn.xeblog.server.account.mapper.SessionMapper;
 import cn.xeblog.server.e2ee.entity.KeyEnvelope;
 import cn.xeblog.server.e2ee.mapper.KeyEnvelopeMapper;
+import cn.xeblog.server.duo.DuoSpaceService;
 import cn.xeblog.server.util.SensitiveWordUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
@@ -354,6 +355,7 @@ public final class AccountService {
      */
     public static void softDelete(long accountId) {
         long now = System.currentTimeMillis();
+        DuoSpaceService.closeByAccount(accountId);
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             session.getMapper(AccountMapper.class).anonymizeSoftDelete(accountId,
                     "deleted_" + accountId, "已删除用户_" + accountId, now);
@@ -370,6 +372,7 @@ public final class AccountService {
     public static Account deleteByAdmin(long accountId) {
         long now = System.currentTimeMillis();
         Account target;
+        DuoSpaceService.closeByAccount(accountId);
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             AccountMapper mapper = session.getMapper(AccountMapper.class);
             target = mapper.findById(accountId);

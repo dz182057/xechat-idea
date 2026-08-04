@@ -13,6 +13,7 @@ import cn.xeblog.server.builder.ResponseBuilder;
 import cn.xeblog.server.cache.UserCache;
 import cn.xeblog.server.pet.MiniGameRewards;
 import cn.xeblog.server.pet.PetGameItemDeclarationService;
+import cn.xeblog.server.duo.DuoSpaceService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.SqlSession;
 
@@ -458,6 +459,7 @@ public final class TacitQuizService {
         } catch (RuntimeException e) {
             log.error("默契问答房间级彩蛋奖励结算失败 -> accountIds: {}", accountIds, e);
         }
+        DuoSpaceService.recordSharedPlay(accountIds, Game.TACIT_QUIZ, now);
     }
 
     private static Map<String, List<String>> applyInteractionItemSettlements(GameRoom room,

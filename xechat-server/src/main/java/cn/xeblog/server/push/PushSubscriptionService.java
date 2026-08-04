@@ -15,6 +15,10 @@ public final class PushSubscriptionService {
     }
 
     public static void upsert(long accountId, String endpoint, String p256dh, String auth) {
+        upsert(accountId, endpoint, p256dh, auth, "");
+    }
+
+    public static void upsert(long accountId, String endpoint, String p256dh, String auth, String pathPrefix) {
         if (accountId <= 0 || isBlank(endpoint) || isBlank(p256dh) || isBlank(auth)) {
             throw new IllegalArgumentException("推送订阅参数不完整");
         }
@@ -22,16 +26,18 @@ public final class PushSubscriptionService {
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
             Connection conn = session.getConnection();
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO push_subscriptions(account_id, endpoint, p256dh, auth, created_at, updated_at) " +
-                            "VALUES(?,?,?,?,?,?) " +
+                    "INSERT INTO push_subscriptions(account_id, endpoint, p256dh, auth, path_prefix, created_at, updated_at) " +
+                            "VALUES(?,?,?,?,?,?,?) " +
                             "ON CONFLICT(endpoint) DO UPDATE SET account_id=excluded.account_id, " +
-                            "p256dh=excluded.p256dh, auth=excluded.auth, updated_at=excluded.updated_at")) {
+                            "p256dh=excluded.p256dh, auth=excluded.auth, path_prefix=excluded.path_prefix, " +
+                            "updated_at=excluded.updated_at")) {
                 ps.setLong(1, accountId);
                 ps.setString(2, endpoint);
                 ps.setString(3, p256dh);
                 ps.setString(4, auth);
-                ps.setLong(5, now);
+                ps.setString(5, normalizePathPrefix(pathPrefix));
                 ps.setLong(6, now);
+                ps.setLong(7, now);
                 ps.executeUpdate();
             }
         } catch (Exception e) {
@@ -77,7 +83,7 @@ public final class PushSubscriptionService {
         }
         try (SqlSession session = DbInitializer.factory().openSession(true)) {
             try (PreparedStatement ps = session.getConnection().prepareStatement(
-                    "SELECT account_id, endpoint, p256dh, auth FROM push_subscriptions WHERE account_id=?")) {
+                    "SELECT account_id, endpoint, p256dh, auth, path_prefix FROM push_subscriptions WHERE account_id=?")) {
                 ps.setLong(1, accountId);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
@@ -85,7 +91,8 @@ public final class PushSubscriptionService {
                                 rs.getLong("account_id"),
                                 rs.getString("endpoint"),
                                 rs.getString("p256dh"),
-                                rs.getString("auth")
+                                rs.getString("auth"),
+                                rs.getString("path_prefix")
                         ));
                     }
                 }
@@ -98,5 +105,12 @@ public final class PushSubscriptionService {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static String normalizePathPrefix(String value) {
+        if (isBlank(value) || "/".equals(value.trim())) return "";
+        String prefix = value.trim();
+        if (!prefix.startsWith("/")) prefix = "/" + prefix;
+        return prefix.endsWith("/") ? prefix : prefix + "/";
     }
 }

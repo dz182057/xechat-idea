@@ -59,11 +59,61 @@ public final class WebPushService {
         pushToAccount(recipientAccountId, JSONUtil.toJsonStr(payload));
     }
 
+    public static void pushDuoInvite(long recipientAccountId, String senderName, String spaceId) {
+        pushDuo(recipientAccountId, senderName, "邀请你一起布置双人小屋", spaceId);
+    }
+
+    public static void pushDuoInteraction(long recipientAccountId, String senderName, String spaceId) {
+        pushDuo(recipientAccountId, senderName, "来过小屋，给你留了点东西", spaceId);
+    }
+
+    public static void pushDuoQuizAnswered(long recipientAccountId, String senderName, String spaceId) {
+        pushDuo(recipientAccountId, senderName, "答完了今天的默契题，等你来揭晓", spaceId);
+    }
+
+    public static void pushDuoQuizRevealed(long recipientAccountId, String senderName) {
+        if (recipientAccountId <= 0) return;
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("type", "DUO_SPACE");
+        payload.put("title", senderName == null || senderName.trim().isEmpty() ? "双人小屋" : senderName);
+        payload.put("body", "今天的默契答案已经揭晓");
+        payload.put("url", "?view=duo");
+        payload.put("tag", "duo-space");
+        pushToAccount(recipientAccountId, JSONUtil.toJsonStr(payload));
+    }
+
+    private static void pushDuo(long recipientAccountId, String senderName, String body, String spaceId) {
+        if (recipientAccountId <= 0) return;
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("type", "DUO_SPACE");
+        payload.put("title", senderName == null || senderName.trim().isEmpty() ? "双人小屋" : senderName);
+        payload.put("body", body);
+        payload.put("url", "?view=duo");
+        payload.put("tag", "duo-space-" + (spaceId == null ? "unknown" : spaceId));
+        pushToAccount(recipientAccountId, JSONUtil.toJsonStr(payload));
+    }
+
     public static void pushToAccount(long accountId, String payload) {
         List<PushSubscriptionEntity> subscriptions = PushSubscriptionService.listByAccount(accountId);
         log.info("准备发送 Web Push accountId={} subscriptionCount={}", accountId, subscriptions.size());
         for (PushSubscriptionEntity subscription : subscriptions) {
-            EXECUTOR.execute(() -> sendOne(subscription, payload));
+            EXECUTOR.execute(() -> sendOne(subscription, withSubscriptionPathPrefix(payload, subscription.getPathPrefix())));
+        }
+    }
+
+    private static String withSubscriptionPathPrefix(String payload, String pathPrefix) {
+        if (pathPrefix == null || pathPrefix.trim().isEmpty()) return payload;
+        try {
+            cn.hutool.json.JSONObject json = JSONUtil.parseObj(payload);
+            String url = json.getStr("url");
+            if (url != null && url.startsWith("/") && !url.startsWith(pathPrefix)) {
+                json.set("url", pathPrefix.replaceAll("/+$", "") + url);
+            } else if (url != null && url.startsWith("?")) {
+                json.set("url", pathPrefix + url);
+            }
+            return json.toString();
+        } catch (Exception e) {
+            return payload;
         }
     }
 
