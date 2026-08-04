@@ -418,7 +418,7 @@ public final class DuoSpaceService {
         AccountView actor = accountView(accountId);
         if (actor != null) {
             if (completed) {
-                WebPushService.pushDuoQuizRevealed(partnerId, actor.nickname);
+                WebPushService.pushDuoQuizRevealed(partnerId, actor.nickname, spaceId);
             } else {
                 WebPushService.pushDuoQuizAnswered(partnerId, actor.nickname, spaceId);
             }
@@ -440,7 +440,7 @@ public final class DuoSpaceService {
             }
             List<DuoMemoryDTO> items = new ArrayList<>();
             for (String date : dates) {
-                items.add(buildMemory(conn, space, date));
+                items.add(buildMemory(conn, space, date, accountId));
             }
             String next = items.isEmpty() ? null : items.get(items.size() - 1).getDate();
             return new DuoMemoryPageDTO(items, hasMore, next);
@@ -604,7 +604,7 @@ public final class DuoSpaceService {
         boolean hasMore = dates.size() > RECENT_MEMORY_LIMIT;
         if (hasMore) dates = new ArrayList<>(dates.subList(0, RECENT_MEMORY_LIMIT));
         List<DuoMemoryDTO> recent = new ArrayList<>();
-        for (String item : dates) recent.add(buildMemory(conn, space, item));
+        for (String item : dates) recent.add(buildMemory(conn, space, item, accountId));
         AccountView partner = accountView(conn, partnerId);
         return new DuoSpaceProfileDTO(DuoSpaceStatus.ACTIVE, date, space.id, null,
                 partner == null ? null : partner.toDTO(), myDog, partnerDog, space.warmth,
@@ -620,7 +620,7 @@ public final class DuoSpaceService {
         return result;
     }
 
-    private static DuoMemoryDTO buildMemory(Connection conn, SpaceRow space, String date) throws SQLException {
+    private static DuoMemoryDTO buildMemory(Connection conn, SpaceRow space, String date, long accountId) throws SQLException {
         List<DuoInteractionDTO> interactions = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT id, server_date, actor_account_id, gesture, payload_version, payload_iv, " +
@@ -635,7 +635,7 @@ public final class DuoSpaceService {
         QuizRow quiz = findQuiz(conn, space.id, date);
         DuoDailyQuizDTO quizResult = null;
         if (quiz != null && bothAnswers(conn, quiz.id, space.accountLowId, space.accountHighId)) {
-            quizResult = buildDailyQuiz(conn, space.id, date, space.accountLowId);
+            quizResult = buildDailyQuiz(conn, space.id, date, accountId);
         }
         ProgressRow progress = findProgress(conn, space.id, date);
         return new DuoMemoryDTO(date, interactions, quizResult,

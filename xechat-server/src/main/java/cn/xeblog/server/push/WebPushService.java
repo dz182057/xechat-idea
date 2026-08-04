@@ -71,14 +71,14 @@ public final class WebPushService {
         pushDuo(recipientAccountId, senderName, "答完了今天的默契题，等你来揭晓", spaceId);
     }
 
-    public static void pushDuoQuizRevealed(long recipientAccountId, String senderName) {
+    public static void pushDuoQuizRevealed(long recipientAccountId, String senderName, String spaceId) {
         if (recipientAccountId <= 0) return;
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "DUO_SPACE");
         payload.put("title", senderName == null || senderName.trim().isEmpty() ? "双人小屋" : senderName);
         payload.put("body", "今天的默契答案已经揭晓");
         payload.put("url", "?view=duo");
-        payload.put("tag", "duo-space");
+        payload.put("tag", "duo-space-" + (spaceId == null ? "unknown" : spaceId));
         pushToAccount(recipientAccountId, JSONUtil.toJsonStr(payload));
     }
 
