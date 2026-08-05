@@ -43,6 +43,24 @@ public final class DuoAttachmentUploadHandler extends ChannelInboundHandlerAdapt
     private boolean discarding;
 
     @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        closeUploadTemp();
+        super.channelInactive(ctx);
+    }
+
+    @Override
+    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+        closeUploadTemp();
+        super.handlerRemoved(ctx);
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        closeUploadTemp();
+        super.exceptionCaught(ctx, cause);
+    }
+
+    @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (discarding) {
             if (msg instanceof HttpObject) ReferenceCountUtil.release(msg);

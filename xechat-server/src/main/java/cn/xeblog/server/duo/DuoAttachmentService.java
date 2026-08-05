@@ -16,6 +16,7 @@ import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import cn.xeblog.server.account.DbInitializer;
 import org.apache.ibatis.session.SqlSession;
@@ -26,8 +27,9 @@ import org.apache.ibatis.session.SqlSession;
 @Slf4j
 public final class DuoAttachmentService {
 
-    /** 明文图片最多 3 MiB，AES-GCM 密文额外包含 16 字节认证标签。 */
-    public static final int MAX_BYTES = 3 * 1024 * 1024 + 16;
+    /** 双人小屋密文附件最多 3 MiB。 */
+    public static final int MAX_BYTES = 3 * 1024 * 1024;
+    private static final long ORPHAN_MAX_AGE_MS = 24L * 60L * 60L * 1000L;
     private static final long CLEANUP_INTERVAL_MS = 60L * 60L * 1000L;
     private static volatile long lastCleanupAt;
 
@@ -116,7 +118,7 @@ public final class DuoAttachmentService {
     }
 
     public static void cleanupOrphans() {
-        long cutoff = System.currentTimeMillis() - 24L * 60L * 60L * 1000L;
+        long cutoff = System.currentTimeMillis() - ORPHAN_MAX_AGE_MS;
         List<String> files = new ArrayList<>();
         try (SqlSession session = DbInitializer.factory().openSession(false)) {
             Connection conn = session.getConnection();
@@ -137,7 +139,32 @@ public final class DuoAttachmentService {
             log.warn("清理双人小屋孤儿附件记录失败", e);
         }
         for (String file : files) deleteQuietly(directory().resolve(file));
+        cleanupExpiredUploadTemps(cutoff);
         lastCleanupAt = System.currentTimeMillis();
+    }
+
+    private static void cleanupExpiredUploadTemps(long cutoff) {
+        Path root = directory();
+        if (!Files.isDirectory(root)) return;
+        try (Stream<Path> paths = Files.list(root)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String name = path.getFileName().toString();
+                        return name.startsWith("upload-") && name.endsWith(".tmp");
+                    })
+                    .filter(path -> isOlderThan(path, cutoff))
+                    .forEach(DuoAttachmentService::deleteQuietly);
+        } catch (Exception e) {
+            log.warn("清理双人小屋临时上传文件失败", e);
+        }
+    }
+
+    private static boolean isOlderThan(Path path, long cutoff) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis() < cutoff;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static void maybeCleanupOrphans() {

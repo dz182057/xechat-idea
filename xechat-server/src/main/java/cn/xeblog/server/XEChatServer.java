@@ -8,6 +8,7 @@ import cn.xeblog.server.account.SessionService;
 import cn.xeblog.server.config.GlobalConfig;
 import cn.xeblog.server.config.IpRegionProperties;
 import cn.xeblog.server.config.ServerConfig;
+import cn.xeblog.server.duo.DuoAttachmentService;
 import cn.xeblog.server.handler.DefaultChannelInitializer;
 import cn.xeblog.server.handler.HttpAndWebSocketChannelInitializer;
 import cn.xeblog.server.service.IpRegionService;
@@ -127,6 +128,8 @@ public class XEChatServer {
 
         // 账号体系: 初始化 SQLite + MyBatis,首次启动建表
         DbInitializer.initIfNeeded();
+        // 启动时清理中断上传留下的临时附件和数据库孤儿记录
+        DuoAttachmentService.cleanupOrphans();
         // 首次启动(accounts 表为空)生成初始管理员引导 setup-token
         InviteCodeService.generateInitialSetupTokenIfNeeded();
         // 启动 session 表清理定时任务

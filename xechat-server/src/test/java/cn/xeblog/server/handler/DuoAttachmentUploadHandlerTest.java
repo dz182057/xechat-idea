@@ -11,6 +11,15 @@ import io.netty.handler.codec.http.HttpVersion;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.OutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.UUID;
+
+import cn.xeblog.server.config.GlobalConfig;
+
 public class DuoAttachmentUploadHandlerTest {
 
     @Test
@@ -33,5 +42,46 @@ public class DuoAttachmentUploadHandlerTest {
         } finally {
             channel.finishAndReleaseAll();
         }
+    }
+
+    @Test
+    public void channelInactiveDeletesPartialUploadTemp() throws Exception {
+        EmbeddedChannel channel = new EmbeddedChannel(new DuoAttachmentUploadHandler());
+        Path temp = installPartialUpload(channel.pipeline().get(DuoAttachmentUploadHandler.class));
+        try {
+            channel.close().syncUninterruptibly();
+            Assert.assertFalse(Files.exists(temp));
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    public void handlerRemovedDeletesPartialUploadTemp() throws Exception {
+        EmbeddedChannel channel = new EmbeddedChannel(new DuoAttachmentUploadHandler());
+        Path temp = installPartialUpload(channel.pipeline().get(DuoAttachmentUploadHandler.class));
+        try {
+            channel.pipeline().remove(DuoAttachmentUploadHandler.class);
+            Assert.assertFalse(Files.exists(temp));
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    private static Path installPartialUpload(DuoAttachmentUploadHandler handler) throws Exception {
+        Path directory = Path.of(GlobalConfig.DUO_ATTACHMENT_DIR);
+        Files.createDirectories(directory);
+        Path temp = Files.createTempFile(directory, "upload-", ".tmp");
+        OutputStream output = Files.newOutputStream(temp);
+        Class<?> stateClass = Class.forName(DuoAttachmentUploadHandler.class.getName() + "$UploadState");
+        Constructor<?> constructor = stateClass.getDeclaredConstructor(
+                long.class, String.class, String.class, Path.class, OutputStream.class);
+        constructor.setAccessible(true);
+        Object state = constructor.newInstance(
+                1001L, UUID.randomUUID().toString(), UUID.randomUUID().toString(), temp, output);
+        Field uploadField = DuoAttachmentUploadHandler.class.getDeclaredField("upload");
+        uploadField.setAccessible(true);
+        uploadField.set(handler, state);
+        return temp;
     }
 }

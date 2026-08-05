@@ -21,4 +21,10 @@ public class DuoSpaceResponseDTO implements Serializable {
     private String requestId;
     private DuoSpaceProfileDTO profile;
     private DuoMemoryPageDTO memories;
+    private String error;
+
+    public DuoSpaceResponseDTO(DuoSpaceEvent event, String requestId,
+                               DuoSpaceProfileDTO profile, DuoMemoryPageDTO memories) {
+        this(event, requestId, profile, memories, null);
+    }
 }

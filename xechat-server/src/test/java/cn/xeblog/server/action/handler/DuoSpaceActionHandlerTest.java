@@ -49,17 +49,37 @@ public class DuoSpaceActionHandlerTest {
     }
 
     @Test
-    public void serviceValidationErrorIsReturnedAsSystemMessage() {
+    public void serviceValidationErrorKeepsRequestIdInDuoResponse() {
         User user = DuoTestSupport.user(DuoTestSupport.ACCOUNT_A, "duo-handler-error");
         DuoSpaceRequestDTO request = new DuoSpaceRequestDTO();
         request.setAction(DuoSpaceAction.INVITE);
         request.setPartnerAccountId(9999L);
+        request.setRequestId("invite-error-1");
 
         new DuoSpaceActionHandler().process(user, request);
 
         Response<?> response = ((EmbeddedChannel) user.getChannel()).readOutbound();
-        assertEquals(MessageType.SYSTEM, response.getType());
-        assertEquals(DuoSpaceService.ERROR_INVITE_FRIEND, response.getBody());
+        assertEquals(MessageType.DUO_SPACE, response.getType());
+        DuoSpaceResponseDTO body = (DuoSpaceResponseDTO) response.getBody();
+        assertEquals("invite-error-1", body.getRequestId());
+        assertEquals(DuoSpaceService.ERROR_INVITE_FRIEND, body.getError());
+    }
+
+    @Test
+    public void successfulMutationReturnsMatchingProfileRequestId() {
+        DuoTestSupport.activateSpace();
+        User user = DuoTestSupport.user(DuoTestSupport.ACCOUNT_A, "duo-handler-close");
+        DuoSpaceRequestDTO request = new DuoSpaceRequestDTO();
+        request.setAction(DuoSpaceAction.CLOSE_SPACE);
+        request.setRequestId("close-1");
+
+        new DuoSpaceActionHandler().process(user, request);
+
+        Response<?> response = ((EmbeddedChannel) user.getChannel()).readOutbound();
+        assertEquals(MessageType.DUO_SPACE, response.getType());
+        DuoSpaceResponseDTO body = (DuoSpaceResponseDTO) response.getBody();
+        assertEquals("close-1", body.getRequestId());
+        assertEquals(DuoSpaceStatus.NONE, body.getProfile().getStatus());
     }
 
     @Test

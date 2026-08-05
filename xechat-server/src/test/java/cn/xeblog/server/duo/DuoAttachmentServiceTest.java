@@ -8,6 +8,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.UUID;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -73,7 +74,7 @@ public class DuoAttachmentServiceTest {
     }
 
     @Test
-    public void acceptsThreeMiBImageCiphertextWithEncryptionTag() throws Exception {
+    public void acceptsThreeMiBImageCiphertextAtExactBoundary() throws Exception {
         String spaceId = DuoTestSupport.activateSpace();
         String attachmentId = UUID.randomUUID().toString();
         byte[] bytes = new byte[DuoAttachmentService.MAX_BYTES];
@@ -100,5 +101,17 @@ public class DuoAttachmentServiceTest {
 
         assertFalse(Files.exists(file));
         assertTrue(DuoTestSupport.attachmentStorageName(attachmentId) == null);
+    }
+
+    @Test
+    public void cleanupRemovesExpiredInterruptedUploadTempFile() throws Exception {
+        Path temp = Files.createTempFile(Path.of(cn.xeblog.server.config.GlobalConfig.DUO_ATTACHMENT_DIR),
+                "upload-", ".tmp");
+        Files.setLastModifiedTime(temp, FileTime.fromMillis(
+                System.currentTimeMillis() - 2L * 24L * 60L * 60L * 1000L));
+
+        DuoAttachmentService.cleanupOrphans();
+
+        assertFalse(Files.exists(temp));
     }
 }
