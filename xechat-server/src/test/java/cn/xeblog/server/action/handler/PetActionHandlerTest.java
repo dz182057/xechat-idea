@@ -142,7 +142,7 @@ public class PetActionHandlerTest {
     }
 
     @Test
-    public void dailySayingViewReturnsProfile() {
+    public void dailySayingViewRejectsUnknownAssignment() {
         User user = user(9050L, "daily_saying_view");
 
         Map<String, Object> content = new HashMap<>();
@@ -155,8 +155,8 @@ public class PetActionHandlerTest {
         PetResponseDTO viewResponse = handlerProcess(user, viewRequest);
         Assert.assertEquals(PetAction.DAILY_SAYING_VIEW, viewResponse.getPetAction());
         Assert.assertEquals(Long.valueOf(905002L), viewResponse.getRequestId());
-        PetProfileDTO viewedProfile = parseProfile(viewResponse);
-        Assert.assertEquals(9050L, viewedProfile.getAccountId());
+        Assert.assertFalse(viewResponse.isSuccess());
+        Assert.assertEquals("这条狗狗问候不存在", viewResponse.getError());
     }
 
     @Test

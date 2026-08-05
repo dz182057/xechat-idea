@@ -30,7 +30,6 @@ import io.netty.util.CharsetUtil;
 import java.util.List;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.io.ByteArrayInputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -76,9 +75,6 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
             handlePushSubscribe(fullHttpRequest, response);
         } else if (path.equals("/api/push/unsubscribe") && fullHttpRequest.method() == HttpMethod.POST) {
             handlePushUnsubscribe(fullHttpRequest, response);
-        } else if (path.startsWith("/api/duo-spaces/") && path.contains("/attachments/")
-                && fullHttpRequest.method() == HttpMethod.POST) {
-            handleDuoAttachmentUpload(fullHttpRequest, path, response);
         } else if (path.startsWith("/api/duo-spaces/") && path.contains("/attachments/")
                 && fullHttpRequest.method() == HttpMethod.GET) {
             handleDuoAttachmentDownload(fullHttpRequest, path, response);
@@ -367,44 +363,6 @@ public class HttpChannelHandler extends AbstractDefaultChannelHandler<FullHttpRe
             writeResult(response, false, e.getMessage(), null, HttpResponseStatus.BAD_REQUEST);
         } catch (Exception e) {
             writeResult(response, false, "保存推送订阅失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    private void handleDuoAttachmentUpload(FullHttpRequest request, String path, FullHttpResponse response) {
-        String[] parts = path.split("/");
-        if (parts.length != 6 || !"api".equals(parts[1]) || !"duo-spaces".equals(parts[2])
-                || !"attachments".equals(parts[4])) {
-            writeResult(response, false, "附件地址不正确", null, HttpResponseStatus.NOT_FOUND);
-            return;
-        }
-        User user = resolveHttpUser(request);
-        if (user == null || user.isGuest() || user.getAccountId() <= 0L) {
-            writeResult(response, false, "请先登录账号", null, HttpResponseStatus.UNAUTHORIZED);
-            return;
-        }
-        if (request.content().readableBytes() > DuoAttachmentService.MAX_BYTES) {
-            writeResult(response, false, "附件超过大小限制", null, HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE);
-            return;
-        }
-        try {
-            byte[] bytes = new byte[request.content().readableBytes()];
-            request.content().getBytes(request.content().readerIndex(), bytes);
-            DuoAttachmentService.upload(user.getAccountId(), parts[3], parts[5],
-                    new ByteArrayInputStream(bytes),
-                    request.content().readableBytes());
-            Map<String, Object> data = new HashMap<>();
-            data.put("attachmentId", parts[5]);
-            writeResult(response, true, "上传成功", data, HttpResponseStatus.CREATED);
-        } catch (DuoAttachmentService.ForbiddenException e) {
-            writeResult(response, false, "没有权限访问该小屋", null, HttpResponseStatus.FORBIDDEN);
-        } catch (DuoAttachmentService.ConflictException e) {
-            writeResult(response, false, "附件标识已存在", null, HttpResponseStatus.CONFLICT);
-        } catch (DuoAttachmentService.PayloadTooLargeException e) {
-            writeResult(response, false, "附件超过大小限制", null, HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE);
-        } catch (IllegalArgumentException e) {
-            writeResult(response, false, e.getMessage(), null, HttpResponseStatus.BAD_REQUEST);
-        } catch (Exception e) {
-            writeResult(response, false, "附件上传失败", null, HttpResponseStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

@@ -634,7 +634,8 @@ public final class DuoSpaceService {
         }
         QuizRow quiz = findQuiz(conn, space.id, date);
         DuoDailyQuizDTO quizResult = null;
-        if (quiz != null && bothAnswers(conn, quiz.id, space.accountLowId, space.accountHighId)) {
+        if (quiz != null && quiz.completedAt != null
+                && bothAnswers(conn, quiz.id, space.accountLowId, space.accountHighId)) {
             quizResult = buildDailyQuiz(conn, space.id, date, accountId);
         }
         ProgressRow progress = findProgress(conn, space.id, date);
@@ -694,7 +695,7 @@ public final class DuoSpaceService {
         String comparator = beforeDate == null || beforeDate.trim().isEmpty() ? "" : " AND server_date < ?";
         String sql = "SELECT server_date FROM (" +
                 "SELECT server_date FROM duo_interactions WHERE space_id=?" + comparator +
-                " UNION SELECT server_date FROM duo_daily_quizzes WHERE space_id=?" + comparator.replace("server_date", "server_date") +
+                " UNION SELECT server_date FROM duo_daily_quizzes WHERE space_id=? AND completed_at IS NOT NULL" + comparator +
                 ") dates ORDER BY server_date DESC LIMIT ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             int index = 1;
@@ -758,7 +759,9 @@ public final class DuoSpaceService {
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return null;
                 long completed = rs.getLong("completed_at");
-                return new QuizRow(rs.getString("id"), rs.getLong("question_id"), rs.wasNull() ? null : completed);
+                boolean completedNull = rs.wasNull();
+                long questionId = rs.getLong("question_id");
+                return new QuizRow(rs.getString("id"), questionId, completedNull ? null : completed);
             }
         }
     }

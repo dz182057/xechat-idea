@@ -129,6 +129,20 @@ public class DuoSpaceServiceTest {
     }
 
     @Test
+    public void memoryListingIgnoresDailyQuizThatHasNotBeenCompleted() {
+        DuoTestSupport.setNow(DuoTestSupport.atNoon(LocalDate.of(2026, 7, 5)));
+        DuoTestSupport.activateSpace();
+
+        DuoSpaceProfileDTO profile = DuoSpaceService.profile(DuoTestSupport.ACCOUNT_A);
+        assertNotNull(profile.getToday().getQuiz());
+        assertTrue(profile.getToday().getQuiz().getCompletedAt() == null);
+
+        DuoMemoryPageDTO memories = DuoSpaceService.listMemories(DuoTestSupport.ACCOUNT_A, null);
+        assertTrue(memories.getItems().isEmpty());
+        assertFalse(memories.isHasMore());
+    }
+
+    @Test
     public void memoryListingUsesThirtyDayCursor() {
         DuoTestSupport.setNow(DuoTestSupport.atNoon(LocalDate.of(2026, 1, 1)));
         DuoTestSupport.activateSpace();

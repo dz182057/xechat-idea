@@ -206,6 +206,25 @@ public class PetServiceTest {
     }
 
     @Test
+    public void dailySayingViewRejectsMissingAndNonOwnerAssignments() throws Exception {
+        upsertDailySayingContent("view-validation-message", "今天也想陪{dog_name}晒太阳。");
+        User owner = accountUser(990107L);
+        User other = accountUser(990108L);
+        PetService.adopt(owner, adopt("corgi", "校验狗"));
+
+        PetDailySayingDTO saying = PetDailySayingService.dailySaying(owner.getAccountId()).getDailySaying();
+        Assert.assertNotNull(saying);
+
+        PetDailySayingReadDTO missingRequest = new PetDailySayingReadDTO();
+        missingRequest.setAssignmentId("missing-assignment");
+        assertDailySayingViewRejected(owner.getAccountId(), missingRequest);
+
+        PetDailySayingReadDTO otherRequest = new PetDailySayingReadDTO();
+        otherRequest.setAssignmentId(saying.getAssignmentId());
+        assertDailySayingViewRejected(other.getAccountId(), otherRequest);
+    }
+
+    @Test
     public void profileShouldExposeV5TrainerManualSkillPool() {
         PetProfileDTO profile = PetService.profile(accountUser(990015L));
 
@@ -1339,6 +1358,15 @@ public class PetServiceTest {
             statement.setLong(9, now - TimeUnit.DAYS.toMillis(1));
             statement.setString(10, assignedDate);
             statement.executeUpdate();
+        }
+    }
+
+    private static void assertDailySayingViewRejected(long accountId, PetDailySayingReadDTO request) {
+        try {
+            PetDailySayingService.viewDailySaying(accountId, request);
+            Assert.fail("不存在或不属于当前账号的狗狗问候不应允许查看");
+        } catch (IllegalArgumentException e) {
+            Assert.assertEquals("这条狗狗问候不存在", e.getMessage());
         }
     }
 

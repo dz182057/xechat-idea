@@ -89,6 +89,13 @@ public final class PetDailySayingService {
         }
 
         synchronized (PetProfileService.accountLock(accountId)) {
+            try (SqlSession session = DbInitializer.factory().openSession(false)) {
+                PetDailySayingAssignmentRecord assignment =
+                        session.getMapper(PetDailySayingAssignmentMapper.class).findById(accountId, assignmentId);
+                if (assignment == null) {
+                    throw new IllegalArgumentException("这条狗狗问候不存在");
+                }
+            }
             return PetProfileService.profileLocked(accountId);
         }
     }

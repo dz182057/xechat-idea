@@ -24,6 +24,8 @@ public class HttpAndWebSocketChannelInitializer extends ChannelInitializer<Socke
         ch.pipeline()
                 .addLast(new IdleStateHandler(0, 0, 60))
                 .addLast(new HttpServerCodec())
+                // 双人小屋附件在聚合器之前分块接收，避免先分配 256 MiB 缓冲区。
+                .addLast(new DuoAttachmentUploadHandler())
                 .addLast(new HttpObjectAggregator(MAX_HTTP_CONTENT_BYTES))
                 .addLast(new ChunkedWriteHandler())
                 .addLast(new ForwardedIpHandler())
