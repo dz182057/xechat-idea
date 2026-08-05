@@ -11,6 +11,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -63,6 +64,21 @@ public class DuoAttachmentUploadHandlerTest {
         try {
             channel.pipeline().remove(DuoAttachmentUploadHandler.class);
             Assert.assertFalse(Files.exists(temp));
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    public void exceptionCaughtDeletesPartialUploadTempAndClosesConnection() throws Exception {
+        EmbeddedChannel channel = new EmbeddedChannel(new DuoAttachmentUploadHandler());
+        DuoAttachmentUploadHandler handler = channel.pipeline().get(DuoAttachmentUploadHandler.class);
+        Path temp = installPartialUpload(handler);
+        try {
+            handler.exceptionCaught(channel.pipeline().context(handler), new IOException("测试异常"));
+            channel.runPendingTasks();
+            Assert.assertFalse(Files.exists(temp));
+            Assert.assertFalse(channel.isOpen());
         } finally {
             channel.finishAndReleaseAll();
         }

@@ -55,9 +55,10 @@ public final class DuoAttachmentUploadHandler extends ChannelInboundHandlerAdapt
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        discarding = true;
         closeUploadTemp();
-        super.exceptionCaught(ctx, cause);
+        ctx.close();
     }
 
     @Override
