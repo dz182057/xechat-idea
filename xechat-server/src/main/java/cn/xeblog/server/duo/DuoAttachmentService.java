@@ -26,7 +26,8 @@ import org.apache.ibatis.session.SqlSession;
 @Slf4j
 public final class DuoAttachmentService {
 
-    public static final int MAX_BYTES = 3 * 1024 * 1024;
+    /** 明文图片最多 3 MiB，AES-GCM 密文额外包含 16 字节认证标签。 */
+    public static final int MAX_BYTES = 3 * 1024 * 1024 + 16;
     private static final long CLEANUP_INTERVAL_MS = 60L * 60L * 1000L;
     private static volatile long lastCleanupAt;
 

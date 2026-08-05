@@ -73,6 +73,18 @@ public class DuoAttachmentServiceTest {
     }
 
     @Test
+    public void acceptsThreeMiBImageCiphertextWithEncryptionTag() throws Exception {
+        String spaceId = DuoTestSupport.activateSpace();
+        String attachmentId = UUID.randomUUID().toString();
+        byte[] bytes = new byte[DuoAttachmentService.MAX_BYTES];
+
+        DuoAttachmentService.upload(DuoTestSupport.ACCOUNT_A, spaceId, attachmentId,
+                new ByteArrayInputStream(bytes), bytes.length);
+
+        assertArrayEquals(bytes, DuoAttachmentService.read(DuoTestSupport.ACCOUNT_B, spaceId, attachmentId));
+    }
+
+    @Test
     public void cleanupRemovesUnattachedOldFileAndDatabaseRow() throws Exception {
         String spaceId = DuoTestSupport.activateSpace();
         String attachmentId = UUID.randomUUID().toString();
