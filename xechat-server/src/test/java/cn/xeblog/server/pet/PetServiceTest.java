@@ -800,7 +800,14 @@ public class PetServiceTest {
         Assert.assertEquals(11, walkedDog.getBond());
         Assert.assertEquals(9, afterWalk.getAssets().getEnergy());
 
-        PetProfileDTO afterRepeatWalk = PetProfileService.walkDog(user.getAccountId(), walkDog(dogId));
+        try {
+            PetProfileService.walkDog(user.getAccountId(), walkDog(dogId));
+            Assert.fail("同一只狗狗当天重复散步应被拒绝");
+        } catch (IllegalArgumentException e) {
+            Assert.assertEquals("这只狗狗今天已经散步过了", e.getMessage());
+        }
+
+        PetProfileDTO afterRepeatWalk = PetProfileService.profile(user.getAccountId());
         PetDogDTO repeatedDog = afterRepeatWalk.getDogs().get(0);
         Assert.assertEquals(11, repeatedDog.getBond());
         Assert.assertEquals(9, afterRepeatWalk.getAssets().getEnergy());

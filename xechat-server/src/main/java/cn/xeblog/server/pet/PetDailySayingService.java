@@ -89,13 +89,6 @@ public final class PetDailySayingService {
         }
 
         synchronized (PetProfileService.accountLock(accountId)) {
-            try (SqlSession session = DbInitializer.factory().openSession(false)) {
-                PetDailySayingAssignmentRecord assignment =
-                        session.getMapper(PetDailySayingAssignmentMapper.class).findById(accountId, assignmentId);
-                if (assignment == null) {
-                    throw new IllegalArgumentException("这条狗狗问候不存在");
-                }
-            }
             return PetProfileService.profileLocked(accountId);
         }
     }
@@ -116,18 +109,16 @@ public final class PetDailySayingService {
                 if (assignment == null) {
                     throw new IllegalArgumentException("这条狗狗问候不存在");
                 }
-                if (STATUS_READ.equals(assignment.getStatus())) {
-                    session.commit();
-                    return PetProfileService.profileLocked(accountId);
-                }
-
-                PetDogRecord dog = session.getMapper(PetDogMapper.class)
-                        .findByIdAndOwner(assignment.getDogId(), accountId);
-                int delta = dog == null ? 0 : PetProfileService.applyDailyGreetingBond(session, accountId, today, dog, now);
-                boolean rewardApplied = delta > 0;
-                grantDailySayingReadBones(session, accountId, assignmentId, now);
-                if (assignmentMapper.markRead(accountId, assignmentId, now, today, rewardApplied, delta) <= 0) {
-                    throw new IllegalArgumentException("这条狗狗问候已经读过了");
+                if (!STATUS_READ.equals(assignment.getStatus())) {
+                    PetDogRecord dog = session.getMapper(PetDogMapper.class)
+                            .findByIdAndOwner(assignment.getDogId(), accountId);
+                    int delta = dog == null ? 0
+                            : PetProfileService.applyDailyGreetingBond(session, accountId, today, dog, now);
+                    boolean rewardApplied = delta > 0;
+                    grantDailySayingReadBones(session, accountId, assignmentId, now);
+                    if (assignmentMapper.markRead(accountId, assignmentId, now, today, rewardApplied, delta) <= 0) {
+                        throw new IllegalArgumentException("这条狗狗问候已经读过了");
+                    }
                 }
                 session.commit();
             }

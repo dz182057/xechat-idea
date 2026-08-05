@@ -3624,9 +3624,9 @@ public class PetActionHandlerTest {
             PetCheckinMilestoneRewardDTO reward = profile.getCheckinStatus().getLastMilestoneReward();
             Assert.assertNotNull(reward);
             Assert.assertEquals(1, reward.getMilestoneIndex());
-            Assert.assertEquals("item_gomoku_skin_magic", reward.getItemId());
+            Assert.assertEquals("item_minesweeper_skin_fleet", reward.getItemId());
             Assert.assertEquals(0, reward.getOverflowBones());
-            Assert.assertEquals(1, countItem(user.getAccountId(), "item_gomoku_skin_magic"));
+            Assert.assertEquals(1, countItem(user.getAccountId(), "item_minesweeper_skin_fleet"));
             Assert.assertEquals(28, profile.getCheckinStatus().getTotalCheckins());
             Assert.assertEquals(28, profile.getCheckinStatus().getMilestoneRemaining());
         } finally {
@@ -3638,7 +3638,7 @@ public class PetActionHandlerTest {
     public void twentyEighthCheckinFallsBackToEpicWhenAllSkinsOwned() {
         User user = user(96006L, "milestone_epic_user");
         seedTwentySevenHistoricalCheckins(user.getAccountId());
-        for (String itemId : PetItemDefinitions.dailySkinShopItemIds()) {
+        for (String itemId : PetItemDefinitions.skinItemIds()) {
             insertPetItem(user.getAccountId(), itemId, 1);
         }
         IntSupplier originalItemIndexSupplier = setLuckyBagItemIndexSupplier(() -> 0);
@@ -3656,7 +3656,7 @@ public class PetActionHandlerTest {
             Assert.assertTrue(epicLuckyBagItemIds().contains(reward.getItemId()));
             Assert.assertEquals(0, reward.getOverflowBones());
             Assert.assertEquals(1, countItem(user.getAccountId(), reward.getItemId()));
-            for (String itemId : PetItemDefinitions.dailySkinShopItemIds()) {
+            for (String itemId : PetItemDefinitions.skinItemIds()) {
                 Assert.assertEquals(1, countItem(user.getAccountId(), itemId));
             }
         } finally {

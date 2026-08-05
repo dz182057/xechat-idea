@@ -123,6 +123,7 @@ public class GobangHistoryServiceTest {
         tempRoot = Files.createTempDirectory("xechat-gobang-history-test");
         System.setProperty(GlobalConfig.DATA_PATH_PROPERTY, tempRoot.toString());
         GlobalConfig.initDataPath(null);
+        GobangHistoryService.resetForTest();
         GobangPetItemService.setNowSupplierForTest(() -> now);
         GobangHistoryService.setNowSupplierForTest(() -> now);
         GobangHistoryService.setCleanupIntervalMillisForTest(0);

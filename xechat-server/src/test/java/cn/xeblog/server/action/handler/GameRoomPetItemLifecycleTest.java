@@ -599,6 +599,7 @@ public class GameRoomPetItemLifecycleTest {
                 room,
                 new GamePlayerPetItemsDTO(null, "item_gomoku_prediction"));
 
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 2));
         new GameActionHandler().process(alice, room, gobangMove(7, 7, 1));
         GobangDTO bobMove = gobangMove(8, 7, 2);
         new GameActionHandler().process(bob, room, bobMove);
@@ -624,6 +625,7 @@ public class GameRoomPetItemLifecycleTest {
                 room,
                 new GamePlayerPetItemsDTO(null, "item_gomoku_prediction"));
 
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 2));
         new GameActionHandler().process(alice, room, gobangMove(7, 7, 1));
         GobangDTO bobMove = gobangMove(9, 7, 2);
         new GameActionHandler().process(bob, room, bobMove);
@@ -703,6 +705,7 @@ public class GameRoomPetItemLifecycleTest {
                 room,
                 new GamePlayerPetItemsDTO(null, "item_prophecy"));
 
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 2));
         new GameActionHandler().process(alice, room, gobangMove(0, 1, 1));
         new GameActionHandler().process(bob, room, gobangMove(0, 0, 2));
         new GameActionHandler().process(alice, room, gobangMove(1, 1, 1));
@@ -745,6 +748,7 @@ public class GameRoomPetItemLifecycleTest {
             }
         });
 
+        new GameActionHandler().process(alice, room, gobangMove(0, 0, 2));
         new GameActionHandler().process(alice, room, gobangMove(0, 1, 1));
         new GameActionHandler().process(bob, room, gobangMove(0, 0, 2));
         new GameActionHandler().process(alice, room, gobangMove(1, 1, 1));

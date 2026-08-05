@@ -53,7 +53,11 @@ public final class PetGameItemDeclarationService {
                 && (PetGameItemRules.isPartyEqualizerItem(petItems.getPetPlayItemId())
                 || PetGameItemRules.isPartyEqualizerItem(petItems.getPetInteractionItemId()));
         int carrySlotLimit = PetProfileService.itemCarrySlotLimit(player.getAccountId());
-        GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(room.getGame(), room.getGameMode(), petItems,
+        GamePlayerPetItemsDTO normalizedRequest = petItems;
+        if ("正式模式".equals(room.getGameMode()) && petItems != null && petItems.getPetPlayItemId() != null) {
+            normalizedRequest = new GamePlayerPetItemsDTO(null, petItems.getPetInteractionItemId());
+        }
+        GamePlayerPetItemsDTO normalized = PetGameItemRules.normalize(room.getGame(), room.getGameMode(), normalizedRequest,
                 itemId -> PetProfileService.hasPositiveItem(player.getAccountId(), itemId), carrySlotLimit);
         synchronized (player) {
             String playItemId = updateReservedSlot(room, player, player.getPetPlayItemId(),
